@@ -1,0 +1,1 @@
+# rime-wanxiang-update-tools
