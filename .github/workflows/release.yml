@@ -19,7 +19,9 @@ jobs:
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
-          echo "commits=$(git log --pretty=format:'- %s' $PREV_TAG..HEAD)" >> $GITHUB_OUTPUT
+          # Escape or sanitize commit messages
+          commits=$(git log --pretty=format:'- %s' $PREV_TAG..HEAD | sed 's/[^[:print:]]//g' | tr '\n' ' ')
+          echo "commits=$commits" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -29,6 +31,7 @@ jobs:
           body: |
             Changes since ${{ steps.commits.outputs.prev_tag }}:
             ${{ steps.commits.outputs.commits }}
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
             Windows/PowerShell/按需下载万象方案-词库-模型.ps1
             Windows/PowerShell/按需下载万象方案-词库-模型-utf-8.ps1
