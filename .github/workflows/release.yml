@@ -19,7 +19,6 @@ jobs:
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
-          # Escape or sanitize commit messages
           commits=$(git log --pretty=format:'- %s' $PREV_TAG..HEAD | sed 's/[^[:print:]]//g' | tr '\n' ' ')
           echo "commits=$commits" >> $GITHUB_OUTPUT
 
