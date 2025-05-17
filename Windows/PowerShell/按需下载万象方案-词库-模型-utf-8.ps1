@@ -1,3 +1,11 @@
+############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
+# $AutoUpdate = $true;
+$AutoUpdate = $false;
+####[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
+####注意必须包含双引号，例如：$InputSchemaType = "0";
+$InputSchemaType = "7";
+############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
+
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
 $SchemaRepo = "rime_wanxiang_pro"
@@ -257,16 +265,30 @@ $promptGramModel = "是否下载模型:`n[0]-下载; [1]-不下载"
 $promptDictDown = "是否下载词库:`n[0]-下载; [1]-不下载"
 
 if (-not $Debug) {
-    $InputSchemaType = Read-Host $promptSchemaType
-    $InputAllUpdate = Read-Host $promptAllUpdate
-    if ($InputAllUpdate -eq "0") {
+    if ($AutoUpdate) {
+        Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
+        Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
+        # 方案号只支持0-7
+        if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 7) {
+            Write-Error "错误：方案号只能是0-7" -ForegroundColor Red
+            exit 1
+        }
+        $InputAllUpdate = "0"
         $InputSchemaDown = "0"
         $InputGramModel = "0"
         $InputDictDown = "0"
     } else {
-        $InputSchemaDown = Read-Host $promptSchemaDown
-        $InputGramModel = Read-Host $promptGramModel
-        $InputDictDown = Read-Host $promptDictDown
+        $InputSchemaType = Read-Host $promptSchemaType
+        $InputAllUpdate = Read-Host $promptAllUpdate
+        if ($InputAllUpdate -eq "0") {
+            $InputSchemaDown = "0"
+            $InputGramModel = "0"
+            $InputDictDown = "0"
+        } else {
+            $InputSchemaDown = Read-Host $promptSchemaDown
+            $InputGramModel = Read-Host $promptGramModel
+            $InputDictDown = Read-Host $promptDictDown
+        }
     }
 } else {
     $InputSchemaType = "7"
