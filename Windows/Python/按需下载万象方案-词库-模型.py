@@ -14,7 +14,6 @@ import fnmatch
 
 # ====================== 全局配置 ======================
 
-
 # GitHub 仓库信息
 OWNER = "amzxyz"
 REPO = "rime_wanxiang_pro"
@@ -30,17 +29,25 @@ BORDER = "=" * 60
 SUB_BORDER = "-" * 55
 INDENT = " " * 2
 COLOR = {
-    'HEADER': '\033[95m',
-    'OKBLUE': '\033[94m',
-    'OKCYAN': '\033[96m',
-    'OKGREEN': '\033[92m',
-    'WARNING': '\033[93m',
-    'FAIL': '\033[91m',
-    'BOLD': '\033[1m',
-    'UNDERLINE': '\033[4m',
-    'BLACK_BG': '\033[40m',
-    'WHITE_BG': '\033[47m',
-    'ENDC': '\033[0m',
+    "HEADER": "\033[95m",
+    "OKBLUE": "\033[94m",
+    "OKCYAN": "\033[96m",
+    "OKGREEN": "\033[92m",
+    "WARNING": "\033[93m",
+    "FAIL": "\033[91m",
+    "BLACK": "\033[30m",
+    "RED": "\033[31m",
+    "GREEN": "\033[32m",
+    "YELLOW": "\033[33m",
+    "BLUE": "\033[34m",
+    "MAGENTA": "\033[35m",
+    "CYAN": "\033[36m",
+    "WHITE": "\033[37m",
+    "BOLD": "\033[1m",
+    "UNDERLINE": "\033[4m",
+    "REVERSE": "\033[7m",
+    "ENDC": "\033[0m",
+
 }
 
 def print_header(text):
@@ -57,7 +64,7 @@ def print_success(text):
     print(f"{COLOR['OKGREEN']}[√]{COLOR['ENDC']} {text}")
 
 def print_warning(text):
-    print(f"{COLOR['OKGREEN']}[!]{COLOR['ENDC']} {text}")
+    print(f"{COLOR['OKCYAN']}[!]{COLOR['ENDC']} {text}")
 
 def print_error(text):
     print(f"[×] 错误: {text}")
@@ -167,7 +174,7 @@ class ConfigManager:
             self.config.write(f)
 
     def _guide_scheme_selection(self):
-        """方案选择向导（完全对标main.py逻辑）"""
+        """方案选择向导"""
         schemes = {
             '1': {'name': '仓颉', 'scheme_file': 'wanxiang-cj-fuzhu.zip', 'dict_file': '5-cj_dicts.zip'},
             '2': {'name': '小鹤', 'scheme_file': 'wanxiang-flypy-fuzhu.zip', 'dict_file': '2-flypy_dicts.zip'},
@@ -212,7 +219,14 @@ class ConfigManager:
         
         print(f"\n{INDENT}生成的配置文件路径: {self.config_path}")
         
-        # 显示第二个参数说明界面
+        self.display_config_instructions()
+
+        if os.name == 'nt':
+            os.startfile(self.config_path)
+        input("\n请按需修改上述路径，保存后按回车键继续...")
+
+    def display_config_instructions(self):
+        """静默显示配置说明"""
         print_header("请检查配置文件路径,需用户修改")
         print("\n▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         print("使用说明：\n")
@@ -225,7 +239,7 @@ class ConfigManager:
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
-            ("[exclude_files]", "不希望方案更新时被覆盖的文件(默认为空,逗号分隔)", 'exclude_files') 
+            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files') 
         ]
         
         for item in path_display:
@@ -234,10 +248,6 @@ class ConfigManager:
         
         print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         
-        if os.name == 'nt':
-            os.startfile(self.config_path)
-        input("\n请按需修改上述路径，保存后按回车键继续...")
-
 
     def load_config(self):
         self.config.read(self.config_path, encoding='utf-8')
@@ -339,13 +349,26 @@ class UpdateHandler:
         """智能解压系统（支持排除文件）"""
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                exclude_patterns = self.exclude_files  # 获取排除模式
                 if is_dict:
-                    # 处理词库多级目录（不应用排除规则）
+                    # 处理词库多级目录（应用排除规则）
                     members = [m for m in zip_ref.namelist() if not m.endswith('/')]
                     common_prefix = os.path.commonpath(members) if members else ''
                     for member in members:
                         relative_path = os.path.relpath(member, common_prefix)
-                        target_path = os.path.join(target_dir, relative_path)
+                        # 转换为系统路径分隔符
+                        normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
+                        file_name = os.path.basename(normalized_path)
+                        # 检查排除规则
+                        exclude = any(
+                            fnmatch.fnmatch(normalized_path, pattern) or 
+                            fnmatch.fnmatch(file_name, pattern)
+                            for pattern in exclude_patterns
+                        )
+                        if exclude:
+                            print_warning(f"跳过排除文件: {normalized_path}")
+                            continue
+                        target_path = os.path.join(target_dir, normalized_path)
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
                         with open(target_path, 'wb') as f:
                             f.write(zip_ref.read(member))
@@ -399,10 +422,10 @@ class UpdateHandler:
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
-            print_success("服务已正常退出")
+            print_success("服务已优雅退出")
             return True
         except subprocess.CalledProcessError as e:
-            print_warning(f"正常退出失败: {e}")
+            print_warning(f"优雅退出失败: {e}")
             return False
         except Exception as e:
             print_error(f"未知错误: {str(e)}")
@@ -852,7 +875,7 @@ def main():
         # 加载并验证配置
         try:
             settings = config_manager.load_config()
-            print(f"\n{COLOR['OKGREEN']}✅ 配置加载成功{COLOR['ENDC']}")
+            print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
             print(f"{INDENT}▪ 方案文件：{settings[1]}")
             print(f"{INDENT}▪ 词库文件：{settings[6]}")
             print(f"{INDENT}▪ 服务程序：{settings[4]}")
@@ -876,14 +899,24 @@ def main():
         choice = input("请输入选择（1-5，单独按回车键默认选择全部更新）: ").strip() or '4'
         
         if choice == '5':
-            # 用记事本打开配置文件
+            config_manager.display_config_instructions()
+            print("保存后关闭配置文件以继续...")
+
+            # 用记事本打开配置文件（阻塞方式）
             if os.name == 'nt':
-                os.startfile(config_manager.config_path)
+                subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
             else:
                 subprocess.call(['open', config_manager.config_path])
-            print_success("配置文件已打开，修改后请重新运行程序")
-            return
-        
+            print_success("配置文件修改已完成")
+            
+            # 交互逻辑
+            user_choice = input("\n按回车键退出程序，或输入 z 返回主菜单: ").strip().lower()
+            if user_choice == 'z':
+                main()  # 重新进入主程序
+            else:
+                print("\n✨ 配置修改已完成，欢迎下次使用！")
+                sys.exit(0)
+                
         # 执行更新
         updated = False
         deployer = None  # 确保在所有分支前初始化
