@@ -5,25 +5,15 @@ import requests
 import os
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import sys
 import zipfile
 import shutil
 import winreg
+import fnmatch
 
 # ====================== 全局配置 ======================
-BORDER = "=" * 60
-SUB_BORDER = "-" * 55
-INDENT = " " * 2
-COLOR = {
-    "HEADER": "\033[95m",
-    "OKBLUE": "\033[94m",
-    "OKCYAN": "\033[96m",
-    "OKGREEN": "\033[92m",
-    "WARNING": "\033[93m",
-    "FAIL": "\033[91m",
-    "ENDC": "\033[0m",
-}
+
 
 # GitHub 仓库信息
 OWNER = "amzxyz"
@@ -36,6 +26,23 @@ MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 
 
 # ====================== 界面函数 ======================
+BORDER = "=" * 60
+SUB_BORDER = "-" * 55
+INDENT = " " * 2
+COLOR = {
+    'HEADER': '\033[95m',
+    'OKBLUE': '\033[94m',
+    'OKCYAN': '\033[96m',
+    'OKGREEN': '\033[92m',
+    'WARNING': '\033[93m',
+    'FAIL': '\033[91m',
+    'BOLD': '\033[1m',
+    'UNDERLINE': '\033[4m',
+    'BLACK_BG': '\033[40m',
+    'WHITE_BG': '\033[47m',
+    'ENDC': '\033[0m',
+}
+
 def print_header(text):
     print(f"\n{BORDER}")
     print(f"{INDENT}{text.upper()}")
@@ -50,7 +57,7 @@ def print_success(text):
     print(f"{COLOR['OKGREEN']}[√]{COLOR['ENDC']} {text}")
 
 def print_warning(text):
-    print(f"[!]{text}")
+    print(f"{COLOR['OKGREEN']}[!]{COLOR['ENDC']} {text}")
 
 def print_error(text):
     print(f"[×] 错误: {text}")
@@ -61,6 +68,7 @@ def print_progress(percentage):
     progress = "▇" * block + "-" * (bar_length - block)
     sys.stdout.write(f"\r{INDENT}[{progress}] {percentage:.1f}%")
     sys.stdout.flush()
+
 
 # ====================== 注册表路径配置 ======================
 REG_PATHS = {
@@ -147,7 +155,8 @@ class ConfigManager:
             'weasel_server': paths['server_exe'],
             'scheme_file': 'wanxiang-cj-fuzhu.zip',
             'dict_file': '5-cj_dicts.zip',
-            'use_mirror': 'true'
+            'use_mirror': 'true',
+            'exclude_files': ''
         }
         
         # 路径规范化处理
@@ -205,7 +214,7 @@ class ConfigManager:
         
         # 显示第二个参数说明界面
         print_header("请检查配置文件路径,需用户修改")
-        print("\n▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
+        print("\n▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         print("使用说明：\n")
         
         path_display = [
@@ -215,14 +224,15 @@ class ConfigManager:
             ("[weasel_server]", "小狼毫服务程序路径", 'weasel_server'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
-            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror') 
+            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
+            ("[exclude_files]", "不希望方案更新时被覆盖的文件(默认为空,逗号分隔)", 'exclude_files') 
         ]
         
         for item in path_display:
             print(f"    {item[0].ljust(25)}{item[1]}")
             print(f"        {self.config['Settings'][item[2]]}\n")
         
-        print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
+        print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         
         if os.name == 'nt':
             os.startfile(self.config_path)
@@ -239,6 +249,12 @@ class ConfigManager:
             '方案解压目录': config['extract_path'],
             '词库解压目录': config['dict_extract_path']
         }
+        # 读取排除文件配置
+        exclude_files = [
+            pattern.strip() 
+            for pattern in self.config.get('Settings', 'exclude_files', fallback='').split(',')
+            if pattern.strip()
+        ]
         
         missing = [name for name, path in required_paths.items() if not os.path.exists(path)]
         if missing:
@@ -258,12 +274,13 @@ class ConfigManager:
             config['dict_extract_path'],
             config['weasel_server'],
             self.config.getboolean('Settings', 'use_mirror'),
-            config['dict_file']
+            config['dict_file'],
+            exclude_files
         )
 
-# ====================== 更新处理器 ======================
+# ====================== 更新基类 ======================
 class UpdateHandler:
-    """更新处理基类"""
+    """更新系统核心基类"""
     def __init__(self, config_manager):
         self.config_manager = config_manager
         (
@@ -273,17 +290,19 @@ class UpdateHandler:
             self.dict_extract_path,
             self.weasel_server,
             self.use_mirror,
-            self.dict_file
-        ) = config_manager.load_config()  # 从config_manager加载配置
-        
+            self.dict_file,
+            self.exclude_files
+        ) = config_manager.load_config()
         self.ensure_directories()
-        
+
     def ensure_directories(self):
+        """目录保障系统"""
         os.makedirs(self.custom_dir, exist_ok=True)
         os.makedirs(self.extract_path, exist_ok=True)
         os.makedirs(self.dict_extract_path, exist_ok=True)
 
     def github_api_request(self, url):
+        """GitHub API 安全请求"""
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -293,11 +312,11 @@ class UpdateHandler:
             return None
 
     def mirror_url(self, url):
-        """镜像URL处理"""
+        """智能镜像处理"""
         return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url
 
-
     def download_file(self, url, save_path):
+        """带进度显示的稳健下载"""
         try:
             response = requests.get(url, stream=True)
             total_size = int(response.headers.get('content-length', 0))
@@ -317,13 +336,13 @@ class UpdateHandler:
             return False
 
     def extract_zip(self, zip_path, target_dir, is_dict=False):
+        """智能解压系统（支持排除文件）"""
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 if is_dict:
-                    # 处理词库的根目录问题
+                    # 处理词库多级目录（不应用排除规则）
                     members = [m for m in zip_ref.namelist() if not m.endswith('/')]
                     common_prefix = os.path.commonpath(members) if members else ''
-                    
                     for member in members:
                         relative_path = os.path.relpath(member, common_prefix)
                         target_path = os.path.join(target_dir, relative_path)
@@ -331,11 +350,28 @@ class UpdateHandler:
                         with open(target_path, 'wb') as f:
                             f.write(zip_ref.read(member))
                 else:
-                    # 处理方案文件的目录结构
+                    # 保持方案文件结构（应用排除规则）
                     base_dir = os.path.splitext(os.path.basename(zip_path))[0] + "/"
+                    exclude_patterns = self.exclude_files
                     for member in zip_ref.namelist():
                         if member.startswith(base_dir) and not member.endswith('/'):
                             relative_path = member[len(base_dir):]
+                            # 统一路径分隔符为当前系统格式
+                            normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
+                            # 获取纯文件名部分
+                            file_name = os.path.basename(normalized_path)
+                            
+                            # 检查是否匹配排除规则（支持路径模式和纯文件名）
+                            exclude = any(
+                                # 匹配完整路径或纯文件名
+                                fnmatch.fnmatch(normalized_path, pattern) or 
+                                fnmatch.fnmatch(file_name, pattern)
+                                for pattern in exclude_patterns
+                            )
+                            
+                            if exclude:
+                                print_warning(f"跳过排除文件: {normalized_path}")
+                                continue
                             target_path = os.path.join(target_dir, relative_path)
                             os.makedirs(os.path.dirname(target_path), exist_ok=True)
                             with open(target_path, 'wb') as f:
@@ -349,84 +385,83 @@ class UpdateHandler:
             return False
 
     def terminate_processes(self):
-        """组合式停止策略"""
+        """组合式进程终止策略"""
         if not self.graceful_stop():  # 先尝试优雅停止
             self.hard_stop()          # 失败则强制终止
 
+    def graceful_stop(self):
+        """优雅停止服务"""
+        try:
+            subprocess.run(
+                [self.weasel_server, "/q"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            print_success("服务已正常退出")
+            return True
+        except subprocess.CalledProcessError as e:
+            print_warning(f"正常退出失败: {e}")
+            return False
+        except Exception as e:
+            print_error(f"未知错误: {str(e)}")
+            return False
+
     def hard_stop(self):
-        """强制终止作为备用方案"""
-        print_subheader("正在强制终止进程...")
+        """强制终止保障"""
+        print_subheader("强制终止残留进程")
         for _ in range(3):
             subprocess.run(["taskkill", "/IM", "WeaselServer.exe", "/F"], 
                          shell=True, stderr=subprocess.DEVNULL)
             subprocess.run(["taskkill", "/IM", "WeaselDeployer.exe", "/F"], 
                          shell=True, stderr=subprocess.DEVNULL)
             time.sleep(0.5)
-        print_success("强制终止完成")
+        print_success("进程清理完成")
 
     def deploy_weasel(self):
-            """修改后的部署方法"""
-            try:
-                # 使用新的停止策略
-                self.terminate_processes()
-                
-                # 启动服务(添加重试机制)
-                for retry in range(3):
-                    try:
-                        print_subheader("正在启动小狼毫服务...")
-                        subprocess.Popen(
-                            [self.weasel_server],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            creationflags=subprocess.CREATE_NO_WINDOW
-                        )
-                        time.sleep(2)  # 增加等待时间
-                        break
-                    except Exception as e:
-                        if retry == 2:
-                            raise
-                        print_warning(f"服务启动失败，正在重试({retry+1}/3)...")
-                        time.sleep(1)
-                # 执行部署(添加状态验证)
-                print_subheader("正在执行部署操作...")
-                deployer = os.path.join(os.path.dirname(self.weasel_server), "WeaselDeployer.exe")
-                result = subprocess.run(
-                    [deployer, "/deploy"],
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-                
-                # 验证部署结果
-                if result.returncode != 0:
-                    raise Exception(f"部署失败: {result.stderr.strip()}")
-                    
-                print_success("部署成功完成")
-                return True
-            except Exception as e:
-                print_error(f"部署失败: {str(e)}")
-                return False
-
-    def graceful_stop(self):
-        """优雅停止小狼毫服务"""
+        """智能部署引擎"""
         try:
-            subprocess.run(
-                [self.weasel_server, "/q"],  # 关键修改：添加 /q 参数
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            self.terminate_processes()
+            
+            # 服务启动重试机制
+            for retry in range(3):
+                try:
+                    print_subheader("启动小狼毫服务")
+                    subprocess.Popen(
+                        [self.weasel_server],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    time.sleep(2)
+                    break
+                except Exception as e:
+                    if retry == 2:
+                        raise
+                    print_warning(f"服务启动失败，重试({retry+1}/3)...")
+                    time.sleep(1)
+            
+            # 部署执行与验证
+            print_subheader("执行部署操作")
+            deployer = os.path.join(os.path.dirname(self.weasel_server), "WeaselDeployer.exe")
+            result = subprocess.run(
+                [deployer, "/deploy"],
+                capture_output=True,
+                text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
-            print_success("小狼毫服务已优雅退出")
+            
+            if result.returncode != 0:
+                raise Exception(f"部署失败: {result.stderr.strip()}")
+                
+            print_success("部署成功完成")
             return True
-        except subprocess.CalledProcessError as e:
-            print_warning(f"优雅退出失败: {e}, 尝试强制终止")
-            self.terminate_processes()  # 失败后回退到强制终止
-            return False
         except Exception as e:
-            print_error(f"未知错误: {str(e)}")
+            print_error(f"部署失败: {str(e)}")
             return False
-        
+
+
 # ====================== 方案更新 ======================
 class SchemeUpdater(UpdateHandler):
     """方案更新处理器"""
@@ -466,7 +501,8 @@ class SchemeUpdater(UpdateHandler):
             return False  # 没有更新
 
         # 检测到更新时的提示
-        print_warning(f"检测到方案更新（标签：{remote_info['tag']}），发布时间：{remote_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
+        print_warning(f"检测到方案更新（标签：{remote_info['tag']}），发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print_subheader("准备开始下载方案文件...")
 
         # 下载更新
@@ -534,7 +570,7 @@ class SchemeUpdater(UpdateHandler):
         build_dir = os.path.join(self.extract_path, "build")
         if os.path.exists(build_dir):
             shutil.rmtree(build_dir)
-            print_success("已清理构建目录")
+            print_success("已清理build目录")
             
 
 # ====================== 词库更新 ======================
@@ -635,7 +671,8 @@ class DictUpdater(UpdateHandler):
 
         # 更新提示
         print_warning(f"检测到词库更新（标签：{remote_info['tag']}）")
-        print_subheader(f"发布时间：{remote_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
+        print_subheader(f"发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{INDENT}文件大小：{remote_info['size']/1024:.1f} KB")
 
         # 下载流程
@@ -718,7 +755,8 @@ class ModelUpdater(UpdateHandler):
             return False
 
         # 检测到更新时的提示
-        print_warning(f"检测到模型更新，最新版本发布时间：{remote_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
+        print_warning(f"检测到模型更新，最新版本发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print_subheader("准备开始下载模型文件...")
 
 
@@ -862,7 +900,7 @@ def main():
             updated = updater.run()
             deployer = updater  # 明确指定部署器
         elif choice == '4':
-            # 全部更新模式（关键修复）
+            # 全部更新模式
             deployer = SchemeUpdater(config_manager)  # 指定方案更新器为部署器
             scheme_updated = deployer.run()           # 使用同一个实例执行更新
             
