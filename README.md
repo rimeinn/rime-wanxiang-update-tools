@@ -29,6 +29,23 @@
 1. 选择对应的系统版本
 2. 按照说明文档进行操作
 3. 工具将自动完成更新
+4. Windows 默认不支持无签名的 ps 脚本运行，如果右键运行失败，请在终端中运行，如果提示如下错误：
+
+```PowerShell
+C:\Users\12418\Desktop\按需下载万象方案-词库-模型.ps1，因为在此系统上禁止运行脚本。有关详细信息，请参阅 https:/go.microsoft.com/fwlink/?LinkID=135170 中的 about_Executio
+n_Policies。
+所在位置 行:1 字符: 1
++ C:\Users\12418\Desktop\按需下载万象方案-词库-模型.ps1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : SecurityError: (:) []，PSSecurityException
+    + FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+请在终端中运行以下命令，然后再运行脚本即可。 
+
+```PowerShell
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+```
 
 ## 许可证
 
