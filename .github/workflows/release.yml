@@ -1,0 +1,41 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commits between tags
+        id: commits
+        run: |
+          PREV_TAG=$(git tag --list "v[0-9]*" --sort=-v:refname | grep -Ev "rc|beta|alpha" | head -n 1)
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          
+          # Correctly handle multi-line output
+          commits=$(git log --pretty=format:'- %s' $PREV_TAG..HEAD | sed 's/[^[:print:]]//g')
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$commits" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            Changes since ${{ steps.commits.outputs.prev_tag }}:
+            ${{ steps.commits.outputs.commits }}
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          files: |
+            Windows/PowerShell/按需下载万象方案-词库-模型.ps1
+            Windows/PowerShell/按需下载万象方案-词库-模型-utf-8.ps1
+            Windows/Python/按需下载万象方案-词库-模型.py
