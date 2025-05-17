@@ -180,7 +180,7 @@ class ConfigManager:
             '2': {'name': '小鹤', 'scheme_file': 'wanxiang-flypy-fuzhu.zip', 'dict_file': '2-flypy_dicts.zip'},
             '3': {'name': '汉心', 'scheme_file': 'wanxiang-hanxin-fuzhu.zip', 'dict_file': '8-hanxin_dicts.zip'},
             '4': {'name': '简单鹤', 'scheme_file': 'wanxiang-jdh-fuzhu.zip', 'dict_file': '4-jdh_dicts.zip'},
-            '5': {'name': '墨奇', 'scheme_file': 'wanxiang-moqi-fuzhu.zip', 'dict_file': '1-moqi_cndicts.zip'},
+            '5': {'name': '墨奇', 'scheme_file': 'wanxiang-moqi-fuzhu.zip', 'dict_file': '1-moqi_dicts.zip'},
             '6': {'name': '虎码', 'scheme_file': 'wanxiang-tiger-fuzhu.zip', 'dict_file': '6-tiger_dicts.zip'},
             '7': {'name': '五笔', 'scheme_file': 'wanxiang-wubi-fuzhu.zip', 'dict_file': '7-wubi_dicts.zip'},
             '8': {'name': '自然码', 'scheme_file': 'wanxiang-zrm-fuzhu.zip', 'dict_file': '3-zrm_dicts.zip'},
