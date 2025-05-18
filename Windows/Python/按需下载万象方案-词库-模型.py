@@ -11,6 +11,7 @@ import zipfile
 import shutil
 import winreg
 import fnmatch
+import re
 
 # ====================== 全局配置 ======================
 
@@ -23,7 +24,16 @@ MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 
-
+SCHEME_MAP = {
+    '1': 'cj',
+    '2': 'flypy',
+    '3': 'hanxin',
+    '4': 'jdh', 
+    '5': 'moqi',
+    '6': 'tiger',
+    '7': 'wubi',
+    '8': 'zrm'
+}
 # ====================== 界面函数 ======================
 BORDER = "=" * 60
 SUB_BORDER = "-" * 55
@@ -160,9 +170,10 @@ class ConfigManager:
             'extract_path': paths['rime_user_dir'],
             'dict_extract_path': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
             'weasel_server': paths['server_exe'],
-            'scheme_file': 'wanxiang-cj-fuzhu.zip',
-            'dict_file': '5-cj_dicts.zip',
+            'scheme_file': '',
+            'dict_file': '',
             'use_mirror': 'true',
+            'github_token': '',
             'exclude_files': ''
         }
         
@@ -174,35 +185,67 @@ class ConfigManager:
             self.config.write(f)
 
     def _guide_scheme_selection(self):
-        """方案选择向导"""
-        schemes = {
-            '1': {'name': '仓颉', 'scheme_file': 'wanxiang-cj-fuzhu.zip', 'dict_file': '5-cj_dicts.zip'},
-            '2': {'name': '小鹤', 'scheme_file': 'wanxiang-flypy-fuzhu.zip', 'dict_file': '2-flypy_dicts.zip'},
-            '3': {'name': '汉心', 'scheme_file': 'wanxiang-hanxin-fuzhu.zip', 'dict_file': '8-hanxin_dicts.zip'},
-            '4': {'name': '简单鹤', 'scheme_file': 'wanxiang-jdh-fuzhu.zip', 'dict_file': '4-jdh_dicts.zip'},
-            '5': {'name': '墨奇', 'scheme_file': 'wanxiang-moqi-fuzhu.zip', 'dict_file': '1-moqi_dicts.zip'},
-            '6': {'name': '虎码', 'scheme_file': 'wanxiang-tiger-fuzhu.zip', 'dict_file': '6-tiger_dicts.zip'},
-            '7': {'name': '五笔', 'scheme_file': 'wanxiang-wubi-fuzhu.zip', 'dict_file': '7-wubi_dicts.zip'},
-            '8': {'name': '自然码', 'scheme_file': 'wanxiang-zrm-fuzhu.zip', 'dict_file': '3-zrm_dicts.zip'},
-        }
-        
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行配置向导")
         print(f"{BORDER}")
         print("[1]-仓颉 [2]-小鹤 [3]-汉心 [4]-简单鹤")
         print("[5]-墨奇 [6]-虎码 [7]-五笔 [8]-自然码")
+        
         while True:
             choice = input("请选择默认方案（1-8）: ").strip()
-            if choice in schemes:
-                selected = schemes[choice]
-                # 直接设置方案文件和词库文件到配置
-                self.config.set('Settings', 'scheme_file', selected['scheme_file'])
-                self.config.set('Settings', 'dict_file', selected['dict_file'])
+            if choice in SCHEME_MAP:
+                scheme_key = SCHEME_MAP[choice]
+                
+                # 立即获取实际文件名
+                scheme_file, dict_file = self._get_actual_filenames(scheme_key)
+                
+                # 更新配置文件
+                self.config.set('Settings', 'scheme_file', scheme_file)
+                self.config.set('Settings', 'dict_file', dict_file)
+                # 添加编码参数
                 with open(self.config_path, 'w', encoding='utf-8') as f:
                     self.config.write(f)
-                print(f"{COLOR['OKGREEN']}已选择方案：{selected['name']}{COLOR['ENDC']}")
+                
+                print_success(f"已选择方案：{scheme_key.upper()}")
+                print(f"方案文件: {scheme_file}")
+                print(f"词库文件: {dict_file}")
                 return
-            print(f"{COLOR['FAIL']}无效的选项{COLOR['ENDC']}")
+            print_error("无效的选项，请重新输入")
+    def _get_actual_filenames(self, scheme_key):
+        """获取实际文件名（带网络请求）"""
+        try:
+            # 方案文件检查器（使用最新Release）
+            scheme_checker = GithubFileChecker(
+                owner=OWNER,
+                repo=REPO,
+                pattern=f"wanxiang-{scheme_key}*.zip"
+            )
+            # 词库文件检查器（使用dict-nightly标签）
+            dict_checker = GithubFileChecker(
+                owner=OWNER,
+                repo=REPO,
+                pattern=f"*{scheme_key}*.zip",
+                tag=DICT_TAG
+            )
+            
+            # 获取最新文件名
+            scheme_file = scheme_checker.get_latest_file()
+            dict_file = dict_checker.get_latest_file()
+            
+            # 确保返回有效文件名
+            if not scheme_file or '*' in scheme_file:
+                raise ValueError("无法获取有效的方案文件名")
+            if not dict_file or '*' in dict_file:
+                raise ValueError("无法获取有效的词库文件名")
+                
+            return scheme_file, dict_file
+            
+        except Exception as e:
+            print_warning(f"无法获取最新文件名，使用默认模式: {str(e)}")
+            return (
+                f"wanxiang-{scheme_key}-fuzhu.zip",
+                f"*-{scheme_key}_dicts.zip"
+            )
 
     def _show_config_guide(self):
         """配置引导界面"""
@@ -239,6 +282,7 @@ class ConfigManager:
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
+            ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files') 
         ]
         
@@ -252,7 +296,7 @@ class ConfigManager:
     def load_config(self):
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
-        
+        github_token = config.get('github_token', '')
         # 验证关键路径
         required_paths = {
             '小狼毫服务程序': config['weasel_server'],
@@ -285,8 +329,42 @@ class ConfigManager:
             config['weasel_server'],
             self.config.getboolean('Settings', 'use_mirror'),
             config['dict_file'],
-            exclude_files
+            exclude_files,
+            github_token
         )
+
+class GithubFileChecker:
+    def __init__(self, owner, repo, pattern, tag=None):
+        self.owner = owner
+        self.repo = repo
+        self.pattern_regex = re.compile(pattern.replace('*', '.*'))
+        self.tag = tag  # 新增标签参数
+
+    def get_latest_file(self):
+        """获取匹配模式的最新文件"""
+        releases = self._get_releases()
+        for release in releases:
+            for asset in release.get("assets", []):
+                if self.pattern_regex.match(asset['name']):
+                    return asset['name']
+        return None  # 如果未找到，返回None
+
+    def _get_releases(self):
+        """根据标签获取对应的Release"""
+        if self.tag:
+            # 获取指定标签的Release
+            url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/tags/{self.tag}"
+        else:
+            # 获取所有Release（按时间排序）
+            url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases"
+        
+        response = requests.get(url)
+        response.raise_for_status()
+        # 返回结果处理：指定标签时为单个Release，否则为列表
+        return [response.json()] if self.tag else response.json()
+
+
+
 
 # ====================== 更新基类 ======================
 class UpdateHandler:
@@ -301,7 +379,8 @@ class UpdateHandler:
             self.weasel_server,
             self.use_mirror,
             self.dict_file,
-            self.exclude_files
+            self.exclude_files,
+            self.github_token
         ) = config_manager.load_config()
         self.ensure_directories()
 
@@ -312,14 +391,38 @@ class UpdateHandler:
         os.makedirs(self.dict_extract_path, exist_ok=True)
 
     def github_api_request(self, url):
-        """GitHub API 安全请求"""
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print_error(f"API请求失败: {str(e)}")
-            return None
+        """带令牌认证的API请求"""
+        headers = {"User-Agent": "RIME-Updater/1.0"}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+        
+        max_retries = 2  # 最大重试次数
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.HTTPError as e:
+                if e.response.status_code == 401:
+                    print_error("GitHub令牌无效或无权限")
+                elif e.response.status_code == 403:
+                    print_error("权限不足或触发次级速率限制")
+                else:
+                    print_error(f"HTTP错误: {e.response.status_code}")
+                return None
+            except requests.ConnectionError:
+                print_error("网络连接失败")
+                if attempt < max_retries:
+                    time.sleep(5)
+                    continue
+                return None
+            except requests.RequestException as e:
+                print_error(f"请求异常: {str(e)}")
+                return None
+        
+        return None
+
 
     def mirror_url(self, url):
         """智能镜像处理"""
@@ -328,6 +431,11 @@ class UpdateHandler:
     def download_file(self, url, save_path):
         """带进度显示的稳健下载"""
         try:
+            # 统一提示镜像状态
+            if self.use_mirror:
+                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://bgithub.xyz 下载{COLOR['ENDC']}")
+            else:
+                print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
             response = requests.get(url, stream=True)
             total_size = int(response.headers.get('content-length', 0))
             block_size = 8192
@@ -757,9 +865,7 @@ class ModelUpdater(UpdateHandler):
                 }
         return None
 
-    def mirror_url(self, url):
-        """镜像URL处理（复用现有逻辑）"""
-        return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url
+
 
     def run(self):
         """执行模型更新主流程"""
