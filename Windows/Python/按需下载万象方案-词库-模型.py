@@ -306,7 +306,7 @@ class ConfigManager:
         # 读取排除文件配置
         exclude_files = [
             pattern.strip() 
-            for pattern in self.config.get('Settings', 'exclude_files', fallback='').split(',')
+            for pattern in re.split(r',|，', self.config.get('Settings', 'exclude_files', fallback=''))  # 同时分割中英文逗号
             if pattern.strip()
         ]
         
