@@ -34,7 +34,7 @@ jobs:
         run: |
           find Windows/ -type f -name '*.ps1' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
           find Windows/ -type f -name '*.py' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
-          mv Linux/Bash/wanxiang-update Linux/Bash/wanxiang-update-linux.sh
+          mv Linux/Shell/wanxiang-update Linux/Shell/linux-wanxiang-update
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -49,4 +49,4 @@ jobs:
             Windows/PowerShell/rime-wanxiang-update-windows.ps1
             Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1
             Windows/Python/rime-wanxiang-update-windows.py
-            Linux/Bash/wanxiang-update-linux.sh
+            Linux/Shell/linux-wanxiang-update
