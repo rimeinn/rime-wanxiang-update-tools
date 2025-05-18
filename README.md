@@ -8,7 +8,7 @@
 
 - [x] [Windows版本](./Windows/README.md)
 - [ ] macOS版本
-- [ ] Linux版本
+- [x] [Linux版本](./Linux/README.md)
 
 ### Windows版本
 
@@ -23,6 +23,11 @@
   - 下载链接：[Windows/PowerShell/按需下载万象方案-词库-模型-utf-8.ps1](https://github.com/expoli/rime-wanxiang-update-tools/raw/refs/heads/main/Windows/PowerShell/%E6%8C%89%E9%9C%80%E4%B8%8B%E8%BD%BD%E4%B8%87%E8%B1%A1%E6%96%B9%E6%A1%88-%E8%AF%8D%E5%BA%93-%E6%A8%A1%E5%9E%8B-utf-8.ps1)
 - [x] [Python版本](./Windows/Python/README.md)
   - 下载链接：[Windows/Python/按需下载万象方案-词库-模型.py](https://github.com/expoli/rime-wanxiang-update-tools/raw/refs/heads/main/Windows/Python/%E6%8C%89%E9%9C%80%E4%B8%8B%E8%BD%BD%E4%B8%87%E8%B1%A1%E6%96%B9%E6%A1%88-%E8%AF%8D%E5%BA%93-%E6%A8%A1%E5%9E%8B.py)
+
+### Linux版本
+
+- [x] [Bash版本](./Linux/Bash/README.md)
+  - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/raw/refs/heads/main/Linux/Shell/wanxiang-update)
 
 ## 使用说明
 
