@@ -26,7 +26,7 @@
 
 ### Linux版本
 
-- [x] [Bash版本](./Linux/Bash/README.md)
+- [x] [Shell版本](./Linux/Shell/README.md)
   - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/raw/refs/heads/main/Linux/Shell/wanxiang-update)
 
 ## 使用说明
