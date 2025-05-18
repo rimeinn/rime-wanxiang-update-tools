@@ -166,8 +166,8 @@ function Test-VersionSuffix {
     param(
         [string]$url
     )
-    
-    $pattern = '/v\d+\.\d+\.\d+$'
+    # tag_name = v1.0.0 or v1.0
+    $pattern = 'v(\d+)(\.\d+)+'
     return $url -match $pattern
 }
 
@@ -176,8 +176,8 @@ function Test-DictSuffix {
         [string]$url
     )
 
-    # https://github.com/amzxyz/rime_wanxiang_pro/releases/SchemaTag/dict-nightly
-    $pattern = '/dict-nightly$'
+    # tag_name = dict-nightly
+    $pattern = 'dict-nightly'
     return $url -match $pattern
 }
 
@@ -224,10 +224,10 @@ $SelectedSchemaRelease = $null
 $SelectedGramRelease = $null
 
 foreach ($release in $SchemaResponse) {
-    if (Test-DictSuffix -url $release.html_url) {
+    if (Test-DictSuffix -url $release.tag_name) {
         $SelectedDictRelease = $release
     }
-    if (Test-VersionSuffix -url $release.html_url) {
+    if (Test-VersionSuffix -url $release.tag_name) {
         $SelectedSchemaRelease = $release
     }
     if ($SelectedDictRelease -and $SelectedSchemaRelease) {
