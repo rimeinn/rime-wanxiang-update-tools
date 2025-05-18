@@ -6,11 +6,11 @@
 
 ## 项目简介
 
-本工具用于在 Linux 系统上自动更新Rime输入法的万象方案、词库和模型。
+本工具用于在 Linux 系统上自动更新 Rime 输入法的万象方案、词库和模型。
 
 ## 版本列表
 
-- [Bash版本](./Bash/README.md)
+- [Shell 版本](./Shell/README.md)
 
 ## 使用说明
 
