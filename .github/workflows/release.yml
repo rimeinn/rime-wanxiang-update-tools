@@ -33,6 +33,7 @@ jobs:
       - name: Rename files
         run: |
           find Windows/ -type f -name '*.ps1' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
+          find Windows/ -type f -name '*.py' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
           iconv -f utf-8 -t gbk Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1 > Windows/PowerShell/rime-wanxiang-update-windows.ps1
           mv Linux/Shell/wanxiang-update Linux/Shell/linux-wanxiang-update
 
