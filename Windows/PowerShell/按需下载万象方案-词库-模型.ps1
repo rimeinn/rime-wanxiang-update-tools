@@ -1,23 +1,28 @@
-############# ×Ô¶¯¸üĞÂÅäÖÃÏî£¬ÅäÖÃºÃºó½« AutoUpdate ÉèÖÃÎª true ¼´¿É #############
+############# è‡ªåŠ¨æ›´æ–°é…ç½®é¡¹ï¼Œé…ç½®å¥½åå°† AutoUpdate è®¾ç½®ä¸º true å³å¯ #############
 # $AutoUpdate = $true;
 $AutoUpdate = $false;
-####[0]-²Öò¡; [1]-Ğ¡º×; [2]-ººĞÄ; [3]-¼òµ¥º×; [4]-Ä«Ææ; [5]-»¢Âë; [6]-Îå±Ê; [7]-×ÔÈ»Âë"
-####×¢Òâ±ØĞë°üº¬Ë«ÒıºÅ£¬ÀıÈç£º$InputSchemaType = "0";
+####[0]-ä»“é¢‰; [1]-å°é¹¤; [2]-æ±‰å¿ƒ; [3]-ç®€å•é¹¤; [4]-å¢¨å¥‡; [5]-è™ç ; [6]-äº”ç¬”; [7]-è‡ªç„¶ç "
+####æ³¨æ„å¿…é¡»åŒ…å«åŒå¼•å·ï¼Œä¾‹å¦‚ï¼š$InputSchemaType = "0";
 $InputSchemaType = "7";
 # $SkipFiles = @(
 #     "wanxiang_en.dict.yaml",
 #     "chars.dict.yaml"
-# ); # ĞèÒªÌø¹ıµÄÎÄ¼şÁĞ±í
-############# ×Ô¶¯¸üĞÂÅäÖÃÏî£¬ÅäÖÃºÃºó½« AutoUpdate ÉèÖÃÎª true ¼´¿É #############
+# ); # éœ€è¦è·³è¿‡çš„æ–‡ä»¶åˆ—è¡¨
+############# è‡ªåŠ¨æ›´æ–°é…ç½®é¡¹ï¼Œé…ç½®å¥½åå°† AutoUpdate è®¾ç½®ä¸º true å³å¯ #############
 
-# ÉèÖÃ²Ö¿âËùÓĞÕßºÍÃû³Æ
+# è®¾ç½®ä»£ç†åœ°å€å’Œç«¯å£ï¼Œé…ç½®å¥½ååˆ é™¤æ³¨é‡Šç¬¦å·
+# $proxyAddress = "http://127.0.0.1:7897"
+# [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
+# [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+
+# è®¾ç½®ä»“åº“æ‰€æœ‰è€…å’Œåç§°
 $SchemaOwner = "amzxyz"
 $SchemaRepo = "rime_wanxiang_pro"
 $GramRepo = "RIME-LMDG"
 $GramReleaseTag = "LTS"
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
 $ReleaseTimeRecordFile = "release_time_record.json"
-# ¶¨ÒåÁÙÊ±ÎÄ¼şÂ·¾¶
+# å®šä¹‰ä¸´æ—¶æ–‡ä»¶è·¯å¾„
 $tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
 $tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
 $tempGram = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram"
@@ -46,10 +51,10 @@ $GramKeyTable = @{
 $GramFileTableIndex = 0;
 $GramMd5TableIndex = 1;
 
-# ÉèÖÃ°²È«Ğ­ÒéÎªTLS 1.2
+# è®¾ç½®å®‰å…¨åè®®ä¸ºTLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# »ñÈ¡ Weasel ÓÃ»§Ä¿Â¼Â·¾¶
+# è·å– Weasel ç”¨æˆ·ç›®å½•è·¯å¾„
 function Get-RegistryValue {
     param(
         [string]$regPath,
@@ -57,13 +62,13 @@ function Get-RegistryValue {
     )
     
     try {
-        # »ñÈ¡×¢²á±íÖµ
+        # è·å–æ³¨å†Œè¡¨å€¼
         $value = (Get-ItemProperty -Path $regPath -Name $regValue).$regValue
-        # ·µ»Ø½á¹û
+        # è¿”å›ç»“æœ
         return $value
     }
     catch {
-        Write-Host "¾¯¸æ£º×¢²á±íÂ·¾¶ $regPath ²»´æÔÚ£¬Çë¼ì²éÊäÈë·¨ÊÇ·ñÕıÈ·°²×°" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæ³¨å†Œè¡¨è·¯å¾„ $regPath ä¸å­˜åœ¨ï¼Œè¯·æ£€æŸ¥è¾“å…¥æ³•æ˜¯å¦æ­£ç¡®å®‰è£…" -ForegroundColor Yellow
         return $null
     }
 }
@@ -94,13 +99,13 @@ function Get-WeaselUserDir {
     try {
         $userDir = Get-RegistryValue -regPath "HKCU:\Software\Rime\Weasel" -regValue "RimeUserDir"
         if (-not $userDir) {
-            # appdata Ä¿Â¼ÏÂµÄ Rime Ä¿Â¼
+            # appdata ç›®å½•ä¸‹çš„ Rime ç›®å½•
             $userDir = Join-Path $env:APPDATA "Rime"
         }
         return $userDir
     }
     catch {
-        Write-Host "¾¯¸æ£ºÎ´ÕÒµ½WeaselÓÃ»§Ä¿Â¼£¬ÇëÈ·±£ÒÑÕıÈ·°²×°Ğ¡ÀÇºÁÊäÈë·¨" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæœªæ‰¾åˆ°Weaselç”¨æˆ·ç›®å½•ï¼Œè¯·ç¡®ä¿å·²æ­£ç¡®å®‰è£…å°ç‹¼æ¯«è¾“å…¥æ³•" -ForegroundColor Yellow
     }
 }
 
@@ -109,7 +114,7 @@ function Get-WeaselInstallDir {
         return Get-RegistryValue -regPath "HKLM:\SOFTWARE\WOW6432Node\Rime\Weasel" -regValue "WeaselRoot"
     }
     catch {
-        Write-Host "¾¯¸æ£ºÎ´ÕÒµ½Weasel°²×°Ä¿Â¼£¬ÇëÈ·±£ÒÑÕıÈ·°²×°Ğ¡ÀÇºÁÊäÈë·¨" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæœªæ‰¾åˆ°Weaselå®‰è£…ç›®å½•ï¼Œè¯·ç¡®ä¿å·²æ­£ç¡®å®‰è£…å°ç‹¼æ¯«è¾“å…¥æ³•" -ForegroundColor Yellow
         return $null
     }
 }
@@ -119,7 +124,7 @@ function Get-WeaselServerExecutable {
         return Get-RegistryValue -regPath "HKLM:\SOFTWARE\WOW6432Node\Rime\Weasel" -regValue "ServerExecutable"
     }
     catch {
-        Write-Host "¾¯¸æ£ºÎ´ÕÒµ½Weasel·şÎñ¶Ë¿ÉÖ´ĞĞ³ÌĞò£¬ÇëÈ·±£ÒÑÕıÈ·°²×°Ğ¡ÀÇºÁÊäÈë·¨" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæœªæ‰¾åˆ°WeaselæœåŠ¡ç«¯å¯æ‰§è¡Œç¨‹åºï¼Œè¯·ç¡®ä¿å·²æ­£ç¡®å®‰è£…å°ç‹¼æ¯«è¾“å…¥æ³•" -ForegroundColor Yellow
         return $null
     }
 }
@@ -131,14 +136,14 @@ function Test-SkipFile {
     return $SkipFiles -contains $filePath
 }
 
-# µ÷ÓÃº¯Êı²¢¸³Öµ¸ø±äÁ¿
+# è°ƒç”¨å‡½æ•°å¹¶èµ‹å€¼ç»™å˜é‡
 $rimeUserDir = Get-WeaselUserDir
 $rimeInstallDir = Get-WeaselInstallDir
 $rimeServerExecutable = Get-WeaselServerExecutable
 
 function Stop-WeaselServer {
     if (-not $rimeServerExecutable) {
-        Write-Host "¾¯¸æ£ºÎ´ÕÒµ½Weasel·şÎñ¶Ë¿ÉÖ´ĞĞ³ÌĞò£¬ÇëÈ·±£ÒÑÕıÈ·°²×°Ğ¡ÀÇºÁÊäÈë·¨" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæœªæ‰¾åˆ°WeaselæœåŠ¡ç«¯å¯æ‰§è¡Œç¨‹åºï¼Œè¯·ç¡®ä¿å·²æ­£ç¡®å®‰è£…å°ç‹¼æ¯«è¾“å…¥æ³•" -ForegroundColor Yellow
         exit 1
     }
     Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q'
@@ -146,30 +151,30 @@ function Stop-WeaselServer {
 
 function Start-WeaselServer {
     if (-not $rimeServerExecutable) {
-        Write-Host "¾¯¸æ£ºÎ´ÕÒµ½Weasel·şÎñ¶Ë¿ÉÖ´ĞĞ³ÌĞò£¬ÇëÈ·±£ÒÑÕıÈ·°²×°Ğ¡ÀÇºÁÊäÈë·¨" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæœªæ‰¾åˆ°WeaselæœåŠ¡ç«¯å¯æ‰§è¡Œç¨‹åºï¼Œè¯·ç¡®ä¿å·²æ­£ç¡®å®‰è£…å°ç‹¼æ¯«è¾“å…¥æ³•" -ForegroundColor Yellow
         exit 1
     }
     Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable)
 }
 
 function Start-WeaselReDeploy{
-    $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Ğ¡ÀÇºÁÊäÈë·¨\¡¾Ğ¡ÀÇºÁ¡¿ÖØĞÂ²¿Êğ.lnk"
+    $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\å°ç‹¼æ¯«è¾“å…¥æ³•\ã€å°ç‹¼æ¯«ã€‘é‡æ–°éƒ¨ç½².lnk"
     if (Test-Path -Path $defaultShortcutPath) {
-        Write-Host "ÕÒµ½Ä¬ÈÏ¡¾Ğ¡ÀÇºÁ¡¿ÖØĞÂ²¿Êğ¿ì½İ·½Ê½£¬½«Ö´ĞĞ" -ForegroundColor Green
+        Write-Host "æ‰¾åˆ°é»˜è®¤ã€å°ç‹¼æ¯«ã€‘é‡æ–°éƒ¨ç½²å¿«æ·æ–¹å¼ï¼Œå°†æ‰§è¡Œ" -ForegroundColor Green
         Invoke-Item -Path $defaultShortcutPath
     }
     else {
-        Write-Host "Î´ÕÒµ½Ä¬ÈÏµÄ¡¾Ğ¡ÀÇºÁ¡¿ÖØĞÂ²¿Êğ¿ì½İ·½Ê½£¬½«³¢ÊÔÖ´ĞĞÄ¬ÈÏµÄÖØĞÂ²¿ÊğÃüÁî" -ForegroundColor Yellow
-        Write-Host "Ìø¹ı´¥·¢ÖØĞÂ²¿Êğ" -ForegroundColor Yellow
+        Write-Host "æœªæ‰¾åˆ°é»˜è®¤çš„ã€å°ç‹¼æ¯«ã€‘é‡æ–°éƒ¨ç½²å¿«æ·æ–¹å¼ï¼Œå°†å°è¯•æ‰§è¡Œé»˜è®¤çš„é‡æ–°éƒ¨ç½²å‘½ä»¤" -ForegroundColor Yellow
+        Write-Host "è·³è¿‡è§¦å‘é‡æ–°éƒ¨ç½²" -ForegroundColor Yellow
     }
 }
 
-# ¼ì²é±ØÒªÂ·¾¶ÊÇ·ñÎª¿Õ
+# æ£€æŸ¥å¿…è¦è·¯å¾„æ˜¯å¦ä¸ºç©º
 if (-not $rimeUserDir -or -not $rimeInstallDir -or -not $rimeServerExecutable) {
-    Write-Host "´íÎó£ºÎŞ·¨»ñÈ¡Weasel±ØÒªÂ·¾¶£¬Çë¼ì²éÊäÈë·¨ÊÇ·ñÕıÈ·°²×°" -ForegroundColor Red
+    Write-Host "é”™è¯¯ï¼šæ— æ³•è·å–Weaselå¿…è¦è·¯å¾„ï¼Œè¯·æ£€æŸ¥è¾“å…¥æ³•æ˜¯å¦æ­£ç¡®å®‰è£…" -ForegroundColor Red
     exit 1
 }
-Write-Host "WeaselÓÃ»§Ä¿Â¼Â·¾¶Îª: $rimeUserDir"
+Write-Host "Weaselç”¨æˆ·ç›®å½•è·¯å¾„ä¸º: $rimeUserDir"
 $targetDir = $rimeUserDir
 $TimeRecordFile = Join-Path $targetDir $ReleaseTimeRecordFile
 
@@ -197,11 +202,11 @@ function Get-ReleaseInfo {
         [string]$owner,
         [string]$repo
     )
-    # ¹¹½¨APIÇëÇóURL
+    # æ„å»ºAPIè¯·æ±‚URL
     $apiUrl = "https://api.github.com/repos/$owner/$repo/releases"
 
     try {
-        # ·¢ËÍAPIÇëÇó
+        # å‘é€APIè¯·æ±‚
         $response = Invoke-RestMethod -Uri $apiUrl -Headers @{
             "User-Agent" = "PowerShell Release Downloader"
             "Accept" = "application/vnd.github.v3+json"
@@ -210,23 +215,23 @@ function Get-ReleaseInfo {
     catch {
         $statusCode = $_.Exception.Response.StatusCode.Value__
         if ($statusCode -eq 404) {
-            Write-Error "´íÎó£º²Ö¿â '$owner/$repo' ²»´æÔÚ»òÃ»ÓĞ·¢²¼°æ±¾"
+            Write-Error "é”™è¯¯ï¼šä»“åº“ '$owner/$repo' ä¸å­˜åœ¨æˆ–æ²¡æœ‰å‘å¸ƒç‰ˆæœ¬"
         }
         else {
-            Write-Error "APIÇëÇóÊ§°Ü [$statusCode]£º$_"
+            Write-Error "APIè¯·æ±‚å¤±è´¥ [$statusCode]ï¼š$_"
         }
         exit 1
     }
 
-    # ¼ì²éÊÇ·ñÓĞ¿ÉÏÂÔØ×ÊÔ´
+    # æ£€æŸ¥æ˜¯å¦æœ‰å¯ä¸‹è½½èµ„æº
     if ($response.assets.Count -eq 0) {
-        Write-Error "¸Ã°æ±¾Ã»ÓĞ¿ÉÏÂÔØ×ÊÔ´" -ForegroundColor Red
+        Write-Error "è¯¥ç‰ˆæœ¬æ²¡æœ‰å¯ä¸‹è½½èµ„æº" -ForegroundColor Red
         exit 1
     }
     return $response
 }
 
-# »ñÈ¡×îĞÂµÄ°æ±¾ĞÅÏ¢
+# è·å–æœ€æ–°çš„ç‰ˆæœ¬ä¿¡æ¯
 $SchemaResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $SchemaRepo
 $GramResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $GramRepo
 
@@ -257,31 +262,31 @@ foreach ($release in $GramResponse) {
 }
 
 if ($SelectedDictRelease -and $SelectedSchemaRelease -and $SelectedGramRelease) {
-    Write-Host "½âÎö³ö×îĞÂµÄ´Ê¿âÁ´½ÓÎª£º$($SelectedDictRelease.html_url)" -ForegroundColor Green
-    Write-Host "½âÎö³ö×îĞÂµÄ°æ±¾Á´½ÓÎª£º$($SelectedSchemaRelease.html_url)" -ForegroundColor Green
-    Write-Host "½âÎö³ö×îĞÂµÄÄ£ĞÍÁ´½ÓÎª£º$($SelectedGramRelease.html_url)" -ForegroundColor Green
+    Write-Host "è§£æå‡ºæœ€æ–°çš„è¯åº“é“¾æ¥ä¸ºï¼š$($SelectedDictRelease.html_url)" -ForegroundColor Green
+    Write-Host "è§£æå‡ºæœ€æ–°çš„ç‰ˆæœ¬é“¾æ¥ä¸ºï¼š$($SelectedSchemaRelease.html_url)" -ForegroundColor Green
+    Write-Host "è§£æå‡ºæœ€æ–°çš„æ¨¡å‹é“¾æ¥ä¸ºï¼š$($SelectedGramRelease.html_url)" -ForegroundColor Green
 } else {
-    Write-Error "Î´ÕÒµ½·ûºÏÌõ¼şµÄ°æ±¾»ò´Ê¿âÁ´½Ó"
+    Write-Error "æœªæ‰¾åˆ°ç¬¦åˆæ¡ä»¶çš„ç‰ˆæœ¬æˆ–è¯åº“é“¾æ¥"
     exit 1
 }
 
-# »ñÈ¡×îĞÂµÄ°æ±¾µÄtag_name
-Write-Host "×îĞÂµÄ°æ±¾Îª£º$($SelectedSchemaRelease.tag_name)"
+# è·å–æœ€æ–°çš„ç‰ˆæœ¬çš„tag_name
+Write-Host "æœ€æ–°çš„ç‰ˆæœ¬ä¸ºï¼š$($SelectedSchemaRelease.tag_name)"
 $SchemaTag = $SelectedSchemaRelease.tag_name
 
-$promptSchemaType = "ÇëÑ¡ÔñÄãÒªÏÂÔØµÄ¸¨ÖúÂë·½°¸ÀàĞÍµÄ±àºÅ: `n[0]-²Öò¡; [1]-Ğ¡º×; [2]-ººĞÄ; [3]-¼òµ¥º×; [4]-Ä«Ææ; [5]-»¢Âë; [6]-Îå±Ê; [7]-×ÔÈ»Âë"
-$promptAllUpdate = "ÊÇ·ñ¸üĞÂËùÓĞÄÚÈİ£¨·½°¸¡¢´Ê¿â¡¢Ä£ĞÍ£©:`n[0]-¸üĞÂËùÓĞ; [1]-²»¸üĞÂËùÓĞ"
-$promptSchemaDown = "ÊÇ·ñÏÂÔØ·½°¸:`n[0]-ÏÂÔØ; [1]-²»ÏÂÔØ"
-$promptGramModel = "ÊÇ·ñÏÂÔØÄ£ĞÍ:`n[0]-ÏÂÔØ; [1]-²»ÏÂÔØ"
-$promptDictDown = "ÊÇ·ñÏÂÔØ´Ê¿â:`n[0]-ÏÂÔØ; [1]-²»ÏÂÔØ"
+$promptSchemaType = "è¯·é€‰æ‹©ä½ è¦ä¸‹è½½çš„è¾…åŠ©ç æ–¹æ¡ˆç±»å‹çš„ç¼–å·: `n[0]-ä»“é¢‰; [1]-å°é¹¤; [2]-æ±‰å¿ƒ; [3]-ç®€å•é¹¤; [4]-å¢¨å¥‡; [5]-è™ç ; [6]-äº”ç¬”; [7]-è‡ªç„¶ç "
+$promptAllUpdate = "æ˜¯å¦æ›´æ–°æ‰€æœ‰å†…å®¹ï¼ˆæ–¹æ¡ˆã€è¯åº“ã€æ¨¡å‹ï¼‰:`n[0]-æ›´æ–°æ‰€æœ‰; [1]-ä¸æ›´æ–°æ‰€æœ‰"
+$promptSchemaDown = "æ˜¯å¦ä¸‹è½½æ–¹æ¡ˆ:`n[0]-ä¸‹è½½; [1]-ä¸ä¸‹è½½"
+$promptGramModel = "æ˜¯å¦ä¸‹è½½æ¨¡å‹:`n[0]-ä¸‹è½½; [1]-ä¸ä¸‹è½½"
+$promptDictDown = "æ˜¯å¦ä¸‹è½½è¯åº“:`n[0]-ä¸‹è½½; [1]-ä¸ä¸‹è½½"
 
 if (-not $Debug) {
     if ($AutoUpdate) {
-        Write-Host "×Ô¶¯¸üĞÂÄ£Ê½£¬½«×Ô¶¯ÏÂÔØ×îĞÂµÄ°æ±¾" -ForegroundColor Green
-        Write-Host "ÄãÅäÖÃµÄ·½°¸ºÅÎª£º$InputSchemaType" -ForegroundColor Green
-        # ·½°¸ºÅÖ»Ö§³Ö0-7
+        Write-Host "è‡ªåŠ¨æ›´æ–°æ¨¡å¼ï¼Œå°†è‡ªåŠ¨ä¸‹è½½æœ€æ–°çš„ç‰ˆæœ¬" -ForegroundColor Green
+        Write-Host "ä½ é…ç½®çš„æ–¹æ¡ˆå·ä¸ºï¼š$InputSchemaType" -ForegroundColor Green
+        # æ–¹æ¡ˆå·åªæ”¯æŒ0-7
         if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 7) {
-            Write-Error "´íÎó£º·½°¸ºÅÖ»ÄÜÊÇ0-7" -ForegroundColor Red
+            Write-Error "é”™è¯¯ï¼šæ–¹æ¡ˆå·åªèƒ½æ˜¯0-7" -ForegroundColor Red
             exit 1
         }
         $InputAllUpdate = "0"
@@ -308,7 +313,7 @@ if (-not $Debug) {
     $InputDictDown = "0"
 }
 
-# ¸ù¾İÓÃ»§ÊäÈëµÄ·½°¸ºÅ»ñÈ¡ÏÂÔØÁ´½Ó
+# æ ¹æ®ç”¨æˆ·è¾“å…¥çš„æ–¹æ¡ˆå·è·å–ä¸‹è½½é“¾æ¥
 function Get-ExpectedAssetTypeInfo {
     param(
         [string]$index,
@@ -326,10 +331,10 @@ function Get-ExpectedAssetTypeInfo {
 
         if ($asset.name -match $keyTable[$index]) {
             $info = $asset
-            # ´òÓ¡
+            # æ‰“å°
             if ($Debug) {
-                Write-Host "Æ¥Åä³É¹¦£¬asset.name: $($asset.name)" -ForegroundColor Green
-                Write-Host "Ä¿±êĞÅÏ¢Îª£º$($info)"
+                Write-Host "åŒ¹é…æˆåŠŸï¼Œasset.name: $($asset.name)" -ForegroundColor Green
+                Write-Host "ç›®æ ‡ä¿¡æ¯ä¸ºï¼š$($info)"
             }
         }
     }
@@ -343,29 +348,29 @@ $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -ke
 $ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
 if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
-    Write-Error "Î´ÕÒµ½·ûºÏÌõ¼şµÄÏÂÔØÁ´½Ó" -ForegroundColor Red
+    Write-Error "æœªæ‰¾åˆ°ç¬¦åˆæ¡ä»¶çš„ä¸‹è½½é“¾æ¥" -ForegroundColor Red
     exit 1
 }
 
-# ´òÓ¡
+# æ‰“å°
 if ($InputSchemaDown -eq "0") {
-    Write-Host "ÏÂÔØ·½°¸" -ForegroundColor Green
+    Write-Host "ä¸‹è½½æ–¹æ¡ˆ" -ForegroundColor Green
     if ($Debug) {
-        Write-Host "×îĞÂµÄ¸¨ÖúÂë·½°¸ÏÂÔØĞÅÏ¢Îª£º$($ExpectedSchemaTypeInfo)" -ForegroundColor Green
+        Write-Host "æœ€æ–°çš„è¾…åŠ©ç æ–¹æ¡ˆä¸‹è½½ä¿¡æ¯ä¸ºï¼š$($ExpectedSchemaTypeInfo)" -ForegroundColor Green
     }
 }
 
 if ($InputDictDown -eq "0") {
-    Write-Host "ÏÂÔØ´Ê¿â" -ForegroundColor Green
+    Write-Host "ä¸‹è½½è¯åº“" -ForegroundColor Green
     if ($Debug) {
-        Write-Host "×îĞÂµÄ¸¨ÖúÂë´Ê¿âÏÂÔØĞÅÏ¢Îª£º$($ExpectedDictTypeInfo)" -ForegroundColor Green
+        Write-Host "æœ€æ–°çš„è¾…åŠ©ç è¯åº“ä¸‹è½½ä¿¡æ¯ä¸ºï¼š$($ExpectedDictTypeInfo)" -ForegroundColor Green
     }
 }
 
 if ($InputGramModel -eq "0") {
-    Write-Host "ÏÂÔØÄ£ĞÍ" -ForegroundColor Green
+    Write-Host "ä¸‹è½½æ¨¡å‹" -ForegroundColor Green
     if ($Debug) {
-        Write-Host "×îĞÂµÄ¸¨ÖúÂëÄ£ĞÍÏÂÔØĞÅÏ¢Îª£º$($ExpectedGramTypeInfo)" -ForegroundColor Green
+        Write-Host "æœ€æ–°çš„è¾…åŠ©ç æ¨¡å‹ä¸‹è½½ä¿¡æ¯ä¸ºï¼š$($ExpectedGramTypeInfo)" -ForegroundColor Green
     }
 }
 
@@ -390,7 +395,7 @@ function Save-TimeRecord {
             }
         }
         catch {
-            Write-Host "¾¯¸æ£ºÎŞ·¨¶ÁÈ¡Ê±¼ä¼ÇÂ¼ÎÄ¼ş£¬½«´´½¨ĞÂµÄ¼ÇÂ¼" -ForegroundColor Yellow
+            Write-Host "è­¦å‘Šï¼šæ— æ³•è¯»å–æ—¶é—´è®°å½•æ–‡ä»¶ï¼Œå°†åˆ›å»ºæ–°çš„è®°å½•" -ForegroundColor Yellow
         }
     }
 
@@ -404,7 +409,7 @@ function Save-TimeRecord {
         }
     }
     catch {
-        Write-Host "´íÎó£ºÎŞ·¨±£´æÊ±¼ä¼ÇÂ¼" -ForegroundColor Red
+        Write-Host "é”™è¯¯ï¼šæ— æ³•ä¿å­˜æ—¶é—´è®°å½•" -ForegroundColor Red
     }
 }
 
@@ -426,13 +431,13 @@ function Get-TimeRecord {
             return $timeData[$key]
         }
         catch {
-            Write-Host "¾¯¸æ£ºÎŞ·¨¶ÁÈ¡Ê±¼ä¼ÇÂ¼ÎÄ¼ş" -ForegroundColor Yellow
+            Write-Host "è­¦å‘Šï¼šæ— æ³•è¯»å–æ—¶é—´è®°å½•æ–‡ä»¶" -ForegroundColor Yellow
         }
     }
     return $null
 }
 
-# ±È½Ï±¾µØºÍÔ¶³Ì¸üĞÂÊ±¼ä
+# æ¯”è¾ƒæœ¬åœ°å’Œè¿œç¨‹æ›´æ–°æ—¶é—´
 function Compare-UpdateTime {
     param(
         [Object]$localTime,
@@ -440,33 +445,33 @@ function Compare-UpdateTime {
     )
 
     if ($localTime -eq $null) {
-        Write-Host "±¾µØÊ±¼ä¼ÇÂ¼²»´æÔÚ£¬½«´´½¨ĞÂµÄÊ±¼ä¼ÇÂ¼" -ForegroundColor Yellow
+        Write-Host "æœ¬åœ°æ—¶é—´è®°å½•ä¸å­˜åœ¨ï¼Œå°†åˆ›å»ºæ–°çš„æ—¶é—´è®°å½•" -ForegroundColor Yellow
         return $true
     }
 
     $localTime = [datetime]::Parse($localTime)
 
     if ($remoteTime -eq $null) {
-        Write-Host "Ô¶³ÌÊ±¼ä¼ÇÂ¼²»´æÔÚ£¬ÎŞ·¨±È½Ï" -ForegroundColor Red
+        Write-Host "è¿œç¨‹æ—¶é—´è®°å½•ä¸å­˜åœ¨ï¼Œæ— æ³•æ¯”è¾ƒ" -ForegroundColor Red
         return $false
     }
     
     if ($remoteTime -gt $localTime) {
-        Write-Host "·¢ÏÖĞÂ°æ±¾£¬×¼±¸¸üĞÂ" -ForegroundColor Green
+        Write-Host "å‘ç°æ–°ç‰ˆæœ¬ï¼Œå‡†å¤‡æ›´æ–°" -ForegroundColor Green
         return $true
     }
-    Write-Host "µ±Ç°ÒÑÊÇ×îĞÂ°æ±¾" -ForegroundColor Yellow
+    Write-Host "å½“å‰å·²æ˜¯æœ€æ–°ç‰ˆæœ¬" -ForegroundColor Yellow
     return $false
 }
 
-# ´ÓJSONÎÄ¼ş¼ÓÔØ²¢½âÎöUpdateTimeKey
+# ä»JSONæ–‡ä»¶åŠ è½½å¹¶è§£æUpdateTimeKey
 function Load-UpdateTimeKey {
     param(
         [string]$filePath
     )
     
     if (-not (Test-Path $filePath)) {
-        Write-Host "¾¯¸æ£ºÊ±¼ä¼ÇÂ¼ÎÄ¼ş²»´æÔÚ" -ForegroundColor Yellow
+        Write-Host "è­¦å‘Šï¼šæ—¶é—´è®°å½•æ–‡ä»¶ä¸å­˜åœ¨" -ForegroundColor Yellow
         return $null
     }
     
@@ -481,25 +486,25 @@ function Load-UpdateTimeKey {
         return $timeData
     }
     catch {
-        Write-Host "´íÎó£ºÎŞ·¨½âÎöJSONÎÄ¼ş" -ForegroundColor Red
+        Write-Host "é”™è¯¯ï¼šæ— æ³•è§£æJSONæ–‡ä»¶" -ForegroundColor Red
         return $null
     }
 }
 
-# ¼ì²éÊ±¼ä¼ÇÂ¼ÎÄ¼ş
+# æ£€æŸ¥æ—¶é—´è®°å½•æ–‡ä»¶
 $hasTimeRecord = Load-UpdateTimeKey -filePath $TimeRecordFile
 
 if (-not $hasTimeRecord) {
-    Write-Host "Ê±¼ä¼ÇÂ¼ÎÄ¼ş²»´æÔÚ£¬½«´´½¨ĞÂµÄÊ±¼ä¼ÇÂ¼" -ForegroundColor Yellow
+    Write-Host "æ—¶é—´è®°å½•æ–‡ä»¶ä¸å­˜åœ¨ï¼Œå°†åˆ›å»ºæ–°çš„æ—¶é—´è®°å½•" -ForegroundColor Yellow
 }
 
-# ´´½¨Ä¿±êÄ¿Â¼£¨Èç¹û²»´æÔÚ£©
+# åˆ›å»ºç›®æ ‡ç›®å½•ï¼ˆå¦‚æœä¸å­˜åœ¨ï¼‰
 if (-not (Test-Path $targetDir)) {
-    Write-Host "´´½¨Ä¿±êÄ¿Â¼: $targetDir" -ForegroundColor Green
+    Write-Host "åˆ›å»ºç›®æ ‡ç›®å½•: $targetDir" -ForegroundColor Green
     New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
 }
 
-# ÏÂÔØº¯Êı
+# ä¸‹è½½å‡½æ•°
 function Download-Files {
     param(
         [Object]$assetInfo,
@@ -508,17 +513,17 @@ function Download-Files {
     
     try {
         $downloadUrl = $assetInfo.browser_download_url
-        Write-Host "ÕıÔÚÏÂÔØÎÄ¼ş:$($assetInfo.name)..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨ä¸‹è½½æ–‡ä»¶:$($assetInfo.name)..." -ForegroundColor Green
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
-        Write-Host "ÏÂÔØÍê³É" -ForegroundColor Green
+        Write-Host "ä¸‹è½½å®Œæˆ" -ForegroundColor Green
     }
     catch {
-        Write-Host "ÏÂÔØÊ§°Ü: $_" -ForegroundColor Red
+        Write-Host "ä¸‹è½½å¤±è´¥: $_" -ForegroundColor Red
         exit 1
     }
 }
 
-# ½âÑ¹ zip ÎÄ¼ş
+# è§£å‹ zip æ–‡ä»¶
 function Expand-ZipFile {
     param(
         [string]$zipFilePath,
@@ -526,22 +531,22 @@ function Expand-ZipFile {
     )
 
     try {
-        Write-Host "ÕıÔÚ½âÑ¹ÎÄ¼ş: $zipFilePath" -ForegroundColor Green
-        Write-Host "½âÑ¹µ½: $destinationPath" -ForegroundColor Green
+        Write-Host "æ­£åœ¨è§£å‹æ–‡ä»¶: $zipFilePath" -ForegroundColor Green
+        Write-Host "è§£å‹åˆ°: $destinationPath" -ForegroundColor Green
         Expand-Archive -Path $zipFilePath -DestinationPath $destinationPath -Force
-        Write-Host "½âÑ¹Íê³É" -ForegroundColor Green
+        Write-Host "è§£å‹å®Œæˆ" -ForegroundColor Green
     }
     catch {
-        Write-Host "½âÑ¹Ê§°Ü: $_" -ForegroundColor Red
+        Write-Host "è§£å‹å¤±è´¥: $_" -ForegroundColor Red
         Remove-Item -Path $zipFilePath -Force -ErrorAction SilentlyContinue
         exit 1
     }
 }
 
 if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq "0") {
-    # ¿ªÊ¼¸üĞÂ´Ê¿â£¬´ÓÏÖÔÚ¿ªÊ¼²»Òª²Ù×÷¼üÅÌ£¬Ö±µ½¸üĞÂÍê³É£¬·ñÔò»á´¥·¢Ğ¡ÀÇºÁÖØÆô£¬ÎÄ¼ş¸üĞÂ¸æ¾¯£¬µ¼ÖÂ¸üĞÂÊ§°Ü£¬Çë·ÅĞÄ¸üĞÂÍê³Éºó»á×Ô¶¯À­ÆğĞ¡ÀÇºÁ
-    Write-Host "ÕıÔÚ¸üĞÂ´Ê¿â£¬Çë²»Òª²Ù×÷¼üÅÌ£¬Ö±µ½¸üĞÂÍê³É" -ForegroundColor Red
-    Write-Host "¸üĞÂÍê³Éºó»á×Ô¶¯À­ÆğĞ¡ÀÇºÁ" -ForegroundColor Red
+    # å¼€å§‹æ›´æ–°è¯åº“ï¼Œä»ç°åœ¨å¼€å§‹ä¸è¦æ“ä½œé”®ç›˜ï¼Œç›´åˆ°æ›´æ–°å®Œæˆï¼Œå¦åˆ™ä¼šè§¦å‘å°ç‹¼æ¯«é‡å¯ï¼Œæ–‡ä»¶æ›´æ–°å‘Šè­¦ï¼Œå¯¼è‡´æ›´æ–°å¤±è´¥ï¼Œè¯·æ”¾å¿ƒæ›´æ–°å®Œæˆåä¼šè‡ªåŠ¨æ‹‰èµ·å°ç‹¼æ¯«
+    Write-Host "æ­£åœ¨æ›´æ–°è¯åº“ï¼Œè¯·ä¸è¦æ“ä½œé”®ç›˜ï¼Œç›´åˆ°æ›´æ–°å®Œæˆ" -ForegroundColor Red
+    Write-Host "æ›´æ–°å®Œæˆåä¼šè‡ªåŠ¨æ‹‰èµ·å°ç‹¼æ¯«" -ForegroundColor Red
 } else {
     exit 0
 }
@@ -549,147 +554,147 @@ if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq 
 $UpdateFlag = $false
 
 if ($InputSchemaDown -eq "0") {
-    # ÏÂÔØ·½°¸
+    # ä¸‹è½½æ–¹æ¡ˆ
     $SchemaUpdateTimeKey = $KeyTable[$InputSchemaType] + "_schema_update_time"
     $SchemaUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey
     $SchemaRemoteTime = [datetime]::Parse($ExpectedSchemaTypeInfo.updated_at)
-    Write-Host "ÕıÔÚ¼ì²é·½°¸ÊÇ·ñĞèÒª¸üĞÂ..." -ForegroundColor Green
-    Write-Host "±¾µØÊ±¼ä: $SchemaUpdateTime" -ForegroundColor Green
-    Write-Host "Ô¶³ÌÊ±¼ä: $SchemaRemoteTime" -ForegroundColor Green
+    Write-Host "æ­£åœ¨æ£€æŸ¥æ–¹æ¡ˆæ˜¯å¦éœ€è¦æ›´æ–°..." -ForegroundColor Green
+    Write-Host "æœ¬åœ°æ—¶é—´: $SchemaUpdateTime" -ForegroundColor Green
+    Write-Host "è¿œç¨‹æ—¶é—´: $SchemaRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $SchemaUpdateTime -remoteTime $SchemaRemoteTime) {
         $UpdateFlag = $true
-        Write-Host "ÕıÔÚÏÂÔØ·½°¸..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨ä¸‹è½½æ–¹æ¡ˆ..." -ForegroundColor Green
         Download-Files -assetInfo $ExpectedSchemaTypeInfo -outFilePath $tempSchemaZip
-        Write-Host "ÕıÔÚ½âÑ¹·½°¸..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨è§£å‹æ–¹æ¡ˆ..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempSchemaZip -destinationPath $SchemaExtractPath
-        Write-Host "ÕıÔÚ¸´ÖÆÎÄ¼ş..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨å¤åˆ¶æ–‡ä»¶..." -ForegroundColor Green
         $sourceDir = Get-ExtractedFolderPath -extractPath $SchemaExtractPath -assetName $KeyTable[$InputSchemaType]
         if (-not (Test-Path $sourceDir)) {
-            Write-Host "´íÎó£ºÑ¹Ëõ°üÖĞÎ´ÕÒµ½ $sourceDir Ä¿Â¼" -ForegroundColor Red
+            Write-Host "é”™è¯¯ï¼šå‹ç¼©åŒ…ä¸­æœªæ‰¾åˆ° $sourceDir ç›®å½•" -ForegroundColor Red
             Remove-Item -Path $tempSchemaZip -Force
             Remove-Item -Path $SchemaExtractPath -Recurse -Force
             exit 1
         }
         Stop-WeaselServer
-        # µÈ´ı1Ãë
+        # ç­‰å¾…1ç§’
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
             if (Test-SkipFile -filePath $_.Name) {
-                Write-Host "Ìø¹ıÎÄ¼ş: $($_.Name)" -ForegroundColor Yellow
+                Write-Host "è·³è¿‡æ–‡ä»¶: $($_.Name)" -ForegroundColor Yellow
             } else {
                 Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
             }
         }
 
-        # ½«ÏÖÔÚµÄ±¾µØÊ±¼ä¼ÇÂ¼µ½JSONÎÄ¼ş
+        # å°†ç°åœ¨çš„æœ¬åœ°æ—¶é—´è®°å½•åˆ°JSONæ–‡ä»¶
         Save-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey -value $SchemaRemoteTime
-        # ÇåÀíÁÙÊ±ÎÄ¼ş
+        # æ¸…ç†ä¸´æ—¶æ–‡ä»¶
         Remove-Item -Path $tempSchemaZip -Force
         Remove-Item -Path $SchemaExtractPath -Recurse -Force
     }
 }
 
 if ($InputDictDown -eq "0") {
-    # ÏÂÔØ´Ê¿â
+    # ä¸‹è½½è¯åº“
     $DictUpdateTimeKey = $KeyTable[$InputSchemaType] + "_dict_update_time"
     $DictUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey
     $DictRemoteTime = [datetime]::Parse($ExpectedDictTypeInfo.updated_at)
-    Write-Host "ÕıÔÚ¼ì²é´Ê¿âÊÇ·ñĞèÒª¸üĞÂ..." -ForegroundColor Green
-    Write-Host "±¾µØÊ±¼ä: $DictUpdateTime" -ForegroundColor Green
-    Write-Host "Ô¶³ÌÊ±¼ä: $DictRemoteTime" -ForegroundColor Green
+    Write-Host "æ­£åœ¨æ£€æŸ¥è¯åº“æ˜¯å¦éœ€è¦æ›´æ–°..." -ForegroundColor Green
+    Write-Host "æœ¬åœ°æ—¶é—´: $DictUpdateTime" -ForegroundColor Green
+    Write-Host "è¿œç¨‹æ—¶é—´: $DictRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
         $UpdateFlag = $true
-        Write-Host "ÕıÔÚÏÂÔØ´Ê¿â..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨ä¸‹è½½è¯åº“..." -ForegroundColor Green
         Download-Files -assetInfo $ExpectedDictTypeInfo -outFilePath $tempDictZip
-        Write-Host "ÕıÔÚ½âÑ¹´Ê¿â..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨è§£å‹è¯åº“..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempDictZip -destinationPath $DictExtractPath
-        Write-Host "ÕıÔÚ¸´ÖÆÎÄ¼ş..." -ForegroundColor Green
+        Write-Host "æ­£åœ¨å¤åˆ¶æ–‡ä»¶..." -ForegroundColor Green
         $sourceDir = Get-ExtractedFolderPath -extractPath $DictExtractPath -assetName $KeyTable[$InputSchemaType]
         if (-not (Test-Path $sourceDir)) {
-            Write-Host "´íÎó£ºÑ¹Ëõ°üÖĞÎ´ÕÒµ½ $sourceDir Ä¿Â¼" -ForegroundColor Red
+            Write-Host "é”™è¯¯ï¼šå‹ç¼©åŒ…ä¸­æœªæ‰¾åˆ° $sourceDir ç›®å½•" -ForegroundColor Red
             Remove-Item -Path $DictExtractPath -Force -Recurse
             exit 1
         }
         Stop-WeaselServer
-        # µÈ´ı1Ãë
+        # ç­‰å¾…1ç§’
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
             if (Test-SkipFile -filePath $_.Name) {
-                Write-Host "Ìø¹ıÎÄ¼ş: $($_.Name)" -ForegroundColor Yellow
+                Write-Host "è·³è¿‡æ–‡ä»¶: $($_.Name)" -ForegroundColor Yellow
             }
         }
 
-        # ½«ÏÖÔÚµÄ±¾µØÊ±¼ä¼ÇÂ¼µ½JSONÎÄ¼ş
+        # å°†ç°åœ¨çš„æœ¬åœ°æ—¶é—´è®°å½•åˆ°JSONæ–‡ä»¶
         Save-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey -value $DictRemoteTime -isDict $true
-        # ÇåÀíÁÙÊ±ÎÄ¼ş
+        # æ¸…ç†ä¸´æ—¶æ–‡ä»¶
         Remove-Item -Path $DictExtractPath -Recurse -Force
     }
 }
 
 function Update-GramModel {
     $UpdateFlag = $true
-    Write-Host "ÕıÔÚÏÂÔØÄ£ĞÍ..." -ForegroundColor Green
+    Write-Host "æ­£åœ¨ä¸‹è½½æ¨¡å‹..." -ForegroundColor Green
     Download-Files -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
-    Write-Host "ÕıÔÚÏÂÔØÄ£ĞÍMD5..." -ForegroundColor Green
+    Write-Host "æ­£åœ¨ä¸‹è½½æ¨¡å‹MD5..." -ForegroundColor Green
     Download-Files -assetInfo $ExpectedGramMd5TypeInfo -outFilePath $tempGramMd5
-    Write-Host "ÕıÔÚÑéÖ¤Ä£ĞÍMD5..." -ForegroundColor Green
+    Write-Host "æ­£åœ¨éªŒè¯æ¨¡å‹MD5..." -ForegroundColor Green
     $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
     $localMd5 = (Get-FileHash $tempGram -Algorithm MD5).Hash.ToLower()
     if ($remoteMd5 -ne $localMd5) {
-        Write-Host "Ä£ĞÍMD5ÑéÖ¤Ê§°Ü" -ForegroundColor Red
+        Write-Host "æ¨¡å‹MD5éªŒè¯å¤±è´¥" -ForegroundColor Red
         # Remove-Item -Path $tempGram -Force
         Remove-Item -Path $tempGramMd5 -Force
         exit 1
     }
-    Write-Host "ÕıÔÚ¸´ÖÆÎÄ¼ş..." -ForegroundColor Green
+    Write-Host "æ­£åœ¨å¤åˆ¶æ–‡ä»¶..." -ForegroundColor Green
 
     Stop-WeaselServer
-    # µÈ´ı1Ãë
+    # ç­‰å¾…1ç§’
     Start-Sleep -Seconds 1
     Copy-Item -Path $tempGram -Destination $targetDir -Force
-    # ½«ÏÖÔÚµÄ±¾µØÊ±¼ä¼ÇÂ¼µ½JSONÎÄ¼ş
+    # å°†ç°åœ¨çš„æœ¬åœ°æ—¶é—´è®°å½•åˆ°JSONæ–‡ä»¶
     Save-TimeRecord -filePath $TimeRecordFile -key $GramUpdateTimeKey -value $GramRemoteTime
-    # ÇåÀíÁÙÊ±ÎÄ¼ş
+    # æ¸…ç†ä¸´æ—¶æ–‡ä»¶
     Remove-Item -Path $tempGram -Force
 }
 
 if ($InputGramModel -eq "0") {
-    # ÏÂÔØÄ£ĞÍ
+    # ä¸‹è½½æ¨¡å‹
     $GramUpdateTimeKey = $GramReleaseTag + "_gram_update_time"
     $GramUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $GramUpdateTimeKey
     $GramRemoteTime = [datetime]::Parse($ExpectedGramTypeInfo.updated_at)
-    Write-Host "ÕıÔÚ¼ì²éÄ£ĞÍÊÇ·ñĞèÒª¸üĞÂ..." -ForegroundColor Green
-    # ¼ì²éÄ¿±êÎÄ¼ş $targetDir/$tempGram ÊÇ·ñ´æÔÚ
+    Write-Host "æ­£åœ¨æ£€æŸ¥æ¨¡å‹æ˜¯å¦éœ€è¦æ›´æ–°..." -ForegroundColor Green
+    # æ£€æŸ¥ç›®æ ‡æ–‡ä»¶ $targetDir/$tempGram æ˜¯å¦å­˜åœ¨
     $filePath = Join-Path $targetDir $GramModelFileName
     if ($Debug) {
-        Write-Host "Ä£ĞÍÎÄ¼şÂ·¾¶: $filePath" -ForegroundColor Green
+        Write-Host "æ¨¡å‹æ–‡ä»¶è·¯å¾„: $filePath" -ForegroundColor Green
     }
-    Write-Host "±¾µØÊ±¼ä: $GramUpdateTime" -ForegroundColor Green
-    Write-Host "Ô¶³ÌÊ±¼ä: $GramRemoteTime" -ForegroundColor Green
+    Write-Host "æœ¬åœ°æ—¶é—´: $GramUpdateTime" -ForegroundColor Green
+    Write-Host "è¿œç¨‹æ—¶é—´: $GramRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
         Update-GramModel
     }elseif (Test-Path -Path $filePath) {
-        # ¼ÆËãÄ¿±êÎÄ¼şµÄMD5
+        # è®¡ç®—ç›®æ ‡æ–‡ä»¶çš„MD5
         $localMd5 = (Get-FileHash $filePath -Algorithm MD5).Hash.ToLower()
-        # ¼ÆËãÔ¶³ÌÎÄ¼şµÄMD5
+        # è®¡ç®—è¿œç¨‹æ–‡ä»¶çš„MD5
         $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
-        # ±È½ÏMD5
+        # æ¯”è¾ƒMD5
         if ($localMd5 -ne $remoteMd5) {
-            Write-Host "Ä£ĞÍMD5²»Æ¥Åä£¬ĞèÒª¸üĞÂ" -ForegroundColor Red
+            Write-Host "æ¨¡å‹MD5ä¸åŒ¹é…ï¼Œéœ€è¦æ›´æ–°" -ForegroundColor Red
             Update-GramModel
         }   
     } else {
-        Write-Host "Ä£ĞÍ²»´æÔÚ£¬ĞèÒª¸üĞÂ" -ForegroundColor Red
+        Write-Host "æ¨¡å‹ä¸å­˜åœ¨ï¼Œéœ€è¦æ›´æ–°" -ForegroundColor Red
         Update-GramModel
     }
 }
 
-Write-Host "²Ù×÷ÒÑÍê³É£¡ÎÄ¼şÒÑ²¿Êğµ½ Weasel ÅäÖÃÄ¿Â¼:$($targetDir)" -ForegroundColor Green
+Write-Host "æ“ä½œå·²å®Œæˆï¼æ–‡ä»¶å·²éƒ¨ç½²åˆ° Weasel é…ç½®ç›®å½•:$($targetDir)" -ForegroundColor Green
 
 if ($UpdateFlag) {
     Start-WeaselServer
-    # µÈ´ı1Ãë
+    # ç­‰å¾…1ç§’
     Start-Sleep -Seconds 1
-    Write-Host "ÄÚÈİ¸üĞÂ£¬´¥·¢Ğ¡ÀÇºÁÖØĞÂ²¿Êğ..." -ForegroundColor Green
+    Write-Host "å†…å®¹æ›´æ–°ï¼Œè§¦å‘å°ç‹¼æ¯«é‡æ–°éƒ¨ç½²..." -ForegroundColor Green
     Start-WeaselReDeploy
 }
