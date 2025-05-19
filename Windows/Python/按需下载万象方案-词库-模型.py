@@ -192,7 +192,7 @@ class ConfigManager:
         print("[5]-墨奇 [6]-虎码 [7]-五笔 [8]-自然码")
         
         while True:
-            choice = input("请选择默认方案（1-8）: ").strip()
+            choice = input("请选择你的辅助码方案（1-8）: ").strip()
             if choice in SCHEME_MAP:
                 scheme_key = SCHEME_MAP[choice]
                 
@@ -393,36 +393,14 @@ class UpdateHandler:
     def github_api_request(self, url):
         """带令牌认证的API请求"""
         headers = {"User-Agent": "RIME-Updater/1.0"}
-        if self.github_token:
-            headers["Authorization"] = f"Bearer {self.github_token}"
+        if not self.github_token:
+            return None
         
-        max_retries = 2  # 最大重试次数
-        for attempt in range(max_retries + 1):
-            try:
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-                return response.json()
-                
-            except requests.HTTPError as e:
-                if e.response.status_code == 401:
-                    print_error("GitHub令牌无效或无权限")
-                elif e.response.status_code == 403:
-                    print_error("权限不足或触发次级速率限制")
-                else:
-                    print_error(f"HTTP错误: {e.response.status_code}")
-                return None
-            except requests.ConnectionError:
-                print_error("网络连接失败")
-                if attempt < max_retries:
-                    time.sleep(5)
-                    continue
-                return None
-            except requests.RequestException as e:
-                print_error(f"请求异常: {str(e)}")
-                return None
-        
-        return None
-
+        headers["Authorization"] = f"Bearer {self.github_token}"
+        try:
+            return requests.get(url, headers=headers).json()
+        except requests.RequestException:
+            return None
 
     def mirror_url(self, url):
         """智能镜像处理"""
@@ -604,13 +582,13 @@ class SchemeUpdater(UpdateHandler):
         releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{REPO}/releases")
         if not releases:
             return None
-
-        for release in releases[:2]:  # 检查前两个发布
+        for release in releases[:2]:
             for asset in release.get("assets", []):
                 if asset["name"] == self.scheme_file:
                     return {
                         "url": self.mirror_url(asset["browser_download_url"]),
-                        "published_at": release["published_at"],
+                        # 修改为获取asset的更新时间
+                        "update_time": asset["updated_at"],
                         "tag": release["tag_name"]
                     }
         return None
@@ -624,17 +602,13 @@ class SchemeUpdater(UpdateHandler):
         remote_info = self.check_update()
 
         # 时间比较
-        remote_time = datetime.strptime(remote_info["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         local_time = self.get_local_time()
         
         if local_time and remote_time <= local_time:
             print_success("当前已是最新方案")
             return False  # 没有更新
 
-        # 检测到更新时的提示
-        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
-        print_warning(f"检测到方案更新（标签：{remote_info['tag']}），发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print_subheader("准备开始下载方案文件...")
 
         # 下载更新
         temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
@@ -646,13 +620,6 @@ class SchemeUpdater(UpdateHandler):
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
             os.remove(temp_file)
-            # 保存远程信息到记录文件
-            with open(self.record_file, 'w') as f:
-                json.dump({
-                    "tag": remote_info["tag"],
-                    "published_at": remote_info["published_at"],
-                    "update_time": datetime.now(timezone.utc).isoformat()
-                }, f)
             return False
 
         # 应用更新
@@ -664,11 +631,11 @@ class SchemeUpdater(UpdateHandler):
     def get_local_time(self):
         if not os.path.exists(self.record_file):
             return None
-            
         try:
             with open(self.record_file, 'r') as f:
                 data = json.load(f)
-                return datetime.strptime(data["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                # 读取本地记录的update_time
+                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except:
             return None
 
@@ -693,8 +660,8 @@ class SchemeUpdater(UpdateHandler):
         with open(self.record_file, 'w') as f:
             json.dump({
                 "tag": info["tag"],
-                "published_at": info["published_at"],
-                "update_time": datetime.now(timezone.utc).isoformat()
+                "update_time": info["update_time"],  # 使用asset的更新时间
+                "apply_time": datetime.now(timezone.utc).isoformat()
             }, f)
 
     def clean_build(self):
@@ -715,36 +682,33 @@ class DictUpdater(UpdateHandler):
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
 
     def check_update(self):
-        """检查更新"""
         release = self.github_api_request(
             f"https://api.github.com/repos/{OWNER}/{REPO}/releases/tags/{self.target_tag}"
         )
         if not release:
             return None
-
-        # 精确匹配配置中的词库文件
         target_asset = next(
             (a for a in release["assets"] if a["name"] == self.dict_file),
             None
         )
         if not target_asset:
             return None
-
         return {
             "url": self.mirror_url(target_asset["browser_download_url"]),
-            "published_at": release["published_at"],  # 使用release时间
+            # 使用asset的更新时间
+            "update_time": target_asset["updated_at"],
             "tag": release["tag_name"],
             "size": target_asset["size"]
         }
-
+    
     def get_local_time(self):
-        """获取本地记录时间"""
         if not os.path.exists(self.record_file):
             return None
         try:
             with open(self.record_file, 'r') as f:
                 data = json.load(f)
-                return datetime.strptime(data["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                # 读取本地记录的update_time
+                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except:
             return None
 
@@ -773,9 +737,9 @@ class DictUpdater(UpdateHandler):
             with open(self.record_file, 'w') as f:
                 json.dump({
                     "dict_file": self.dict_file,
-                    "published_at": info["published_at"],
+                    "update_time": info["update_time"],  # 使用asset的更新时间
                     "tag": info["tag"],
-                    "update_time": datetime.now(timezone.utc).isoformat()
+                    "apply_time": datetime.now(timezone.utc).isoformat()
                 }, f)
 
         except Exception as e:
@@ -793,18 +757,12 @@ class DictUpdater(UpdateHandler):
             return False
 
         # 时间比对（精确到秒）
-        remote_time = datetime.strptime(remote_info["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         local_time = self.get_local_time()
         
         if local_time and remote_time <= local_time:
             print_success("当前已是最新词库")
             return False
-
-        # 更新提示
-        print_warning(f"检测到词库更新（标签：{remote_info['tag']}）")
-        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
-        print_subheader(f"发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{INDENT}文件大小：{remote_info['size']/1024:.1f} KB")
 
         # 下载流程
         temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
@@ -816,14 +774,7 @@ class DictUpdater(UpdateHandler):
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
             os.remove(temp_file)
-            # 更新本地记录
-            with open(self.record_file, 'w') as f:
-                json.dump({
-                    "published_at": remote_info["published_at"],
-                    "tag": remote_info["tag"],
-                    "update_time": datetime.now(timezone.utc).isoformat()
-                }, f)
-            return False
+
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
@@ -855,12 +806,12 @@ class ModelUpdater(UpdateHandler):
         if not release:
             return None
             
-        # 查找目标模型文件
         for asset in release.get("assets", []):
             if asset["name"] == self.model_file:
                 return {
-                    "url": self.mirror_url(asset["browser_download_url"]),  # 镜像处理
-                    "published_at": asset["updated_at"],  # 使用asset更新时间
+                    "url": self.mirror_url(asset["browser_download_url"]),
+                    # 使用asset的更新时间
+                    "update_time": asset["updated_at"],
                     "size": asset["size"]
                 }
         return None
@@ -875,19 +826,13 @@ class ModelUpdater(UpdateHandler):
             print_warning("未找到模型更新信息")
             return False
 
-        # 时间比较（本地记录 vs 远程发布时间）
-        remote_time = datetime.strptime(remote_info["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        # 时间比较（本地记录 vs 远程更新时间）
+        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)  # 修改字段
         local_time = self._get_local_record_time()
         
         if local_time and remote_time <= local_time:
             print_success("当前模型已是最新版本")
             return False
-
-        # 检测到更新时的提示
-        china_time = remote_time.astimezone(timezone(timedelta(hours=8)))
-        print_warning(f"检测到模型更新，最新版本发布时间：{china_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print_subheader("准备开始下载模型文件...")
-
 
         # 下载到临时文件
         if not self.download_file(remote_info["url"], self.temp_file):
@@ -896,7 +841,7 @@ class ModelUpdater(UpdateHandler):
 
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match()
-        remote_time = datetime.strptime(remote_info["published_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         local_time = self._get_local_record_time()
 
         # 哈希匹配但记录缺失时的处理
@@ -905,7 +850,7 @@ class ModelUpdater(UpdateHandler):
             os.remove(self.temp_file)
             # 强制更新记录（解决记录文件丢失的问题）
             if not local_time or remote_time > local_time:
-                self._save_update_record(remote_info["published_at"])
+                self._save_update_record(remote_info["update_time"])  # 使用新字段
             return False
 
 
@@ -922,20 +867,20 @@ class ModelUpdater(UpdateHandler):
             return False
 
         # 保存更新记录
-        self._save_update_record(remote_info["published_at"])
+        self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
         print_success("模型更新完成")
         return True
 
     def _get_local_record_time(self):
-        """获取本地记录的最后更新时间"""
         if not os.path.exists(self.record_file):
             return None
         try:
             with open(self.record_file, "r") as f:
                 data = json.load(f)
-                return datetime.strptime(data["last_updated"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                # 读取本地记录的update_time
+                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except:
             return None
 
@@ -945,12 +890,11 @@ class ModelUpdater(UpdateHandler):
         target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
         return temp_hash == target_hash
 
-    def _save_update_record(self, published_at):
-        """保存更新时间记录到custom_dir"""
+    def _save_update_record(self, update_time):
         record = {
             "model_name": self.model_file,
-            "last_updated": published_at,
-            "update_time": datetime.now(timezone.utc).isoformat()
+            "update_time": update_time,  # 使用传入的更新时间
+            "apply_time": datetime.now(timezone.utc).isoformat()
         }
         with open(self.record_file, "w") as f:
             json.dump(record, f, indent=2)
@@ -989,93 +933,135 @@ def main():
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
 
-        # 检查是否初次运行
-        if not os.path.exists(config_manager.config_path):
-            print_header("首次运行配置向导")
-            print("检测到初次运行，正在创建默认配置...")
-            config_loaded = True
-        else:
-            # 直接加载现有配置
-            config = config_manager.load_config()
-            config_loaded = True
-
-        # 选择更新类型
-        print_header("更新类型选择") 
-        print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 修改配置")  # 新增模型更新选项
-        choice = input("请输入选择（1-5，单独按回车键默认选择全部更新）: ").strip() or '4'
+        # ========== 自动更新检测（仅在程序启动时执行一次）==========
+        update_flag = False  # 标记是否存在更新
         
-        if choice == '5':
-            config_manager.display_config_instructions()
-            print("保存后关闭配置文件以继续...")
+        # 方案更新检测
+        scheme_updater = SchemeUpdater(config_manager)
+        scheme_info = scheme_updater.check_update()
+        if scheme_info:
+            remote_time = datetime.strptime(scheme_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            local_time = scheme_updater.get_local_time()
+            if local_time is None or remote_time > local_time:
+                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{scheme_info['tag']}）")
+                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
+                update_flag = True
+        # 词库更新检测
+        dict_updater = DictUpdater(config_manager)
+        dict_info = dict_updater.check_update()
+        if dict_info:
+            remote_time = datetime.strptime(dict_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            local_time = dict_updater.get_local_time()
+            if local_time is None or remote_time > local_time:
+                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n{COLOR['WARNING']}[!] 词库有更新可用（版本：{dict_info['tag']}）")
+                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
+                update_flag = True
+        # 模型更新检测
+        model_updater = ModelUpdater(config_manager)
+        model_info = model_updater.check_update()
+        if model_info:
+            remote_time = datetime.strptime(model_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            local_time = model_updater._get_local_record_time()
+            if local_time is None or remote_time > local_time:
+                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
+                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
+                update_flag = True
+        # 如果没有更新显示提示
+        if not update_flag:
+            print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
 
-            # 用记事本打开配置文件（阻塞方式）
-            if os.name == 'nt':
-                subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
-            else:
-                subprocess.call(['open', config_manager.config_path])
-            print_success("配置文件修改已完成")
+        # 主菜单循环
+        while True:
+            # 选择更新类型
+            print_header("更新类型选择") 
+            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 修改配置\n[6] 退出程序")
+            choice = input("请输入选择（1-6，单独按回车键默认选择全部更新）: ").strip() or '4'
             
-            # 交互逻辑
-            user_choice = input("\n按回车键退出程序，或输入 z 返回主菜单: ").strip().lower()
-            if user_choice == 'z':
-                main()  # 重新进入主程序
-            else:
-                print("\n✨ 配置修改已完成，欢迎下次使用！")
-                sys.exit(0)
+            if choice == '5':
+                config_manager.display_config_instructions()
+                print("保存后关闭配置文件以继续...")
+
+                # 用记事本打开配置文件
+                if os.name == 'nt':
+                    subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
+                print_success("配置文件修改已完成")
                 
-        # 执行更新
-        updated = False
-        deployer = None  # 确保在所有分支前初始化
-        if choice == '1':
-            updater = DictUpdater(config_manager)
-            updated = updater.run()
-            deployer = updater  # 明确指定部署器
-        elif choice == '2':
-            updater = SchemeUpdater(config_manager)
-            updated = updater.run()
-            deployer = updater  # 明确指定部署器
-        elif choice == '3':
-            updater = ModelUpdater(config_manager)
-            updated = updater.run()
-            deployer = updater  # 明确指定部署器
-        elif choice == '4':
-            # 全部更新模式
-            deployer = SchemeUpdater(config_manager)  # 指定方案更新器为部署器
-            scheme_updated = deployer.run()           # 使用同一个实例执行更新
-            
-            dict_updater = DictUpdater(config_manager)
-            dict_updated = dict_updater.run()
-            
-            model_updater = ModelUpdater(config_manager)
-            model_updated = model_updater.run()
-            
-            updated = scheme_updated or dict_updated or model_updated
-        else:
-            print_error("无效的选项")
-            return
-        # 统一部署检查（安全判断）
-        if updated and deployer:  # 双重条件判断
-            print_header("重新部署输入法")
-            if deployer.deploy_weasel():
-                print_success("部署成功")
+                # 返回主菜单或退出
+                user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
+                if user_choice == '':
+                    continue  # 继续主循环
+                else:
+                    break
+            elif choice == '6':
+                break
             else:
-                print_warning("部署失败，请检查日志")
-        else:
-            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
+                # 执行更新操作
+                updated = False
+                deployer = None
+                if choice == '1':
+                    updater = DictUpdater(config_manager)
+                    updated = updater.run()
+                    deployer = updater
+                elif choice == '2':
+                    updater = SchemeUpdater(config_manager)
+                    updated = updater.run()
+                    deployer = updater
+                elif choice == '3':
+                    updater = ModelUpdater(config_manager)
+                    updated = updater.run()
+                    deployer = updater
+                elif choice == '4':
+                    # 全部更新模式
+                    deployer = SchemeUpdater(config_manager)
+                    scheme_updated = deployer.run()
+                    dict_updater = DictUpdater(config_manager)
+                    dict_updated = dict_updater.run()
+                    model_updater = ModelUpdater(config_manager)
+                    model_updated = model_updater.run()
+                    updated = scheme_updated or dict_updated or model_updated
+                    # 统一部署检查
+                    if updated and deployer:
+                        print_header("重新部署输入法")
+                        if deployer.deploy_weasel():
+                            print_success("部署成功")
+                        else:
+                            print_warning("部署失败，请检查日志")
+                    else:
+                        print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
+                    # 自动退出逻辑
+                    print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
+                    time.sleep(4)
+                    sys.exit(0)
 
+                # 统一部署检查（安全判断）
+                if updated and deployer:
+                    print_header("重新部署输入法")
+                    if deployer.deploy_weasel():
+                        print_success("部署成功")
+                    else:
+                        print_warning("部署失败，请检查日志")
+                else:
+                    print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
+
+                # 返回主菜单或退出
+                user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
+                if user_input.strip().lower() == '':
+                    continue  # 继续主循环
+                else:
+                    break
+
+        print("\n✨ 升级完毕，欢迎下次使用！")
+        time.sleep(2)
+        sys.exit(0)
         
-
-            
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
         sys.exit(1)
-        
+
 if __name__ == "__main__":
-    while True:
-        main()
-        user_input = input("\n按回车键退出程序，或输入 z 返回主菜单: ")
-        if user_input.strip().lower() != 'z':
-            print("\n✨ 升级完毕，欢迎下次使用！")
-            time.sleep(2)
-            break
+    main()
+
 
