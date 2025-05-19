@@ -1,15 +1,15 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
-$AutoUpdate = $true;
-# $AutoUpdate = $false;
+# $AutoUpdate = $true;
+$AutoUpdate = $false;
 ####[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
 ####注意必须包含双引号，例如：$InputSchemaType = "0";
-$InputSchemaType = "4";
+$InputSchemaType = "7";
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
-# 设置代理地址和端口
-$proxyAddress = "http://127.0.0.1:7897"
-[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
-[System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+# 设置代理地址和端口, 配置好后删除注释符号
+# $proxyAddress = "http://127.0.0.1:7897"
+# [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
+# [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
 
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
