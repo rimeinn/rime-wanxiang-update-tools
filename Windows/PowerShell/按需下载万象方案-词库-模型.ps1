@@ -4,6 +4,10 @@ $AutoUpdate = $false;
 ####[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
 ####注意必须包含双引号，例如：$InputSchemaType = "0";
 $InputSchemaType = "7";
+# $SkipFiles = @(
+#     "wanxiang_en.dict.yaml",
+#     "chars.dict.yaml"
+# ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
 # 设置仓库所有者和名称
@@ -120,6 +124,13 @@ function Get-WeaselServerExecutable {
     }
 }
 
+function Test-SkipFile {
+    param(
+        [string]$filePath
+    )
+    return $SkipFiles -contains $filePath
+}
+
 # 调用函数并赋值给变量
 $rimeUserDir = Get-WeaselUserDir
 $rimeInstallDir = Get-WeaselInstallDir
@@ -166,7 +177,6 @@ function Test-VersionSuffix {
     param(
         [string]$url
     )
-    
     # tag_name = v1.0.0 or v1.0
     $pattern = 'v(\d+)(\.\d+)+'
     return $url -match $pattern
@@ -564,7 +574,11 @@ if ($InputSchemaDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+            if (Test-SkipFile -filePath $_.Name) {
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+            } else {
+                Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+            }
         }
 
         # 将现在的本地时间记录到JSON文件
@@ -600,7 +614,9 @@ if ($InputDictDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir "cn_dicts") -Recurse -Force
+            if (Test-SkipFile -filePath $_.Name) {
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+            }
         }
 
         # 将现在的本地时间记录到JSON文件
