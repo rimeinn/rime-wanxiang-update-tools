@@ -10,6 +10,11 @@ $InputSchemaType = "7";
 # ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
+# 设置代理地址和端口，配置好后删除注释符号
+# $proxyAddress = "http://127.0.0.1:7897"
+# [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
+# [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
 $SchemaRepo = "rime_wanxiang_pro"
