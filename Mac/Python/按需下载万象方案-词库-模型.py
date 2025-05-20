@@ -244,8 +244,8 @@ class ConfigManager:
         
         self.display_config_instructions()
 
-        if os.name == 'nt':
-            os.startfile(self.config_path)
+        if os.name == 'posix':
+            subprocess.Popen(['open', self.config_path])
         input("\n请按需修改上述路径，保存后按回车键继续...")
 
     def display_config_instructions(self):
