@@ -7,7 +7,7 @@
 ## 工具版本计划
 
 - [x] [Windows版本](./Windows/README.md)
-- [x] macOS版本
+- [x] [macOS版本](./Mac/README.md)
 - [x] [Linux版本](./Linux/README.md)
 
 ### Windows版本
