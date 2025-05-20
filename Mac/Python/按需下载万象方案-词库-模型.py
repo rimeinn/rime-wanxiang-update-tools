@@ -471,31 +471,6 @@ class UpdateHandler:
             print_error(f"解压失败: {str(e)}")
             return False
 
-    def terminate_processes(self):
-        """组合式进程终止策略"""
-        if not self.graceful_stop():  # 先尝试优雅停止
-            self.hard_stop()          # 失败则强制终止
-
-    def graceful_stop(self):
-        """优雅停止服务"""
-        try:
-            subprocess.run(
-                [self.weasel_server, "/q"],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            print_success("服务已优雅退出")
-            return True
-        except subprocess.CalledProcessError as e:
-            print_warning(f"优雅退出失败: {e}")
-            return False
-        except Exception as e:
-            print_error(f"未知错误: {str(e)}")
-            return False
-
-
 
 # ====================== 方案更新 ======================
 class SchemeUpdater(UpdateHandler):
@@ -551,7 +526,7 @@ class SchemeUpdater(UpdateHandler):
         # 应用更新
         self.apply_update(temp_file, os.path.join(self.custom_dir, self.scheme_file), remote_info)
         self.clean_build()
-        print_success("方案更新完成")
+        print_success("方案更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署​")
         return True  # 成功更新
 
     def get_local_time(self):
@@ -571,8 +546,7 @@ class SchemeUpdater(UpdateHandler):
         return hash1 == hash2
 
     def apply_update(self, temp, target, info):
-        # 新增终止进程步骤
-        self.terminate_processes()
+
         # 替换文件
         if os.path.exists(target):
             os.remove(target)
@@ -645,8 +619,6 @@ class DictUpdater(UpdateHandler):
     def apply_update(self, temp, target, info):
         """ 参数不再需要传递路径，使用实例变量 """
         try:
-            # 终止进程
-            self.terminate_processes()
             # 替换文件（使用明确的实例变量）
             if os.path.exists(target):
                 os.remove(target)
@@ -704,7 +676,7 @@ class DictUpdater(UpdateHandler):
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
-            print_success("词库更新完成")
+            print_success("词库更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署")
             return True
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
@@ -779,9 +751,6 @@ class ModelUpdater(UpdateHandler):
                 self._save_update_record(remote_info["update_time"])  # 使用新字段
             return False
 
-
-        # 停止服务再覆盖
-        self.terminate_processes()  # 复用终止进程逻辑
         
         # 覆盖目标文件
         try:
@@ -796,7 +765,7 @@ class ModelUpdater(UpdateHandler):
         self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
-        print_success("模型更新完成")
+        print_success("模型更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署")
         return True
 
     def _get_local_record_time(self):
