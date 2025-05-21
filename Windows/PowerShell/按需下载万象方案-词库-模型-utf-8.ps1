@@ -457,7 +457,7 @@ function Compare-UpdateTime {
     }
     
     if ($remoteTime -gt $localTime) {
-        Write-Host "发现新版本，准备更新" -ForegroundColor Green
+        Write-Host "发现新版本，准备更新" -ForegroundColor Yellow
         return $true
     }
     Write-Host "当前已是最新版本" -ForegroundColor Yellow
@@ -579,6 +579,9 @@ if ($InputSchemaDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
+            if ($Debug) {
+                Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+            }
             if (Test-SkipFile -filePath $_.Name) {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             } else {
@@ -619,8 +622,13 @@ if ($InputDictDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir | ForEach-Object {
+            if ($Debug) {
+                Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+            }
             if (Test-SkipFile -filePath $_.Name) {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+            } else {
+                Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir "cn_dicts") -Recurse -Force
             }
         }
 
