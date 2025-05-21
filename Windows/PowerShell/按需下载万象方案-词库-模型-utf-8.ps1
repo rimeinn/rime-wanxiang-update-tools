@@ -628,7 +628,7 @@ if ($InputDictDown -eq "0") {
             if (Test-SkipFile -filePath $_.Name) {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             } else {
-                Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+                Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir "cn_dicts") -Recurse -Force
             }
         }
 
