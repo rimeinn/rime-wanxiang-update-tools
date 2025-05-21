@@ -6,7 +6,7 @@ $AutoUpdate = $false;
 $InputSchemaType = "7";
 # $SkipFiles = @(
 #     "wanxiang_en.dict.yaml",
-#     "chars.dict.yaml"
+#     "tone_fallback.lua"
 # ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
@@ -578,14 +578,23 @@ if ($InputSchemaDown -eq "0") {
         Stop-WeaselServer
         # 等待1秒
         Start-Sleep -Seconds 1
-        Get-ChildItem -Path $sourceDir | ForEach-Object {
-            if ($Debug) {
-                Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
-            }
-            if (Test-SkipFile -filePath $_.Name) {
-                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+        Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
+            if ($_.Name -notin $SkipFiles) {
+                $relativePath = $_.FullName.Substring($sourceDir.Length)
+                $destinationPath = Join-Path $targetDir $relativePath
+                $destinationDir = [System.IO.Path]::GetDirectoryName($destinationPath)
+                if (-not (Test-Path $destinationDir)) {
+                    New-Item -ItemType Directory -Path $destinationDir | Out-Null
+                }
+                Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+
+                if ($Debug) {
+                    Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+                    Write-Host "相对路径: $relativePath" -ForegroundColor Green
+                    Write-Host "目标路径: $destinationPath" -ForegroundColor Green
+                }
             } else {
-                Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             }
         }
 
