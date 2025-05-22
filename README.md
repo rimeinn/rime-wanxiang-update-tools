@@ -9,6 +9,7 @@
 - [x] [Windows版本](./Windows/README.md)
 - [x] [macOS版本](./Mac/README.md)
 - [x] [Linux版本](./Linux/README.md)
+- [x] [iOS版本](./iOS/README.md)
 
 ### Windows版本
 
@@ -35,6 +36,10 @@
 
 - [x] [Shell版本](./Linux/Shell/README.md)
   - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
+
+### iOS版本
+- [x] [Python版本](./iOS/Python/README.md)
+- [x] [Shortcuts版本](./iOS/Shortcuts/README.md)
 
 ## 使用说明
 

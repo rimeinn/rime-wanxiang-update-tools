@@ -1,5 +1,4 @@
 import time
-import subprocess
 import configparser
 import requests
 import os
@@ -8,7 +7,6 @@ import json
 from datetime import datetime, timezone, timedelta
 import sys
 import zipfile
-import shutil
 import fnmatch
 import re
 
@@ -34,8 +32,8 @@ SCHEME_MAP = {
     '8': 'zrm'
 }
 # ====================== 界面函数 ======================
-BORDER = "=" * 60
-SUB_BORDER = "-" * 55
+BORDER = "=" * 50
+SUB_BORDER = "-" * 45
 INDENT = " " * 2
 COLOR = {
     "HEADER": "\033[95m",
@@ -102,8 +100,19 @@ class ConfigManager:
         self.config_path = self._get_config_path()
         self.config = configparser.ConfigParser()
         self._ensure_config_exists()
-        self.rime_engine = ''
         self.rime_dir = ''
+
+    def _check_hamster_path(self):
+        hamster_path_names = os.listdir(".")
+        if "RIME" in hamster_path_names:
+            self.rime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'RIME', 'Rime')
+            return True
+        elif "Rime" in hamster_path_names:
+            self.rime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Rime')
+            return True
+        else:
+            print_error('请将脚本放置到正确的位置（Hamster目录下）')
+            return False
 
     def _get_config_path(self):
         if getattr(sys, 'frozen', False):
@@ -113,32 +122,14 @@ class ConfigManager:
         return os.path.join(base_dir, 'settings.ini')
 
     def _ensure_config_exists(self):
+        if not self._check_hamster_path():
+            return
         if not os.path.exists(self.config_path):
-            self._select_rime_engine()  # 首次运行选择引擎
             self._create_default_config()
             self._guide_scheme_selection()  # 首次运行引导选择方案
             self._show_config_guide()       # 配置引导
 
-    def _select_rime_engine(self):
-        """选择输入法引擎：鼠须管/小企鹅"""
-        print(f"\n{BORDER}")
-        print(f"{INDENT}首次运行引擎选择向导")
-        print(f"{BORDER}")
-        print("[1]-鼠须管Squirrel [2]-小企鹅Fcitx5")
-
-        while True:
-            choice = input(f"{INDENT}请选择输入法引擎：").strip()
-            if choice == '1':
-                self.rime_dir = os.path.expanduser('~/Library/Rime')
-                self.rime_engine = '鼠须管'
-                return
-            elif choice == '2':
-                self.rime_dir = os.path.expanduser('~/.local/share/fcitx5/rime')
-                self.rime_engine = '小企鹅'
-                return
-            else:
-                print(f"{INDENT}无效的选择，请重新选择。")
-                
+   
                 
     def _create_default_config(self):
         """创建包含自动检测路径的默认配置"""
@@ -153,8 +144,7 @@ class ConfigManager:
                 'dict_file': '',
                 'use_mirror': 'true',
                 'github_token': '',
-                'exclude_files': '',
-                'engine': self.rime_engine
+                'exclude_files': ''
             }
         
             # 路径规范化处理
@@ -244,8 +234,7 @@ class ConfigManager:
         
         self.display_config_instructions()
 
-        if os.name == 'posix':
-            subprocess.Popen(['open', self.config_path])
+
         input("\n请按需修改上述路径，保存后按回车键继续...")
 
     def display_config_instructions(self):
@@ -262,8 +251,7 @@ class ConfigManager:
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
-            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files'), 
-            ("[engine]", "选择的输入法引擎", 'engine')
+            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files')
         ]
         
         for item in path_display:
@@ -295,8 +283,8 @@ class ConfigManager:
             for name in missing:
                 print(f"{INDENT}{name}: {required_paths[name]}")
             print(f"\n{INDENT}可能原因：")
-            print(f"{INDENT}1. 鼠须管或小企鹅输入法未正确安装")
-            print(f"{INDENT}2. 自定义路径配置错误")
+            print(f"{INDENT}1. 该路径不存在")
+            print(f"{INDENT}2. 没有将该脚本放置在Hamster路径下")
             sys.exit(1)
             
         return (
@@ -307,8 +295,7 @@ class ConfigManager:
             self.config.getboolean('Settings', 'use_mirror'),
             config['dict_file'],
             exclude_files,
-            github_token,
-            config['engine']
+            github_token
         )
 
 class GithubFileChecker:
@@ -357,8 +344,7 @@ class UpdateHandler:
             self.use_mirror,
             self.dict_file,
             self.exclude_files,
-            self.github_token,
-            self.engine
+            self.github_token
         ) = config_manager.load_config()
         self.ensure_directories()
 
@@ -546,8 +532,7 @@ class SchemeUpdater(UpdateHandler):
 
         # 应用更新
         self.apply_update(temp_file, os.path.join(self.custom_dir, self.scheme_file), remote_info)
-        self.clean_build()
-        print_success("方案更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署​")
+        print_success("方案更新完成，请在本程序结束后打开Hamster输入法重新部署​")
         return True  # 成功更新
 
     def get_local_time(self):
@@ -584,12 +569,6 @@ class SchemeUpdater(UpdateHandler):
                 "update_time": info["update_time"],  # 使用asset的更新时间
                 "apply_time": datetime.now(timezone.utc).isoformat()
             }, f)
-
-    def clean_build(self):
-        build_dir = os.path.join(self.extract_path, "build")
-        if os.path.exists(build_dir):
-            shutil.rmtree(build_dir)
-            print_success("已清理build目录")
             
 
 # ====================== 词库更新 ======================
@@ -697,7 +676,7 @@ class DictUpdater(UpdateHandler):
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
-            print_success("词库更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署")
+            print_success("词库更新完成，请在本程序结束后打开Hamster输入法重新部署")
             return True
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
@@ -786,7 +765,7 @@ class ModelUpdater(UpdateHandler):
         self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
-        print_success("模型更新完成，请在本程序结束后手动重新部署或使用快捷键 Control+Option+` 重新部署")
+        print_success("模型更新完成，请在本程序结束后打开Hamster输入法重新部署")
         return True
 
     def _get_local_record_time(self):
@@ -844,7 +823,6 @@ def main():
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
             print(f"{INDENT}▪ 方案文件：{settings[1]}")
             print(f"{INDENT}▪ 词库文件：{settings[5]}")
-            print(f"{INDENT}▪ 输入法引擎：{settings[8]}")
         except Exception as e:
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
@@ -893,25 +871,10 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
-            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 修改配置\n[6] 退出程序")
-            choice = input("请输入选择（1-6，单独按回车键默认选择全部更新）: ").strip() or '4'
+            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 退出程序")
+            choice = input("请输入选择（1-5，单独按回车键默认选择全部更新）: ").strip() or '4'
             
             if choice == '5':
-                config_manager.display_config_instructions()
-                print("保存后关闭配置文件以继续...")
-
-                # 用.ini文件的默认编辑器打开配置文件
-                if os.name == 'posix':
-                    subprocess.run(['open', config_manager.config_path])
-                print_success("配置文件修改已完成")
-                
-                # 返回主菜单或退出
-                user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
-                if user_choice == '':
-                    continue  # 继续主循环
-                else:
-                    break
-            elif choice == '6':
                 break
             else:
                 # 执行更新操作
