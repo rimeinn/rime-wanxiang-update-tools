@@ -357,14 +357,35 @@ class UpdateHandler:
     def github_api_request(self, url):
         """带令牌认证的API请求"""
         headers = {"User-Agent": "RIME-Updater/1.0"}
-        if not self.github_token:
-            return None
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
         
-        headers["Authorization"] = f"Bearer {self.github_token}"
-        try:
-            return requests.get(url, headers=headers).json()
-        except requests.RequestException:
-            return None
+        max_retries = 2  # 最大重试次数
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.HTTPError as e:
+                if e.response.status_code == 401:
+                    print_error("GitHub令牌无效或无权限")
+                elif e.response.status_code == 403:
+                    print_error("权限不足或触发次级速率限制")
+                else:
+                    print_error(f"HTTP错误: {e.response.status_code}")
+                return None
+            except requests.ConnectionError:
+                print_error("网络连接失败")
+                if attempt < max_retries:
+                    time.sleep(5)
+                    continue
+                return None
+            except requests.RequestException as e:
+                print_error(f"请求异常: {str(e)}")
+                return None
+        
+        return None
 
     def mirror_url(self, url):
         """智能镜像处理"""
