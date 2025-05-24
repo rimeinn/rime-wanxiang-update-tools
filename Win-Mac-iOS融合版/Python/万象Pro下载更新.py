@@ -16,7 +16,7 @@ import re
 
 # GitHub 仓库信息
 OWNER = "amzxyz"
-REPO = "rime_wanxiang_pro"
+# REPO = "rime_wanxiang_pro"
 DICT_TAG = "dict-nightly"
 # 模型相关配置
 MODEL_REPO = "RIME-LMDG"
@@ -169,6 +169,7 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
         self.rime_engine = ''
         self.rime_dir = ''
+        self.scheme_type = ''
         self._ensure_config_exists()
 
     def _check_hamster_path(self):
@@ -218,6 +219,7 @@ class ConfigManager:
             if sys.platform == 'darwin':
                 self._select_rime_engine()  # mac首次运行选择引擎
             self._create_default_config()
+            self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
             self._guide_scheme_selection()  # 首次运行引导选择方案
             self._show_config_guide()       # 配置引导
 
@@ -233,6 +235,7 @@ class ConfigManager:
             'extract_path': paths['rime_user_dir'],
             'dict_extract_path': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
             'weasel_server': paths['server_exe'],
+            'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
             'use_mirror': 'true',
@@ -249,58 +252,100 @@ class ConfigManager:
         with open(self.config_path, 'w', encoding='utf-8') as f:
             self.config.write(f)
 
-    def _guide_scheme_selection(self):
+    def _guide_scheme_type_selection(self):
         print(f"\n{BORDER}")
-        print(f"{INDENT}首次运行配置向导")
+        print(f"{INDENT}首次运行方案版本选择向导")
         print(f"{BORDER}")
-        print("[1]-仓颉 [2]-小鹤 [3]-汉心 [4]-简单鹤")
-        print("[5]-墨奇 [6]-虎码 [7]-五笔 [8]-自然码")
-        
+        print("[1]-万象基础版 [2]-万象Pro（支持各种辅助码）")
+
         while True:
-            choice = input("请选择你的辅助码方案（1-8）: ").strip()
-            if choice in SCHEME_MAP:
-                scheme_key = SCHEME_MAP[choice]
-                
-                # 立即获取实际文件名
-                scheme_file, dict_file = self._get_actual_filenames(scheme_key)
-                
-                # 更新配置文件
-                self.config.set('Settings', 'scheme_file', scheme_file)
-                self.config.set('Settings', 'dict_file', dict_file)
-                # 添加编码参数
-                with open(self.config_path, 'w', encoding='utf-8') as f:
-                    self.config.write(f)
-                
-                print_success(f"已选择方案：{scheme_key.upper()}")
-                print(f"方案文件: {scheme_file}")
-                print(f"词库文件: {dict_file}")
+            choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
+            if choice == '1':
+                self.scheme_type = 'rime_wanxiang'
+                print_success("已选择方案：万象基础版")
                 return
-            print_error("无效的选项，请重新输入")
+            elif choice == '2':
+                self.scheme_type = 'rime_wanxiang_pro'
+                print_success("已选择方案：万象Pro")
+                return
+            else:
+                print_error("无效的选项，请重新输入")
+
+    def _guide_scheme_selection(self):
+        if self.scheme_type == 'rime_wanxiang_pro':
+            print(f"\n{BORDER}")
+            print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
+            print(f"{BORDER}")
+            print("[1]-仓颉 [2]-小鹤 [3]-汉心 [4]-简单鹤")
+            print("[5]-墨奇 [6]-虎码 [7]-五笔 [8]-自然码")
+        
+            while True:
+                choice = input("请选择你的辅助码方案（1-8）: ").strip()
+                if choice in SCHEME_MAP:
+                    scheme_key = SCHEME_MAP[choice]
+                    
+                    # 立即获取实际文件名
+                    scheme_file, dict_file = self._get_actual_filenames(scheme_key)
+                    
+                    # 更新配置文件
+                    self.config.set('Settings', 'scheme_type', self.scheme_type)
+
+                    self.config.set('Settings', 'scheme_file', scheme_file)
+                    self.config.set('Settings', 'dict_file', dict_file)
+                    # 添加编码参数
+                    with open(self.config_path, 'w', encoding='utf-8') as f:
+                        self.config.write(f)
+                    
+                    print_success(f"已选择方案：{scheme_key.upper()}")
+                    print(f"方案文件: {scheme_file}")
+                    print(f"词库文件: {dict_file}")
+                    return
+                print_error("无效的选项，请重新输入")
+        else:
+            _, dict_file = self._get_actual_filenames('cn_dicts.zip')
+            # 更新配置文件
+            self.config.set('Settings', 'scheme_type', self.scheme_type)
+            self.config.set('Settings', 'dict_file', dict_file)
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                self.config.write(f)
+            print(f"词库文件: {dict_file}")
+            return
+
             
     def _get_actual_filenames(self, scheme_key):
         """获取实际文件名（带网络请求）"""
         try:
             # 方案文件检查器（使用最新Release）
+            if self.scheme_type == 'rime_wanxiang_pro':
+                scheme_pattern = f"wanxiang-{scheme_key}*.zip"
+                dict_pattern = f"*{scheme_key}_dicts.zip"
+            else:
+                scheme_pattern = "rime_wanxiang*.zip"
+                dict_pattern = "cn_dicts.zip"
+
             scheme_checker = GithubFileChecker(
                 owner=OWNER,
-                repo=REPO,
-                pattern=f"wanxiang-{scheme_key}*.zip"
+                repo=self.scheme_type,
+                pattern=scheme_pattern
             )
             # 词库文件检查器（使用dict-nightly标签）
             dict_checker = GithubFileChecker(
                 owner=OWNER,
-                repo=REPO,
-                pattern=f"*{scheme_key}*.zip",
+                repo=self.scheme_type,
+                pattern=dict_pattern,
                 tag=DICT_TAG
             )
             
             # 获取最新文件名
-            scheme_file = scheme_checker.get_latest_file()
+            if self.scheme_type == 'rime_wanxiang_pro':
+                scheme_file = scheme_checker.get_latest_file()
+                # 确保返回有效文件名
+                if not scheme_file or '*' in scheme_file:
+                    raise ValueError("无法获取有效的方案文件名")
+            else:
+                scheme_file = ""
+                
             dict_file = dict_checker.get_latest_file()
-            
-            # 确保返回有效文件名
-            if not scheme_file or '*' in scheme_file:
-                raise ValueError("无法获取有效的方案文件名")
             if not dict_file or '*' in dict_file:
                 raise ValueError("无法获取有效的词库文件名")
                 
@@ -308,10 +353,16 @@ class ConfigManager:
             
         except Exception as e:
             print_warning(f"无法获取最新文件名，使用默认模式: {str(e)}")
-            return (
-                f"wanxiang-{scheme_key}-fuzhu.zip",
-                f"*-{scheme_key}_dicts.zip"
-            )
+            if self.scheme_type == 'rime_wanxiang_pro':
+                return (
+                    f"wanxiang-{scheme_key}-fuzhu.zip",
+                    f"*-{scheme_key}_dicts.zip"
+                )
+            else:
+                return (
+                    "",
+                    f"*-{scheme_key}_dicts.zip"
+                )
 
     def _show_config_guide(self):
         """配置引导界面"""
@@ -349,6 +400,7 @@ class ConfigManager:
             ("[extract_path]", "方案解压目录（用户文件夹）", 'extract_path'),
             ("[dict_extract_path]", "词库解压目录", 'dict_extract_path'),
             ("[weasel_server]", "Windows端小狼毫服务程序路径", 'weasel_server'),
+            ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
@@ -409,6 +461,7 @@ class ConfigManager:
             
         return (
             config['custom_dir'],
+            config['scheme_type'],
             config['scheme_file'],
             config['extract_path'],
             config['dict_extract_path'],
@@ -460,6 +513,7 @@ class UpdateHandler:
         self.config_manager = config_manager
         (
             self.custom_dir,
+            self.scheme_type,
             self.scheme_file,
             self.extract_path,
             self.dict_extract_path,
@@ -572,9 +626,17 @@ class UpdateHandler:
                     # 保持方案文件结构（应用排除规则）
                     base_dir = os.path.splitext(os.path.basename(zip_path))[0] + "/"
                     exclude_patterns = self.exclude_files
+                    exclude_patterns.append('.github')  # 万象普通版排除.github目录
+                    
                     for member in zip_ref.namelist():
-                        if member.startswith(base_dir) and not member.endswith('/'):
+                        if self.scheme_type == 'rime_wanxiang_pro':
+                            rule_check = member.startswith(base_dir) and not member.endswith('/')
                             relative_path = member[len(base_dir):]
+                        else:
+                            rule_check = 'rime_wanxiang' in member and not member.endswith('/')
+                            relative_path = member[member.index('/')+1:]
+
+                        if rule_check:
                             # 统一路径分隔符为当前系统格式
                             normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
                             # 获取纯文件名部分
@@ -690,18 +752,28 @@ class SchemeUpdater(UpdateHandler):
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
 
     def check_update(self):
-        releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{REPO}/releases")
+        releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases")
         if not releases:
             return None
         for release in releases[:2]:
-            for asset in release.get("assets", []):
-                if asset["name"] == self.scheme_file:
+            if self.scheme_type == 'rime_wanxiang_pro':
+                for asset in release.get("assets", []):
+                    if asset["name"] == self.scheme_file:
+                        return {
+                            "url": self.mirror_url(asset["browser_download_url"]),
+                            # 修改为获取asset的更新时间
+                            "update_time": asset["updated_at"],
+                            "tag": release["tag_name"]
+                        }
+            else:
+                tag_name = release.get("tag_name", "")
+                if tag_name:
                     return {
-                        "url": self.mirror_url(asset["browser_download_url"]),
-                        # 修改为获取asset的更新时间
-                        "update_time": asset["updated_at"],
-                        "tag": release["tag_name"]
+                        "url": self.mirror_url(f"https://github.com/amzxyz/rime_wanxiang/archive/refs/tags/{tag_name}.zip"),
+                        "update_time": release["published_at"],
+                        "tag": tag_name
                     }
+                
         return None
 
     def run(self):
@@ -727,14 +799,17 @@ class SchemeUpdater(UpdateHandler):
             return False
 
         # 校验文件
-        target_file = os.path.join(self.custom_dir, self.scheme_file)
+        if self.scheme_file:
+            target_file = os.path.join(self.custom_dir, self.scheme_file)
+        else:
+            target_file = os.path.join(self.custom_dir, "rime_wanxiang.zip")
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
             os.remove(temp_file)
             return False
 
         # 应用更新
-        self.apply_update(temp_file, os.path.join(self.custom_dir, self.scheme_file), remote_info)
+        self.apply_update(temp_file, target_file, remote_info)
         self.clean_build()
         print_success("方案更新完成，Windows小狼毫将自动部署，Mac鼠须管或小企鹅及iOS Hamster输入法请在本程序结束后手动重新部署")
         return True  # 成功更新
@@ -795,7 +870,7 @@ class DictUpdater(UpdateHandler):
 
     def check_update(self):
         release = self.github_api_request(
-            f"https://api.github.com/repos/{OWNER}/{REPO}/releases/tags/{self.target_tag}"
+            f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases/tags/{self.target_tag}"
         )
         if not release:
             return None
@@ -1031,7 +1106,7 @@ def calculate_sha256(file_path):
 
 # ====================== 主程序 ======================
 def main():
-    # try:
+    try:
         # 初始化配置
         config_manager = ConfigManager()
         config_loaded = False
@@ -1040,12 +1115,14 @@ def main():
         try:
             settings = config_manager.load_config()
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
-            print(f"{INDENT}▪ 方案文件：{settings[1]}")
-            print(f"{INDENT}▪ 词库文件：{settings[6]}")
+            print(f"{INDENT}▪ 方案版本：{settings[1]}")
+            if settings[2]:
+                print(f"{INDENT}▪ 方案文件：{settings[2]}")
+            print(f"{INDENT}▪ 词库文件：{settings[7]}")
             if sys.platform == 'win32':
-                print(f"{INDENT}▪ 服务程序：{settings[4]}")
+                print(f"{INDENT}▪ 服务程序：{settings[5]}")
             elif sys.platform == 'darwin':
-                print(f"{INDENT}▪ 输入法引擎：{settings[9]}")
+                print(f"{INDENT}▪ 输入法引擎：{settings[10]}")
             else:
                 pass
         except Exception as e:
@@ -1189,9 +1266,9 @@ def main():
         time.sleep(2)
         sys.exit(0)
         
-    # except Exception as e:
-        # print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
-        # sys.exit(1)
+    except Exception as e:
+        print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
