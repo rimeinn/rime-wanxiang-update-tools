@@ -34,6 +34,7 @@ SCHEME_MAP = {
     '8': 'zrm'
 }
 # ====================== 界面函数 ======================
+UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 BORDER = "=" * 50 if sys.platform == 'ios' else "-" * 60
 SUB_BORDER = "-" * 45 if sys.platform == 'ios' else "-" * 55
 INDENT = " " * 2
@@ -1106,6 +1107,12 @@ def calculate_sha256(file_path):
 
 # ====================== 主程序 ======================
 def main():
+    # 打印更新工具版本
+    if (UPDATE_TOOLS_VERSION.startswith("DEFAULT")):
+        print(f"\n{COLOR['WARNING']}[!] 你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。{COLOR['ENDC']}")
+    else:
+        print(f"\n{COLOR['GREEN']}[√] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")
+
     try:
         # 初始化配置
         config_manager = ConfigManager()
