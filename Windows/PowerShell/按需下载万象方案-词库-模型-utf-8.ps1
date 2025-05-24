@@ -596,7 +596,9 @@ if ($InputSchemaDown -eq "0") {
                     New-Item -ItemType Directory -Path $destinationDir | Out-Null
                 }
                 if (Test-Path $_.FullName -PathType Container) {
-                    Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
+                    if ($Debug) {
+                        Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
+                    }
                 } elseif (Test-Path $_.FullName -PathType Leaf) {
                     Copy-Item -Path $_.FullName -Destination $destinationPath -Force
                 }
