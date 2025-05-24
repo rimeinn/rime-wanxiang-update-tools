@@ -6,7 +6,8 @@ $AutoUpdate = $false;
 $InputSchemaType = "7";
 # $SkipFiles = @(
 #     "wanxiang_en.dict.yaml",
-#     "tone_fallback.lua"
+#     "tone_fallback.lua",
+#     "custom_phrase.txt"
 # ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
@@ -548,6 +549,7 @@ if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq 
     Write-Host "正在更新词库，请不要操作键盘，直到更新完成" -ForegroundColor Red
     Write-Host "更新完成后会自动拉起小狼毫" -ForegroundColor Red
 } else {
+    Write-Host "没有指定要更新的内容，将退出" -ForegroundColor Red
     exit 0
 }
 
@@ -586,7 +588,11 @@ if ($InputSchemaDown -eq "0") {
                 if (-not (Test-Path $destinationDir)) {
                     New-Item -ItemType Directory -Path $destinationDir | Out-Null
                 }
-                Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                if (Test-Path $_.FullName -PathType Container) {
+                    Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
+                } elseif (Test-Path $_.FullName -PathType Leaf) {
+                    Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                }
 
                 if ($Debug) {
                     Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
