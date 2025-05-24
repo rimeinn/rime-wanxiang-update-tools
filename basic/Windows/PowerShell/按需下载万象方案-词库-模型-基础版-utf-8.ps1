@@ -7,6 +7,13 @@ $AutoUpdate = $false;
 # ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
+$UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
+if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
+    Write-Host "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。" -ForegroundColor Yellow;
+} else {
+    Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
+}
+
 # 设置代理地址和端口，配置好后删除注释符号
 # $proxyAddress = "http://127.0.0.1:7897"
 # [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)

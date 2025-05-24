@@ -23,6 +23,13 @@ EXCLUDE_FILE=(
   *.gram          # 语法模型，不是每次都需要更新
 )
 
+UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
+if [[ "${UPDATE_TOOLS_VERSION}" =~ ^DEFAULT ]]; then
+  echo -e "\e[1;93m你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。\e[0m"
+else
+  echo "更新工具版本: ${UPDATE_TOOLS_VERSION}"
+fi
+
 ## 以下内容不需要修改，除非你知道自己在干什么
 GHAPI="https://api.github.com/repos/amzxyz"
 BASESCHEMAREPO="rime_wanxiang"
