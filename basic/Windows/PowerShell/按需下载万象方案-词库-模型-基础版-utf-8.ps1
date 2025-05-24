@@ -647,14 +647,29 @@ if ($InputDictDown -eq "0") {
         Stop-WeaselServer
         # 等待1秒
         Start-Sleep -Seconds 1
-        Get-ChildItem -Path $sourceDir | ForEach-Object {
-            if ($Debug) {
-                Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
-            }
-            if (Test-SkipFile -filePath $_.Name) {
-                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+        Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
+            if ($_.Name -notin $SkipFiles) {
+                $relativePath = $_.FullName.Substring($sourceDir.Length)
+                $destinationPath = Join-Path $targetDir $relativePath
+                $destinationDir = [System.IO.Path]::GetDirectoryName($destinationPath)
+                if (-not (Test-Path $destinationDir)) {
+                    New-Item -ItemType Directory -Path $destinationDir | Out-Null
+                }
+                if (Test-Path $_.FullName -PathType Container) {
+                    if ($Debug) {
+                        Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
+                    }
+                } elseif (Test-Path $_.FullName -PathType Leaf) {
+                    Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                }
+
+                if ($Debug) {
+                    Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+                    Write-Host "相对路径: $relativePath" -ForegroundColor Green
+                    Write-Host "目标路径: $destinationPath" -ForegroundColor Green
+                }
             } else {
-                Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir "cn_dicts") -Recurse -Force
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             }
         }
 
