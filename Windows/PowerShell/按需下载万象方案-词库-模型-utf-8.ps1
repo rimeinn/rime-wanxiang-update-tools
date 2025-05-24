@@ -6,9 +6,17 @@ $AutoUpdate = $false;
 $InputSchemaType = "7";
 # $SkipFiles = @(
 #     "wanxiang_en.dict.yaml",
-#     "tone_fallback.lua"
+#     "tone_fallback.lua",
+#     "custom_phrase.txt"
 # ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
+
+$UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
+if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
+    Write-Host "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。" -ForegroundColor Yellow;
+} else {
+    Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
+}
 
 # 设置代理地址和端口，配置好后删除注释符号
 # $proxyAddress = "http://127.0.0.1:7897"
@@ -548,6 +556,7 @@ if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq 
     Write-Host "正在更新词库，请不要操作键盘，直到更新完成" -ForegroundColor Red
     Write-Host "更新完成后会自动拉起小狼毫" -ForegroundColor Red
 } else {
+    Write-Host "没有指定要更新的内容，将退出" -ForegroundColor Red
     exit 0
 }
 
@@ -586,7 +595,11 @@ if ($InputSchemaDown -eq "0") {
                 if (-not (Test-Path $destinationDir)) {
                     New-Item -ItemType Directory -Path $destinationDir | Out-Null
                 }
-                Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                if (Test-Path $_.FullName -PathType Container) {
+                    Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
+                } elseif (Test-Path $_.FullName -PathType Leaf) {
+                    Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                }
 
                 if ($Debug) {
                     Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green

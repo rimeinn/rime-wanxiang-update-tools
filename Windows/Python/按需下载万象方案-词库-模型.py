@@ -15,6 +15,8 @@ import re
 
 # ====================== 全局配置 ======================
 
+UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
+
 # GitHub 仓库信息
 OWNER = "amzxyz"
 REPO = "rime_wanxiang_pro"
@@ -939,6 +941,12 @@ def calculate_sha256(file_path):
 
 # ====================== 主程序 ======================
 def main():
+    # 打印更新工具版本
+    if (UPDATE_TOOLS_VERSION.startswith("DEFAULT")):
+        print(f"\n{COLOR['WARNING']}[!] 你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。{COLOR['ENDC']}")
+    else:
+        print(f"\n{COLOR['GREEN']}[√] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")
+
     try:
         # 初始化配置
         config_manager = ConfigManager()
