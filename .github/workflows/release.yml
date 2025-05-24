@@ -36,7 +36,7 @@ jobs:
         run: |
           # 使用井号(#)作为分隔符避免路径冲突
           find . -type f -name '*.ps1' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
-          find. -type f -name '*.py' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
+          find . -type f -name '*.py' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
           find Linux/ -type f -name 'wanxiang-update' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
 
       - name: Rename files
