@@ -130,6 +130,7 @@ class ConfigManager:
         self.rime_engine = ''
         self.rime_dir = ''
         self.scheme_type = ''
+        self.reload_flag = False
         self._ensure_config_exists()
 
     def detect_installation_paths(self):
@@ -143,28 +144,23 @@ class ConfigManager:
             # 智能路径处理
             if detected['weasel_root'] and detected['server_exe']:
                 detected['server_exe'] = os.path.join(detected['weasel_root'], detected['server_exe'])
-            
-            # 设置默认值
-            default_weasel_path = r"C:\Program Files (x86)\Rime"
-            if os.path.exists(default_weasel_path):
-                for weasel_dir in os.listdir(default_weasel_path):
-                    if 'WeaselServer.exe' in os.listdir(os.path.join(default_weasel_path, weasel_dir)):
-                        weasel_root = os.path.join(default_weasel_path, weasel_dir)
-                        server_exe = os.path.join(weasel_root, 'WeaselServer.exe')
             else:
-                weasel_root = ''
-                server_exe = ''
+                print_error("无法自动检测到 Weasel 根目录或 WeaselServer.exe。")
+                print_error("你的小狼毫可能没有安装或配置正确。")
+                print_error("正在退出程序...")
+                sys.exit(1)
 
             defaults = {
-                'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime'),
-                'weasel_root': weasel_root,
-                'server_exe': server_exe
+                'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime')
             }
             
-            for key in detected:
-                if not detected[key] or not os.path.exists(detected[key]):
-                    detected[key] = defaults[key]
-            
+            if not detected["rime_user_dir"] or not os.path.exists(detected[key]):
+                detected["rime_user_dir"] = defaults["rime_user_dir"]
+                if not self.reload_flag:
+                    print_warning("未检测到小狼毫自定义 RimeUserDir，使用默认路径：" + detected["rime_user_dir"])
+            else:
+                if not self.reload_flag:
+                    print_success("检测到小狼毫自定义 RimeUserDir：" + detected["rime_user_dir"])
             return detected
         elif sys.platform == 'darwin':
             # 处理macOS
@@ -232,13 +228,66 @@ class ConfigManager:
             if not self._check_hamster_path():
                 return
         if not os.path.exists(self.config_path):
+            print_warning("正在创建一个新的配置文件。")
             self._init_empty_config()
             if sys.platform == 'darwin':
                 self._select_rime_engine()  # mac首次运行选择引擎
-            self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
-            self._guide_scheme_selection()  # 首次运行引导选择方案
-            self._write_config() # 写入配置文件
+            # self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
+            # self._guide_scheme_selection()  # 首次运行引导选择方案
+            if self._guide_scheme_type_selection() and self._guide_scheme_selection():
+                self._write_config() # 写入配置文件
+                print_success("配置文件创建成功。")
+            else:
+                print_error("配置向导失败，请手动配置。")
+                exit(1)  # 终止程序执行
             self._show_config_guide()       # 配置引导
+        else:
+            print_warning("配置文件已存在，将加载配置。")
+            self._try_load_config()
+            self._print_config_info()  # 打印配置信息
+
+    def _print_config_info(self):
+        """打印配置信息"""
+        print(f"\n{BORDER}")
+        print(f"{INDENT}当前配置信息")
+        print(f"{BORDER}")
+        print(f"{INDENT}▪ 方案版本：{self.config['Settings']['scheme_type']}")
+        print(f"{INDENT}▪ 方案文件：{self.config['Settings']['scheme_file']}")
+        print(f"{INDENT}▪ 词库文件：{self.config['Settings']['dict_file']}")
+        print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
+        print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
+        print(f"{BORDER}")
+        # 让用户确认配置是否符合预期
+        while True:
+            choice = input(f"{INDENT}配置是否正确？(y/n): ").strip().lower()
+            if choice == 'y':
+                print_success("配置正确。")
+                break
+            elif choice == 'n':
+                print_warning("请重新配置。")
+                os.remove(self.config_path)  # 删除配置文件
+                self.reload_flag = True
+                self._ensure_config_exists()  # 重新创建配置文件
+                break
+            else:
+                print_error("无效的输入，请重新输入。")
+
+    def _try_load_config(self):
+        """尝试加载配置文件"""
+        # 加载并验证配置
+        try:
+            settings = self.load_config()
+            print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
+            print(f"{INDENT}▪ 方案版本：{settings[1]}")
+            if settings[1]:
+                print(f"{INDENT}▪ 方案文件：{settings[2]}")
+            print(f"{INDENT}▪ 词库文件：{settings[3]}")
+            if sys.platform == 'darwin':
+                print(f"{INDENT}▪ 输入法引擎：{settings[0]}")
+
+        except Exception as e:
+            print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
+            sys.exit(1)
 
     def _init_empty_config(self):
         """创建空配置"""
@@ -256,7 +305,7 @@ class ConfigManager:
         with open(self.config_path, 'w', encoding='utf-8') as f:
             self.config.write(f)
 
-    def _guide_scheme_type_selection(self):
+    def _guide_scheme_type_selection(self) -> bool:
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行方案版本选择向导")
         print(f"{BORDER}")
@@ -269,17 +318,17 @@ class ConfigManager:
                 # 更新配置文件
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象基础版")
-                return
+                return True
             elif choice == '2':
                 self.scheme_type = 'rime_wanxiang_pro'
                 # 更新配置文件
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象Pro")
-                return
+                return True
             else:
                 print_error("无效的选项，请重新输入")
 
-    def _guide_scheme_selection(self):
+    def _guide_scheme_selection(self) -> bool:
         if self.scheme_type == 'rime_wanxiang_pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
@@ -301,7 +350,7 @@ class ConfigManager:
                     print_success(f"已选择方案：{scheme_key.upper()}")
                     print(f"方案文件: {scheme_file}")
                     print(f"词库文件: {dict_file}")
-                    return
+                    return True
                 print_error("无效的选项，请重新输入")
         else:
             _, dict_file = self._get_actual_filenames('cn_dicts.zip')
@@ -310,7 +359,7 @@ class ConfigManager:
             self.config.set('Settings', 'dict_file', dict_file)
 
             print(f"词库文件: {dict_file}")
-            return
+            return True
 
             
     def _get_actual_filenames(self, scheme_key):
@@ -437,8 +486,8 @@ class ConfigManager:
         elif system == 'darwin':
             paths = self.detect_installation_paths()
             required_paths = {
-            '方案解压目录': paths['rime_user_dir'],
-            '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
+                '方案解压目录': paths['rime_user_dir'],
+                '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
             }
         else:
             required_paths = {
@@ -1143,21 +1192,6 @@ def main():
         # 初始化配置
         config_manager = ConfigManager()
         config_loaded = False
-
-        # 加载并验证配置
-        try:
-            settings = config_manager.load_config()
-            print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
-            print(f"{INDENT}▪ 方案版本：{settings[1]}")
-            if settings[1]:
-                print(f"{INDENT}▪ 方案文件：{settings[2]}")
-            print(f"{INDENT}▪ 词库文件：{settings[3]}")
-            if sys.platform == 'darwin':
-                print(f"{INDENT}▪ 输入法引擎：{settings[0]}")
-
-        except Exception as e:
-            print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
-            sys.exit(1)
 
         # ========== 自动更新检测（仅在程序启动时执行一次）==========
         update_flag = False  # 标记是否存在更新
