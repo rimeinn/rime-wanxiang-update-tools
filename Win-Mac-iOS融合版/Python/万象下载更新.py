@@ -217,10 +217,14 @@ class ConfigManager:
                 print(f"{INDENT}无效的选择，请重新选择。")
 
     def _get_config_path(self):
+        # 检查程序是否是打包后的可执行文件。如果是，sys.frozen 属性会被设置为 True
         if getattr(sys, 'frozen', False):
+            # 如果是打包后的可执行文件，获取可执行文件所在的目录
             base_dir = os.path.dirname(sys.executable)
         else:
+            # 如果是普通的 Python 脚本，获取当前脚本文件的绝对路径所在的目录
             base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 将基础目录和配置文件名 'settings.ini' 拼接成完整的配置文件路径并返回
         return os.path.join(base_dir, 'settings.ini')
 
     def _ensure_config_exists(self):
