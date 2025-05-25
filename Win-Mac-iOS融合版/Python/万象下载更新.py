@@ -232,7 +232,7 @@ class ConfigManager:
             if not self._check_hamster_path():
                 return
         if not os.path.exists(self.config_path):
-            self._create_empty_config()
+            self._init_empty_config()
             if sys.platform == 'darwin':
                 self._select_rime_engine()  # mac首次运行选择引擎
             self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
@@ -240,7 +240,7 @@ class ConfigManager:
             self._write_config() # 写入配置文件
             self._show_config_guide()       # 配置引导
 
-    def _create_empty_config(self):
+    def _init_empty_config(self):
         """创建空配置"""
         self.config['Settings'] = {
             'engine': '',
