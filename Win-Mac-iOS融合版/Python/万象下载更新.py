@@ -118,48 +118,7 @@ if sys.platform == 'win32':
         except (FileNotFoundError, PermissionError, OSError):
             return None
 
-def detect_installation_paths(dir='', engine=''):
-    """自动检测安装路径"""
-    detected = {}
-    if sys.platform == 'win32':
-        for key in REG_PATHS:
-            path, name, hive = REG_PATHS[key]
-            detected[key] = get_registry_value(path, name, hive)
-        
-        # 智能路径处理
-        if detected['weasel_root'] and detected['server_exe']:
-            detected['server_exe'] = os.path.join(detected['weasel_root'], detected['server_exe'])
-        
-        # 设置默认值
-        defaults = {
-            'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime'),
-            'weasel_root': r"C:\Program Files (x86)\Rime\weasel-0.16.3",
-            'server_exe': r"C:\Program Files (x86)\Rime\weasel-0.16.3\WeaselServer.exe"
-        }
-        
-        for key in detected:
-            if not detected[key] or not os.path.exists(detected[key]):
-                detected[key] = defaults[key]
-        
-        detected.update({'engine': engine})
-        return detected
-    elif sys.platform == 'darwin' or sys.platform == 'ios':
-        # 处理macOS和iOS
-        if os.path.exists(dir):
-            print_success(f"检测到安装或配置目录: {dir}")
-            detected.update(
-                {
-                    'rime_user_dir': dir,
-                    'weasel_root': '',
-                    'server_exe': '',
-                    'engine': engine
-                }
-            )
-            return detected
-        print_warning(f"未检测到安装或配置目录: {dir}")
-        return detected
-    else:
-        return detected
+
 
 
 # ====================== 配置管理器 ======================
@@ -172,6 +131,54 @@ class ConfigManager:
         self.rime_dir = ''
         self.scheme_type = ''
         self._ensure_config_exists()
+
+    def detect_installation_paths(self):
+        """自动检测安装路径"""
+        detected = {}
+        if sys.platform == 'win32':
+            for key in REG_PATHS:
+                path, name, hive = REG_PATHS[key]
+                detected[key] = get_registry_value(path, name, hive)
+            
+            # 智能路径处理
+            if detected['weasel_root'] and detected['server_exe']:
+                detected['server_exe'] = os.path.join(detected['weasel_root'], detected['server_exe'])
+            
+            # 设置默认值
+            default_weasel_path = r"C:\Program Files (x86)\Rime"
+            if os.path.exists(default_weasel_path):
+                for weasel_dir in os.listdir(default_weasel_path):
+                    if 'WeaselServer.exe' in os.listdir(os.path.join(default_weasel_path, weasel_dir)):
+                        weasel_root = os.path.join(default_weasel_path, weasel_dir)
+                        server_exe = os.path.join(weasel_root, 'WeaselServer.exe')
+            else:
+                weasel_root = ''
+                server_exe = ''
+
+            defaults = {
+                'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime'),
+                'weasel_root': weasel_root,
+                'server_exe': server_exe
+            }
+            
+            for key in detected:
+                if not detected[key] or not os.path.exists(detected[key]):
+                    detected[key] = defaults[key]
+            
+            return detected
+        elif sys.platform == 'darwin':
+            # 处理macOS
+            if self.config.get('Settings', 'engine') == '鼠须管':
+                detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
+            elif self.config.get('Settings', 'engine') == '小企鹅':
+                detected['rime_user_dir'] = os.path.expanduser('~/.local/share/fcitx5/rime')
+            else:
+                detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
+            return detected     
+        else:
+            detected['rime_user_dir'] = self.rime_dir
+            return detected
+
 
     def _check_hamster_path(self):
         hamster_path_names = os.listdir('.')
@@ -197,10 +204,14 @@ class ConfigManager:
             if choice == '1':
                 self.rime_dir = os.path.expanduser('~/Library/Rime')
                 self.rime_engine = '鼠须管'
+                # 更新配置文件
+                self.config.set('Settings', 'engine', self.rime_engine)
                 return
             elif choice == '2':
                 self.rime_dir = os.path.expanduser('~/.local/share/fcitx5/rime')
                 self.rime_engine = '小企鹅'
+                # 更新配置文件
+                self.config.set('Settings', 'engine', self.rime_engine)
                 return
             else:
                 print(f"{INDENT}无效的选择，请重新选择。")
@@ -217,39 +228,27 @@ class ConfigManager:
             if not self._check_hamster_path():
                 return
         if not os.path.exists(self.config_path):
+            self._create_empty_config()
             if sys.platform == 'darwin':
                 self._select_rime_engine()  # mac首次运行选择引擎
-            self._create_default_config()
             self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
             self._guide_scheme_selection()  # 首次运行引导选择方案
+            self._write_config() # 写入配置文件
             self._show_config_guide()       # 配置引导
 
-    def _create_default_config(self):
-        """创建包含自动检测路径的默认配置"""
-        if sys.platform == 'win32':
-            paths = detect_installation_paths()
-        else:
-            paths = detect_installation_paths(self.rime_dir, self.rime_engine)
-        
+    def _create_empty_config(self):
+        """创建空配置"""
         self.config['Settings'] = {
-            'custom_dir': os.path.join(paths['rime_user_dir'], 'UpdateCache'),
-            'extract_path': paths['rime_user_dir'],
-            'dict_extract_path': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
-            'weasel_server': paths['server_exe'],
+            'engine': '',
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
             'use_mirror': 'true',
             'github_token': '',
-            'exclude_files': '',
-            'engine': paths['engine']
+            'exclude_files': ''
         }
         
-        # 路径规范化处理
-        for key in ['custom_dir', 'extract_path', 'dict_extract_path', 'weasel_server']:
-            self.config['Settings'][key] = os.path.normpath(self.config['Settings'][key]) if os.path.normpath(self.config['Settings'][key]) != '.' else ''
-        
-
+    def _write_config(self):
         with open(self.config_path, 'w', encoding='utf-8') as f:
             self.config.write(f)
 
@@ -263,10 +262,14 @@ class ConfigManager:
             choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
             if choice == '1':
                 self.scheme_type = 'rime_wanxiang'
+                # 更新配置文件
+                self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象基础版")
                 return
             elif choice == '2':
                 self.scheme_type = 'rime_wanxiang_pro'
+                # 更新配置文件
+                self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象Pro")
                 return
             else:
@@ -288,14 +291,8 @@ class ConfigManager:
                     # 立即获取实际文件名
                     scheme_file, dict_file = self._get_actual_filenames(scheme_key)
                     
-                    # 更新配置文件
-                    self.config.set('Settings', 'scheme_type', self.scheme_type)
-
                     self.config.set('Settings', 'scheme_file', scheme_file)
                     self.config.set('Settings', 'dict_file', dict_file)
-                    # 添加编码参数
-                    with open(self.config_path, 'w', encoding='utf-8') as f:
-                        self.config.write(f)
                     
                     print_success(f"已选择方案：{scheme_key.upper()}")
                     print(f"方案文件: {scheme_file}")
@@ -307,8 +304,7 @@ class ConfigManager:
             # 更新配置文件
             self.config.set('Settings', 'scheme_type', self.scheme_type)
             self.config.set('Settings', 'dict_file', dict_file)
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                self.config.write(f)
+
             print(f"词库文件: {dict_file}")
             return
 
@@ -372,7 +368,8 @@ class ConfigManager:
         print(f"{INDENT}自动检测路径结果")
         print(f"{BORDER}")
         
-        detected = detect_installation_paths()
+        self.config.read(self.config_path, encoding='utf-8')
+        detected = self.detect_installation_paths()
         status_emoji = {True: "✅", False: "❌"}
         for key in detected:
             exists = os.path.exists(detected[key])
@@ -397,17 +394,13 @@ class ConfigManager:
         print("使用说明：\n")
         
         path_display = [
-            ("[custom_dir]", "存储下载的压缩包和更新时间记录文件", 'custom_dir'),
-            ("[extract_path]", "方案解压目录（用户文件夹）", 'extract_path'),
-            ("[dict_extract_path]", "词库解压目录", 'dict_extract_path'),
-            ("[weasel_server]", "Windows端小狼毫服务程序路径", 'weasel_server'),
+            ("[engine]", "Mac端选择的输入法引擎", 'engine'),
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
-            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files'),
-            ("[engine]", "Mac端选择的输入法引擎", 'engine')
+            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files')
         ]
         
         for item in path_display:
@@ -431,15 +424,22 @@ class ConfigManager:
 
         # 验证关键路径
         if system == 'win32':
+            paths = self.detect_installation_paths()
             required_paths = {
-                '小狼毫服务程序': config['weasel_server'],
-                '方案解压目录': config['extract_path'],
-                '词库解压目录': config['dict_extract_path']
+                '小狼毫服务程序': paths['server_exe'],
+                '方案解压目录': paths['rime_user_dir'],
+                '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
+            }
+        elif system == 'darwin':
+            paths = self.detect_installation_paths()
+            required_paths = {
+            '方案解压目录': paths['rime_user_dir'],
+            '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
             }
         else:
             required_paths = {
-            '方案解压目录': config['extract_path'],
-            '词库解压目录': config['dict_extract_path']
+                '方案解压目录': self.rime_dir,
+                '词库解压目录': os.path.join(self.rime_dir, 'cn_dicts')
             }
         
         missing = [name for name, path in required_paths.items() if not os.path.exists(path)]
@@ -461,17 +461,13 @@ class ConfigManager:
             sys.exit(1)
             
         return (
-            config['custom_dir'],
+            config['engine'],
             config['scheme_type'],
             config['scheme_file'],
-            config['extract_path'],
-            config['dict_extract_path'],
-            config['weasel_server'],
-            self.config.getboolean('Settings', 'use_mirror'),
             config['dict_file'],
-            exclude_files,
+            self.config.getboolean('Settings', 'use_mirror'),
             github_token,
-            config['engine']
+            exclude_files
         )
 
 class GithubFileChecker:
@@ -513,20 +509,32 @@ class UpdateHandler:
     def __init__(self, config_manager):
         self.config_manager = config_manager
         (
-            self.custom_dir,
+            self.engine,
             self.scheme_type,
             self.scheme_file,
+            self.dict_file,
+            self.use_mirror,
+            self.github_token,
+            self.exclude_files
+        ) = config_manager.load_config()
+        (
+            self.custom_dir,
             self.extract_path,
             self.dict_extract_path,
-            self.weasel_server,
-            self.use_mirror,
-            self.dict_file,
-            self.exclude_files,
-            self.github_token,
-            self.engine
-        ) = config_manager.load_config()
+            self.weasel_server
+        ) = self.get_all_dir()
         self.ensure_directories()
 
+    def get_all_dir(self):
+        rime_user_dir = self.config_manager.detect_installation_paths().get('rime_user_dir', '')
+        server = self.config_manager.detect_installation_paths().get('server_exe', '')
+        return (
+            os.path.join(rime_user_dir, 'UpdateCache'), 
+            rime_user_dir, 
+            os.path.join(rime_user_dir, 'cn_dicts'),
+            server
+        )
+        
     def ensure_directories(self):
         """目录保障系统"""
         os.makedirs(self.custom_dir, exist_ok=True)
@@ -1017,7 +1025,7 @@ class ModelUpdater(UpdateHandler):
 
         # 时间比较（本地记录 vs 远程更新时间）
         remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)  # 修改字段
-        local_time = self._get_local_record_time()
+        local_time = self.get_local_time()
         
         if local_time and remote_time <= local_time:
             print_success("当前模型已是最新版本")
@@ -1031,7 +1039,7 @@ class ModelUpdater(UpdateHandler):
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match()
         remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = self._get_local_record_time()
+        local_time = self.get_local_time()
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
@@ -1063,7 +1071,7 @@ class ModelUpdater(UpdateHandler):
         print_success("模型更新完成，Windows小狼毫将自动部署，Mac鼠须管或小企鹅及iOS Hamster输入法请在本程序结束后手动重新部署")
         return True
 
-    def _get_local_record_time(self):
+    def get_local_time(self):
         if not os.path.exists(self.record_file):
             return None
         try:
@@ -1103,7 +1111,21 @@ def calculate_sha256(file_path):
         print_error(f"计算哈希失败: {str(e)}")
         return None
 
-
+def check_for_update(updater):
+    updater_info = updater.check_update()
+    if updater_info:
+        remote_time = datetime.strptime(updater_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        local_time = updater.get_local_time()
+        if local_time is None or remote_time > local_time:
+            china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+            if isinstance(updater, SchemeUpdater):
+                print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{updater_info['tag']}）")
+            elif isinstance(updater, DictUpdater):
+                print(f"\n{COLOR['WARNING']}[!] 词库有更新可用（版本：{updater_info['tag']}）")
+            else:
+                print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
+            print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
+            return True
 
 # ====================== 主程序 ======================
 def main():
@@ -1123,15 +1145,12 @@ def main():
             settings = config_manager.load_config()
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
             print(f"{INDENT}▪ 方案版本：{settings[1]}")
-            if settings[2]:
+            if settings[1]:
                 print(f"{INDENT}▪ 方案文件：{settings[2]}")
-            print(f"{INDENT}▪ 词库文件：{settings[7]}")
-            if sys.platform == 'win32':
-                print(f"{INDENT}▪ 服务程序：{settings[5]}")
-            elif sys.platform == 'darwin':
-                print(f"{INDENT}▪ 输入法引擎：{settings[10]}")
-            else:
-                pass
+            print(f"{INDENT}▪ 词库文件：{settings[3]}")
+            if sys.platform == 'darwin':
+                print(f"{INDENT}▪ 输入法引擎：{settings[0]}")
+
         except Exception as e:
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
@@ -1141,37 +1160,13 @@ def main():
         
         # 方案更新检测
         scheme_updater = SchemeUpdater(config_manager)
-        scheme_info = scheme_updater.check_update()
-        if scheme_info:
-            remote_time = datetime.strptime(scheme_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            local_time = scheme_updater.get_local_time()
-            if local_time is None or remote_time > local_time:
-                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{scheme_info['tag']}）")
-                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
-                update_flag = True
+        update_flag = check_for_update(scheme_updater)
         # 词库更新检测
         dict_updater = DictUpdater(config_manager)
-        dict_info = dict_updater.check_update()
-        if dict_info:
-            remote_time = datetime.strptime(dict_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            local_time = dict_updater.get_local_time()
-            if local_time is None or remote_time > local_time:
-                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n{COLOR['WARNING']}[!] 词库有更新可用（版本：{dict_info['tag']}）")
-                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
-                update_flag = True
+        update_flag = check_for_update(dict_updater)
         # 模型更新检测
         model_updater = ModelUpdater(config_manager)
-        model_info = model_updater.check_update()
-        if model_info:
-            remote_time = datetime.strptime(model_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            local_time = model_updater._get_local_record_time()
-            if local_time is None or remote_time > local_time:
-                china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
-                print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
-                update_flag = True
+        update_flag = check_for_update(model_updater)
         # 如果没有更新显示提示
         if not update_flag:
             print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
@@ -1204,6 +1199,16 @@ def main():
                     # 返回主菜单或退出
                     user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
                     if user_choice == '':
+                        update_flag = False
+                        scheme_updater = SchemeUpdater(config_manager)
+                        dict_updater = DictUpdater(config_manager)
+                        model_updater = ModelUpdater(config_manager)
+                        # 重新检查更新
+                        update_flag = check_for_update(scheme_updater) and \
+                                      check_for_update(dict_updater) and \
+                                      check_for_update(model_updater)
+                        if not update_flag:
+                            print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
                         continue  # 继续主循环
                     else:
                         break
