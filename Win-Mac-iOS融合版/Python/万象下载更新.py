@@ -133,7 +133,7 @@ class ConfigManager:
         self.reload_flag = False
         self._ensure_config_exists()
 
-    def detect_installation_paths(self):
+    def detect_installation_paths(self, show=False):
         """自动检测安装路径"""
         detected = {}
         if sys.platform == 'win32':
@@ -156,10 +156,10 @@ class ConfigManager:
             
             if not detected["rime_user_dir"] or not os.path.exists(detected[key]):
                 detected["rime_user_dir"] = defaults["rime_user_dir"]
-                if not self.reload_flag:
+                if not self.reload_flag and show:
                     print_warning("未检测到小狼毫自定义 RimeUserDir，使用默认路径：" + detected["rime_user_dir"])
             else:
-                if not self.reload_flag:
+                if not self.reload_flag and show:
                     print_success("检测到小狼毫自定义 RimeUserDir：" + detected["rime_user_dir"])
             return detected
         elif sys.platform == 'darwin':
@@ -276,7 +276,7 @@ class ConfigManager:
         """尝试加载配置文件"""
         # 加载并验证配置
         try:
-            settings = self.load_config()
+            settings = self.load_config(show=True)
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
             print(f"{INDENT}▪ 方案版本：{settings[1]}")
             if settings[1]:
@@ -463,7 +463,7 @@ class ConfigManager:
         print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         
 
-    def load_config(self, system=sys.platform):
+    def load_config(self, system=sys.platform, show=False):
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
         github_token = config.get('github_token', '')
@@ -477,7 +477,7 @@ class ConfigManager:
 
         # 验证关键路径
         if system == 'win32':
-            paths = self.detect_installation_paths()
+            paths = self.detect_installation_paths(show=show)
             required_paths = {
                 '小狼毫服务程序': paths['server_exe'],
                 '方案解压目录': paths['rime_user_dir'],
@@ -569,7 +569,7 @@ class UpdateHandler:
             self.use_mirror,
             self.github_token,
             self.exclude_files
-        ) = config_manager.load_config()
+        ) = config_manager.load_config(show=False)
         (
             self.custom_dir,
             self.extract_path,
