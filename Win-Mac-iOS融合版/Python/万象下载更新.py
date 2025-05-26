@@ -154,7 +154,7 @@ class ConfigManager:
                 'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime')
             }
             
-            if not detected["rime_user_dir"] or not os.path.exists(detected[key]):
+            if not detected["rime_user_dir"] or not os.path.exists(detected['rime_user_dir']):
                 detected["rime_user_dir"] = defaults["rime_user_dir"]
                 if not self.reload_flag and show:
                     print_warning("未检测到小狼毫自定义 RimeUserDir，使用默认路径：" + detected["rime_user_dir"])
