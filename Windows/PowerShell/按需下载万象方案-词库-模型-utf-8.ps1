@@ -4,11 +4,11 @@ $AutoUpdate = $false;
 ####[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
 ####注意必须包含双引号，例如：$InputSchemaType = "0";
 $InputSchemaType = "7";
-# 默认跳过的文件列表，可自行添加
-$SkipFiles = @(
-    "seq_words.lua",    # ctrl J ctrl k 调频数据
-    "custom_phrase.txt" # 自定义短语
-); # 需要跳过的文件列表
+# $SkipFiles = @(
+#     "wanxiang_en.dict.yaml",
+#     "tone_fallback.lua",
+#     "custom_phrase.txt"
+# ); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
