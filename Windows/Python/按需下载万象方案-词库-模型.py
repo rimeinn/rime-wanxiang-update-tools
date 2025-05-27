@@ -176,7 +176,7 @@ class ConfigManager:
             'dict_file': '',
             'use_mirror': 'true',
             'github_token': '',
-            'exclude_files': ''
+            'exclude_files': 'seq_words.lua, custom_phrase.txt'
         }
         
         # 路径规范化处理
@@ -285,7 +285,7 @@ class ConfigManager:
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
-            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files') 
+            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...默认: seq_words.lua, custom_phrase.txt)", 'exclude_files') 
         ]
         
         for item in path_display:
