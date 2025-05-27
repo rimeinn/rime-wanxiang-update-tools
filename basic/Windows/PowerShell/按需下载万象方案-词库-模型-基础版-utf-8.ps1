@@ -1,10 +1,11 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 # $AutoUpdate = $true;
 $AutoUpdate = $false;
-# $SkipFiles = @(
-#     "wanxiang_en.dict.yaml",
-#     "tone_fallback.lua"
-# ); # 需要跳过的文件列表
+# 默认跳过的文件列表，可自行添加
+$SkipFiles = @(
+    "seq_words.lua",    # ctrl J ctrl k 调频数据
+    "custom_phrase.txt" # 自定义短语
+); # 需要跳过的文件列表
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
