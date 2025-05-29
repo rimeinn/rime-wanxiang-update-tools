@@ -645,6 +645,7 @@ if ($InputDictDown -eq "0") {
         Stop-WeaselServer
         # 等待1秒
         Start-Sleep -Seconds 1
+        New-Item -ItemType Directory -Path $(Join-Path $targetDir "cn_dicts") | Out-Null
         Get-ChildItem -Path $sourceDir | ForEach-Object {
             if ($Debug) {
                 Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
