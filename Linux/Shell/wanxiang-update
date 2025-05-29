@@ -1,234 +1,395 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-### 全局变量，预配置可自动化 ###
-# 方案类型: 1. 基础版 2. Pro 版
-# 例如 WANXIANG="2"
-WANXIANG=""
-# 辅助码方案，8 选 1。
-# 基础版没有辅助码，自动化填写 "base" 即可。
-# 可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"
-# 例如 SCHEMA="zrm"
-SCHEMA=""
-# 部署目录
-# Fcitx5 用户为 "${XDG_DATA_HOME:-${HOME}/.locale/share}/fcitx5/rime"
-# iBus 用户为 "${XDG_CONFIG_HOME:-${HOME}/.config}/ibus/rime"
-# 例如 DEPLOYDIR="${XDG_DATA_HOME:-${HOME}/.locale/share}/fcitx5/rime"
-DEPLOYDIR=""
-# 需要排除的文件列表
-EXCLUDE_FILE=(
-  build           # 部署文件夹，不需要删除
-  updatetime.txt  # 更新脚本时间戳记录文件，用于判断是否需要更新
-  *.userdb        # 用户词库
-  *.custom.yaml   # 用户自定义内容
-  *.gram          # 语法模型，不是每次都需要更新
-)
+## 全局变量, 用于自动化预设
+# 输入框架, 可选 "Fcitx5" "iBus"
+# 例如: INPUT_TYPE="Fcitx5"
+INPUT_TYPE=""
+# 方案类型, 可选 "base" "pro"
+# 例如: SCHEME_TYPE="pro"
+SCHEME_TYPE=""
+# 辅助码类型, 基础版请填 "base"
+# 专业版可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"
+# 例如: HELP_CODE="zrm"
+HELP_CODE=""
+# 部署目录, 填入你需要部署的目录
+# 例如:
+# DEPLOY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime" # Fcitx5 默认路径
+# DEPLOY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ibus/rime" # iBus 默认路径
+DEPLOY_DIR=""
+# 用户确认选项, 自动化填 Yes 即可, 可选 "Yes" "No"
+# 例如: IS_TRUE="Yes"
+IS_TRUE=""
+# 更新时需要保留的文件
+# 例如: EXCLUDE_FILE=(
+#   "这是一个目录"
+#   "这是一个文件"
+#   "......"
+# )
+EXCLUDE_FILE=()
 
+## 以下内容不需要修改
+# 颜色定义
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+NC="\033[0m"
+readonly RED GREEN YELLOW NC
+
+# 常量定义
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-if [[ "${UPDATE_TOOLS_VERSION}" =~ ^DEFAULT ]]; then
-  echo -e "\e[1;93m你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。\e[0m"
-else
-  echo "更新工具版本: ${UPDATE_TOOLS_VERSION}"
-fi
+BASE_REPO="rime_wanxiang"
+PRO_REPO="rime_wanxiang_pro"
+LMDG_REPO="RIME-LMDG"
+GH_API="https://api.github.com/repos/amzxyz"
+GH_DL="https://github.com/amzxyz"
+STATUS_FILE="update_status.txt"
+TEMP_DIR=$(mktemp -d)
+INPUT_TYPES=("Fcitx5" "iBus")
+SCHEME_TYPES=("base" "pro")
+HELP_CODES=("cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
+EXCLUDE_FILE+=(
+  *.userdb          # 用户词库
+  *.custom.yaml     # 用户自定义内容
+  installation.yaml # 部署信息
+  user.yaml         # 用户设置
+  *.gram            # 语法模型, 不是每次都需要更新
+  "$STATUS_FILE"    # 更新脚本时间戳记录文件, 用于判断是否需要更新
+)
+readonly UPDATE_TOOLS_VERSION
+readonly BASE_REPO PRO_REPO LMDG_REPO GH_API GH_DL STATUS_FILE
+readonly EXCLUDE_FILE TEMP_DIR HELP_CODES SCHEME_TYPES
 
-## 以下内容不需要修改，除非你知道自己在干什么
-GHAPI="https://api.github.com/repos/amzxyz"
-BASESCHEMAREPO="rime_wanxiang"
-PROSCHEMAREPO="rime_wanxiang_pro"
-GRAMREPO="RIME-LMDG"
-TEMPDIR=$(mktemp -d)
-### 全局变量配置结束 ###
-# 专业版方案更新
-update_schema_pro() {
-  local schema=$1 version schema_url excludes local_etag remote_etag
-  version=$(curl -s "${GHAPI}/${PROSCHEMAREPO}/releases" | grep "tag_name" | grep -E "[0-9]" | awk -F '"' '{print $4}' | head -n 1)
-  schema_url=$(curl -s "${GHAPI}/${PROSCHEMAREPO}/releases" | grep "wanxiang-${schema}" | grep "${version}" | awk -F '"' '{print $4}')
-  local_etag=$(awk 'NR==2 {print $2}' "${DEPLOYDIR}/updatetime.txt")
-  remote_etag=$(curl -s -I -L "${schema_url}" | grep "etag" | awk -F '"' '{print $2}')
-  echo "wanxiang-${schema}-fuzhu.zip ${remote_etag}" >> "${TEMPDIR}/updatetime.txt"
-  if [ "${local_etag}" != "${remote_etag}" ]; then
-    if ! curl -L -o "${TEMPDIR}/wanxiang-${schema}-fuzhu.zip" "${schema_url}"; then
-      echo -e "\e[1;31m下载失败, 请检查网络连接是否正确。\e[0m"
-      exit 1
-    fi
-    if ! unzip -q "${TEMPDIR}/wanxiang-${schema}-fuzhu.zip" -d "${TEMPDIR}"; then
-      echo -e "\e[1;31m解压出错, 请检查文件下载是否正确。\e[0m"
-      exit 1
-    fi
-    rm -r "${TEMPDIR}/wanxiang-${schema}-fuzhu/简纯+.trime.yaml"  \
-          "${TEMPDIR}/wanxiang-${schema}-fuzhu/custom_phrase.txt" \
-          "${TEMPDIR}/wanxiang-${schema}-fuzhu/squirrel.yaml"     \
-          "${TEMPDIR}/wanxiang-${schema}-fuzhu/weasel.yaml"
-    for _exclude in "${EXCLUDE_FILE[@]}"; do
-      excludes="${excludes} -not -path \"${DEPLOYDIR}/${_exclude}/*\" -not -path \"${DEPLOYDIR}/${_exclude}\""
-    done
-    eval "find \"${DEPLOYDIR}\" -mindepth 1 \( ${excludes} \) -exec rm -rf {} +" && sleep 2
-    cp -rf "${TEMPDIR}/wanxiang-${schema}-fuzhu/"* "${DEPLOYDIR}"
-    echo "方案文件更新成功！"
-  else
-    echo "方案文件无需更新"
+# 日志函数
+log() {
+  local level="$1" color="$NC"
+  case "$level" in
+  INFO) color="$GREEN" ;;
+  WARN) color="$YELLOW" ;;
+  ERROR) color="$RED" ;;
+  esac
+  shift
+  printf "${color}[%s] %s${NC}\n" "$level" "$*"
+}
+# 错误处理函数
+error_exit() {
+  log ERROR "$*"
+  cleanup
+  exit 1
+}
+# 清理临时文件
+cleanup() {
+  if [[ -d "$TEMP_DIR" ]]; then
+    rm -rf "$TEMP_DIR" || log WARN "清理缓存文件失败"
   fi
 }
-# 专业版词库更新
-update_dicts_pro() {
-  local schema=$1 dicts_url local_etag remote_etag
-  dicts_url=$(curl -s "${GHAPI}/${PROSCHEMAREPO}/releases" | grep "dict-nightly" | grep "zrm_dicts" | awk -F '"' '{print $4}')
-  local_etag=$(awk 'NR==3 {print $2}' "${DEPLOYDIR}/updatetime.txt")
-  remote_etag=$(curl -s -I -L "${dicts_url}" | grep "etag" | awk -F '"' '{print $2}')
-  echo "${schema}_dicts.zip ${remote_etag}" >> "${TEMPDIR}/updatetime.txt"
-  if [ "${local_etag}" != "${remote_etag}" ]; then
-    if ! curl -L -o "${TEMPDIR}/${schema}_dicts.zip" "${dicts_url}"; then
-      echo -e "\e[1;31m下载失败, 请检查网络连接是否正确。\e[0m"
-      exit 1
-    fi
-    if ! unzip -q "${TEMPDIR}/${schema}_dicts.zip" -d "${TEMPDIR}"; then
-      echo -e "\e[1;31m解压出错, 请检查文件下载是否正确。\e[0m"
-      exit 1
-    fi
-    rm -r "${DEPLOYDIR}/cn_dicts/"* && sleep 2
-    cp -rf "${TEMPDIR}/${schema}_dicts"/* "${DEPLOYDIR}/cn_dicts"
-    echo "词典文件更新成功！"
-  else
-    echo "词典文件无需更新"
-  fi
-}
-# 基础版方案更新
-update_schema_base() {
-  local version schema_url excludes local_etag remote_etag
-  version=$(curl -s "${GHAPI}/${BASESCHEMAREPO}/releases" | grep "tag_name" | grep -E "[0-9]" | awk -F '"' '{print $4}' | head -n 1)
-  schema_url="https://github.com/amzxyz/rime_wanxiang/archive/refs/tags/${version}.zip"
-  local_etag=$(awk 'NR==2 {print $2}' "${DEPLOYDIR}/updatetime.txt")
-  remote_etag=$(curl -s -I -L "${schema_url}" | grep "etag" | awk -F '"' '{print $2}')
-  echo "wanxiang-${version}.zip ${remote_etag}" >> "${TEMPDIR}/updatetime.txt"
-  if [ "${local_etag}" != "${remote_etag}" ]; then
-    if ! curl -L -o "${TEMPDIR}/wanxiang-${version}.zip" "${schema_url}"; then
-      echo -e "\e[1;31m下载失败, 请检查网络连接是否正确。\e[0m"
-      exit 1
-    fi
-    if ! unzip -q "${TEMPDIR}/wanxiang-${version}.zip" -d "${TEMPDIR}"; then
-      echo -e "\e[1;31m解压出错, 请检查文件下载是否正确。\e[0m"
-      exit 1
-    fi
-    rm -r "${TEMPDIR}/rime_wanxiang-${version#v}/简纯+.trime.yaml"  \
-          "${TEMPDIR}/rime_wanxiang-${version#v}/custom_phrase.txt" \
-          "${TEMPDIR}/rime_wanxiang-${version#v}/squirrel.yaml"     \
-          "${TEMPDIR}/rime_wanxiang-${version#v}/weasel.yaml"
-    for _exclude in "${EXCLUDE_FILE[@]}"; do
-      excludes="${excludes} -not -path \"${DEPLOYDIR}/${_exclude}/*\" -not -path \"${DEPLOYDIR}/${_exclude}\""
-    done
-    eval "find \"${DEPLOYDIR}\" -mindepth 1 \( ${excludes} \) -exec rm -rf {} +" && sleep 2
-    cp -rf "${TEMPDIR}/rime_wanxiang-${version#v}/"* "${DEPLOYDIR}"
-    echo "方案文件更新成功！"
-  else
-    echo "方案文件无需更新"
-  fi
-}
-# 基础版词库更新
-update_dicts_base() {
-  local dicts_url local_etag remote_etag
-  dicts_url="https://github.com/amzxyz/rime_wanxiang/releases/download/dict-nightly/cn_dicts.zip"
-  local_etag=$(awk 'NR==3 {print $2}' "${DEPLOYDIR}/updatetime.txt")
-  remote_etag=$(curl -s -I -L "${dicts_url}" | grep "etag" | awk -F '"' '{print $2}')
-  echo "cn_dicts.zip ${remote_etag}" >> "${TEMPDIR}/updatetime.txt"
-  if [ "${local_etag}" != "${remote_etag}" ]; then
-    if ! curl -L -o "${TEMPDIR}/cn_dicts.zip" "${dicts_url}"; then
-      echo -e "\e[1;31m下载失败, 请检查网络连接是否正确。\e[0m"
-      exit 1
-    fi
-    if ! unzip -q "${TEMPDIR}/cn_dicts.zip" -d "${TEMPDIR}"; then
-      echo -e "\e[1;31m解压出错, 请检查文件下载是否正确。\e[0m"
-      exit 1
-    fi
-    rm -r "${DEPLOYDIR}/cn_dicts/"* && sleep 2
-    cp -rf "${TEMPDIR}/cn_dicts"/* "${DEPLOYDIR}/cn_dicts"
-    echo "词典文件更新成功！"
-  else
-    echo "词典文件无需更新"
-  fi
-}
-# 更新语法模型
-update_gram() {
-  local gram_url local_etag remote_etag
-  gram_url=$(curl -s "${GHAPI}/${GRAMREPO}/releases" | grep "LTS/wanxiang" | awk -F '"' '{print $4}')
-  local_etag=$(awk 'NR==4 {print $2}' "${DEPLOYDIR}/updatetime.txt")
-  remote_etag=$(curl -s -I -L "${gram_url}" | grep "etag" | awk -F '"' '{print $2}')
-  echo "wanxiang-lts-zh-hans.gram ${remote_etag}" >> "${TEMPDIR}/updatetime.txt"
-  if [ "${local_etag}" != "${remote_etag}" ]; then
-    if ! curl -L -o "${TEMPDIR}/wanxiang-lts-zh-hans.gram" "${gram_url}"; then
-      echo -e "\e[1;31m下载失败, 请检查网络连接是否正确。\e[0m"
-      exit 1
-    fi
-    rm -r "${DEPLOYDIR}/wanxiang-lts-zh-hans.gram" && sleep 2
-    cp -rf "${TEMPDIR}/wanxiang-lts-zh-hans.gram" "${DEPLOYDIR}"
-    echo "语法模型更新成功！"
-  else
-    echo "语法模型无需更新"
-  fi
-}
-# 倒计时
-countdown() {
-  local countdown=5
-  while [ $countdown -gt 0 ]; do
-    echo -n "${countdown}..."
-    sleep 1
-    countdown=$((countdown - 1))
+
+# 检查是否安装必要的程序
+check_deps() {
+  for _cmd in curl unzip; do
+    command -v "$_cmd" >/dev/null || error_exit "缺少依赖: $_cmd"
   done
-  echo "0"
 }
-# 基础版更新逻辑
-update_base() {
-  echo "你选择了 基础版 方案，将要部署的目录为 ${DEPLOYDIR}, 5s 后开始更新"
-  countdown
-  touch "${TEMPDIR}/updatetime.txt"
-  echo "# 该文件自动生成，请不要修改" > "${TEMPDIR}/updatetime.txt"
-  echo "正在更新方案文件......" 
-  update_schema_base || exit 1
-  echo "正在更新词典文件......"
-  update_dicts_base || exit 1
-  echo "正在更新语法模型......"
-  update_gram || exit 1
-  rm -r "${DEPLOYDIR}/updatetime.txt"
-  cp -rf "${TEMPDIR}/updatetime.txt" "${DEPLOYDIR}"
-  echo "更新成功！请重新部署方案！"
+# HTTP 状态检查
+http_check() {
+  local url="$1" http_code
+  http_code=$(curl -sIL -m 10 -o /dev/null -w "%{http_code}" "$url")
+  case "$http_code" in
+  200) log INFO "200 OK: 请求成功。" ;;
+  400) error_exit "400 Bad Request: 请求格式错误。" ;;
+  401) error_exit "401 Unauthorized: 需要身份验证。" ;;
+  403) error_exit "403 Forbidden: 禁止访问资源。" ;;
+  404) error_exit "404 Not Found: 资源未找到。" ;;
+  500) error_exit "500 Internal Server Error: 服务器内部错误。" ;;
+  502) error_exit "502 Bad Gateway: 网关错误。" ;;
+  503) error_exit "503 Service Unavailable: 服务不可用。" ;;
+  504) error_exit "504 Gateway Timeout: 网关超时。" ;;
+  *) error_exit "未知的响应码: $http_code。" ;;
+  esac
 }
-# 专业版更新逻辑
-update_pro() {
-  echo "你选择了 专业版 方案，辅助码为 ${SCHEMA}，将要部署的目录为 ${DEPLOYDIR}, 5s 后开始更新"
-  countdown
-  touch "${TEMPDIR}/updatetime.txt"
-  echo "# 该文件自动生成，请不要修改" > "${TEMPDIR}/updatetime.txt"
-  echo "正在更新方案文件......"
-  update_schema_pro "${SCHEMA}" || exit 1
-  echo "正在更新词典文件......"
-  update_dicts_pro "${SCHEMA}" || exit 1
-  echo "正在更新语法模型......"
-  update_gram || exit 1
-  rm -r "${DEPLOYDIR}/updatetime.txt"
-  cp -rf "${TEMPDIR}/updatetime.txt" "${DEPLOYDIR}"
-  echo "更新成功！请重新部署方案！"
+# 更新检查
+update_check() {
+  local url="$1" deploy_dir="$2" line="$3"
+  local local_etag remote_etag local_date remote_date
+  local_etag=$(awk -v ln="$line" 'NR==ln {print $2}' "$deploy_dir/$STATUS_FILE")
+  local_date=$(awk -v ln="$line" 'NR==ln {print $3}' "$deploy_dir/$STATUS_FILE")
+  remote_etag=$(curl -sIL -m 10 "$url" | grep "etag" | awk -F '"' '{print $2}')
+  remote_date=$(date -d "$(curl -sIL -m 10 "$url" |
+    grep "last-modified" | awk -F ': ' '{print $2}')" +%s)
+  [[ "$local_etag" == "$remote_etag" && "$local_date" == "$remote_date" ]] || echo yes
+  echo "$url $remote_etag $remote_date" >>"$TEMP_DIR/$STATUS_FILE"
 }
+# 下载解压
+download_and_unzip() {
+  local url="$1" file="$2"
+  log INFO "正在使用 curl 下载文件"
+  curl -L -m 10 -o "$TEMP_DIR/$file" "$url" || error_exit "下载出错"
+  log INFO "正在使用 unzip 解压文件"
+  unzip -q "$TEMP_DIR/$file" -d "$TEMP_DIR" || error_exit "解压出错"
+}
+# 方案选择
+choice_scheme_repo() {
+  local scheme_repo="$1"
+  if [[ "$scheme_type" == "base" ]]; then
+    scheme_repo="$BASE_REPO"
+  elif [[ "$scheme_type" == "pro" ]]; then
+    scheme_repo="$PRO_REPO"
+  fi
+  echo "$scheme_repo"
+}
+# 检查版本
+check_version() {
+  local version scheme_repo="$1"
+  version=$(
+    curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
+      grep "tag_name" | awk -F '"' '{print $4}' |
+      grep -v "dict-nightly" | sort -Vr | head -n 1
+  )
+  echo "$version"
+}
+
+# 更新方案文件
+update_scheme() {
+  local scheme_type="$1" help_code="$2" deploy_dir="$3"
+  local scheme_repo version
+  scheme_repo=$(choice_scheme_repo "$scheme_type")
+  version=$(check_version "$scheme_repo")
+  log INFO "$scheme_type 方案最新版本号为 $version, 正在检查是否需要更新"
+
+  # 获取最新版本下载链接
+  local scheme_url scheme_file
+  if [[ "$scheme_type" == "base" ]]; then
+    scheme_url="$GH_DL/$scheme_repo/archive/refs/tags/$version.zip"
+    scheme_file="rime_wanxiang-${version}.zip"
+  elif [[ "$scheme_type" == "pro" ]]; then
+    scheme_url=$(curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
+      grep "$version" | grep "$help_code" | awk -F '"' '{print $4}')
+    scheme_file=$(echo "$scheme_url" | awk -F '/' '{print $NF}')
+  fi
+
+  # 比对 etag & date 确认是否需要更新
+  local needed_update
+  needed_update=$(update_check "$scheme_url" "$deploy_dir" "2")
+  if [[ "$needed_update" == "yes" ]]; then
+    log INFO "方案需要更新, 开始更新"
+    download_and_unzip "$scheme_url" "$scheme_file"
+    rm -rf "$TEMP_DIR/${scheme_file%.zip}/"{简纯+.trime.yaml,squirrel.yaml,weasel.yaml}
+    rm -rf "$TEMP_DIR/${scheme_file%.zip}/"custom_phrase.txt
+    log INFO "正在移除旧版方案文件" && sleep 0.5
+    local excludes=""
+    for _exclude in "${EXCLUDE_FILE[@]}"; do
+      excludes="$excludes -not -path \"$deploy_dir/$_exclude/*\""
+      excludes="$excludes -not -path \"$deploy_dir/$_exclude\""
+    done
+    # 一个文件特殊处理
+    cp -rf "$deploy_dir/lua/seq_words.lua" "$TEMP_DIR/${scheme_file%.zip}/lua/seq_words.lua"
+    eval "find \"$deploy_dir\" -mindepth 1 \( $excludes \) -exec rm -rf {} +"
+    log INFO "正在更新方案文件" && sleep 0.5
+    cp -rf "$TEMP_DIR/${scheme_file%.zip}/"* "$deploy_dir"
+    log INFO "方案文件更新成功"
+  else
+    log INFO "方案文件无需更新"
+  fi
+}
+
+# 更新词典文件
+update_dicts() {
+  local scheme_type="$1" help_code="$2" deploy_dir="$3"
+  local scheme_repo version
+  scheme_repo=$(choice_scheme_repo "$scheme_type")
+  log INFO "正在检查 $scheme_type 方案词典是否需要更新"
+
+  # 获取最新版本下载链接
+  local dicts_url dicts_file
+  if [[ "$scheme_type" == "base" ]]; then
+    dicts_url="$GH_DL/$scheme_repo/releases/download/dict-nightly/cn_dicts.zip"
+    dicts_file="cn_dicts.zip"
+  elif [[ "$scheme_type" == "pro" ]]; then
+    dicts_url=$(curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
+      grep "dict-nightly" | grep "$help_code" | awk -F '"' '{print $4}')
+    dicts_file=$(echo "$dicts_url" | awk -F '/' '{print $NF}')
+  fi
+
+  # 比对 etag & date 确认是否需要更新
+  local needed_update
+  needed_update=$(update_check "$dicts_url" "$deploy_dir" "3")
+  if [[ "$needed_update" == "yes" ]]; then
+    log INFO "词典文件需要更新, 开始更新"
+    download_and_unzip "$dicts_url" "$dicts_file"
+    log INFO "正在移除旧版词典文件" && sleep 0.5
+    rm -rf "$deploy_dir/cn_dicts/"*
+    log INFO "正在更新词典文件" && sleep 0.5
+    cp -rf "$TEMP_DIR/${help_code}_dicts/"* "$deploy_dir/cn_dicts"
+    log INFO "词典文件更新成功"
+  else
+    log INFO "词典文件无需更新"
+  fi
+}
+
+# 更新语法文件
+update_gram() {
+  local deploy_dir="$1"
+  log INFO "正在检查语法模型文件是否需要更新"
+  local gram_url gram_file gram_md5_url
+  gram_url="$GH_DL/$LMDG_REPO/releases/download/LTS/wanxiang-lts-zh-hans.gram"
+  gram_file="wanxiang-lts-zh-hans.gram"
+  gram_md5_url="$GH_DL/$LMDG_REPO/releases/download/LTS/md5sum.txt"
+  local needed_update
+  needed_update=$(update_check "$gram_url" "$deploy_dir" "4")
+  if [[ "$needed_update" == "yes" ]]; then
+    log INFO "语法模型文件需要更新, 开始更新"
+    log INFO "正在使用 curl 下载文件"
+    curl -L -m 10 -o "$TEMP_DIR/$gram_file" "$gram_url" || error_exit "下载出错"
+    log INFO "正在检查下载文件是否正确"
+    local local_md5 remote_md5
+    local_md5=$(md5sum "$TEMP_DIR/$gram_file" | awk '{print $1}')
+    remote_md5=$(curl -sL -m 10 "$gram_md5_url" | head -n 1 | awk '{print $1}')
+    log INFO "已下载文件 md5 为 $local_md5"
+    log INFO "  远程文件 md5 为 $remote_md5"
+    [[ "$local_md5" == "$remote_md5" ]] || error_exit "语法模型下载异常, 请重试"
+    log INFO "文件校验成功"
+    log INFO "正在移除旧版语法模型" && sleep 0.5
+    rm -rf "$deploy_dir/${gram_file:?}"
+    log INFO "正在更新语法模型" && sleep 0.5
+    cp -rf "$TEMP_DIR/$gram_file" "$deploy_dir"
+    log INFO "语法模型文件更新成功"
+  else
+    log INFO "语法模型文件无需更新"
+  fi
+}
+
 # 主函数
 main() {
-  echo "欢迎使用 Rime 万象方案自动更新助手"
-  if [[ -z ${SCHEMA} || -z ${DEPLOYDIR} || -z ${WANXIANG} ]]; then
-    echo "方案类型可选: 1. 基础版 2. Pro 版"
-    read -r -p "请输入你要使用的方案类型: " WANXIANG
-    if [ "${WANXIANG}" = 1 ]; then
-      read -r -p "请输入部署目录: " DEPLOYDIR
-      update_base
-    elif [ "${WANXIANG}" = 2 ]; then
-      echo '辅助码可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"'
-      read -r -p "请输入你要使用的辅助码: " SCHEMA
-      read -r -p "请输入部署目录: " DEPLOYDIR
-      update_pro
+  trap cleanup EXIT
+  check_deps
+  mkdir -p "$TEMP_DIR" || error_exit "创建临时目录失败"
+
+  echo -e "${GREEN}========= 欢迎使用 Rime 万象方案更新助手 =========${NC}\n"
+  if [[ "$UPDATE_TOOLS_VERSION" =~ ^DEFAULT ]]; then
+    log WARN "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本" && echo ""
+  else
+    log INFO "更新工具版本: $UPDATE_TOOLS_VERSION" && echo ""
+  fi
+  # 输入法选择
+  local input_type
+  if [[ -n "${INPUT_TYPE:-}" ]]; then
+    input_type="$INPUT_TYPE"
+    [[ ${INPUT_TYPES[*]} =~ $input_type ]] || error_exit "你预设了无效的输入框架"
+  else
+    echo "请选择输入法框架:"
+    PS3="输入选项 (1/2): "
+    select choice in "${INPUT_TYPES[@]}"; do
+      [[ -n "$choice" ]] || error_exit "无效的选择"
+      input_type="$choice"
+      break
+    done
+  fi
+
+  # 方案选择
+  local scheme_type
+  if [[ -n "${SCHEME_TYPE:-}" ]]; then
+    scheme_type="$SCHEME_TYPE"
+    [[ ${SCHEME_TYPES[*]} =~ $scheme_type ]] || error_exit "预设方案类型 $scheme_type 不存在"
+  else
+    echo "请选择方案类型:"
+    PS3="输入选项 (1/2): "
+    select choice in "${SCHEME_TYPES[@]}"; do
+      [[ -n "$choice" ]] || error_exit "无效的选择"
+      scheme_type="$choice"
+      break
+    done
+  fi
+
+  # 专业版辅助码选择
+  local help_code
+  if [[ "$scheme_type" == "base" ]]; then
+    help_code="base"
+  elif [[ "$scheme_type" == "pro" && -n "${HELP_CODE:-}" ]]; then
+    help_code="$HELP_CODE"
+    [[ ${HELP_CODES[*]} =~ $help_code ]] || error_exit "预设辅助码 $help_code 不存在"
+  else
+    echo "请选择辅助码:"
+    PS3="输入选项 (1-8): "
+    select choice in "${HELP_CODES[@]}"; do
+      [[ -n "$choice" ]] || error_exit "无效的选择"
+      help_code="$choice"
+      break
+    done
+  fi
+
+  # 部署目录选择
+  local deploy_dir
+  if [[ -n "${DEPLOY_DIR:-}" ]]; then
+    deploy_dir="$DEPLOY_DIR"
+  else
+    read -rp "请输入部署目录: " deploy_dir
+    deploy_dir=$(eval echo "$deploy_dir")
+  fi
+
+  # 用户确认
+  local is_true
+  if [[ -n "$IS_TRUE" ]]; then
+    is_true="$IS_TRUE"
+    log INFO "你预设了以下方案组合:" && echo ""
+    echo -e "${GREEN}输入框架: ${YELLOW}$input_type${NC}"
+    echo -e "${GREEN}方案类型: ${YELLOW}$scheme_type${NC}"
+    [[ "$scheme_type" == "base" ]] || echo -e "${GREEN}辅助码: ${YELLOW}$help_code${NC}"
+    echo -e "${GREEN}部署目录: ${YELLOW}$deploy_dir${NC}"
+    echo -e ""
+  else
+    log INFO "你选择了以下方案组合:" && echo ""
+    echo -e "${GREEN}输入框架: ${YELLOW}$input_type${NC}"
+    echo -e "${GREEN}方案类型: ${YELLOW}$scheme_type${NC}"
+    [[ "$scheme_type" == "base" ]] || echo -e "${GREEN}辅助码: ${YELLOW}$help_code${NC}"
+    echo -e "${GREEN}部署目录: ${YELLOW}$deploy_dir${NC}"
+    [[ -d "$deploy_dir" ]] || echo -e "${RED}\e[3m该目录不存在, 将会自动创建${NC}"
+    echo "" && echo -e "这些内容是否正确? (Yes/No)"
+    read -rp "请输入 Yes 或 No : " is_true
+  fi
+  [[ "$is_true" == "Yes" ]] || error_exit "用户终止操作"
+
+  # 开始更新
+  if [[ ! -f "$deploy_dir/$STATUS_FILE" ]]; then
+    log INFO "=================================================="
+    log INFO "你好像是第一次使用该脚本, 建议你中断操作"
+    log INFO "并将需要排除的文件写入数组 EXCLUDE_FILE=() 中"
+    log INFO "脚本默认排除 *.userdb 文件夹, 以及 *.custom.yaml 文件"
+    log INFO "脚本将在 3s 后继续 (如需中断请按下 Ctrl + C )"
+    log INFO "=================================================="
+    sleep 3
+    if [[ ! -d "$deploy_dir" ]]; then
+      mkdir -p "$deploy_dir" || error_exit "你无权创建部署目录"
     fi
-  elif [ "${WANXIANG}" = 1 ]; then
-    update_base
-  elif [ "${WANXIANG}" = 2 ]; then
-    update_pro
+    touch "$deploy_dir/$STATUS_FILE" || error_exit "更新状态文件创建失败"
+    echo "# 请不要修改该文件内容" >"$deploy_dir/$STATUS_FILE"
+    echo -e "0 0 0\n0 0 0\n0 0 0" >>"$deploy_dir/$STATUS_FILE"
+  fi
+  log INFO "检查 GitHub 连接状态" && http_check "$GH_DL"
+  log INFO "开始更新方案文件"
+  touch "$TEMP_DIR/$STATUS_FILE"
+  echo "# 请不要修改该文件内容" >"$TEMP_DIR/$STATUS_FILE"
+
+  update_scheme "$scheme_type" "$help_code" "$deploy_dir"
+  update_dicts "$scheme_type" "$help_code" "$deploy_dir"
+  update_gram "$deploy_dir"
+
+  # 更新状态文件
+  log INFO "正在保存更新信息文件"
+  rm -rf "$deploy_dir/${STATUS_FILE:?}"
+  cp -rf "$TEMP_DIR/$STATUS_FILE" "$deploy_dir"
+  log INFO "更新成功!"
+  log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
+  if [[ "$input_type" == "Fcitx5" ]]; then
+    if command -v qdbus6 >/dev/null; then
+      qdbus6 org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
+    elif command -v qdbus >/dev/null; then
+      qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
+    else
+      log WARN "你的系统没有 qdbus 工具, 请手动重部署！" && sleep 1
+    fi
+  elif [[ "$input_type" == "iBus" ]]; then
+    ibus-daemon -drx
   fi
 }
 
-# 调用主函数
 main
-# 清理临时文件
-trap 'rm -rf "${TEMPDIR}"' EXIT
