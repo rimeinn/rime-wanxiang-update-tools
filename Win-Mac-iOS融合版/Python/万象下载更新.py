@@ -245,6 +245,7 @@ class ConfigManager:
             print_warning("配置文件已存在，将加载配置。")
             self._try_load_config()
             self._print_config_info()  # 打印配置信息
+            self._confirm_config()  # 确认配置是否符合预期
 
     def _print_config_info(self):
         """打印配置信息"""
@@ -257,17 +258,32 @@ class ConfigManager:
         print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
         print(f"{BORDER}")
+
+    def _confirm_config(self):
+        """确认配置是否符合预期"""
         # 让用户确认配置是否符合预期
         while True:
-            choice = input(f"{INDENT}配置是否正确？(y/n): ").strip().lower()
+            choice = input(f"{INDENT}配置是否正确？【Y(es)/N(o)/M(odify)】: ").strip().lower()
             if choice == 'y':
                 print_success("配置正确。")
                 break
             elif choice == 'n':
-                print_warning("请重新配置。")
+                print_warning("请重新配置生成新的配置文件。")
                 os.remove(self.config_path)  # 删除配置文件
                 self.reload_flag = True
                 self._ensure_config_exists()  # 重新创建配置文件
+                break
+            elif choice == 'm':
+                if sys.platform == 'ios':
+                    print_warning("iOS平台不支持修改配置文件，请手动编辑 settings.ini 文件。")
+                else:
+                    if os.name == 'nt':
+                        subprocess.run(['notepad.exe', self.config_path], shell=True)
+                    else:
+                        subprocess.run(['open', self.config_path])
+                    print_warning("请在打开的配置文件中手动修改，保存后继续执行。")
+                input("按任意键继续...")
+                self._try_load_config()  # 再次尝试加载配置
                 break
             else:
                 print_error("无效的输入，请重新输入。")
