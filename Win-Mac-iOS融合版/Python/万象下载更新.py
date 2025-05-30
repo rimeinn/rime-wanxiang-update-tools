@@ -889,7 +889,7 @@ class SchemeUpdater(UpdateHandler):
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
         self.clean_build()
-        print_success("方案更新完成，Windows小狼毫将自动部署，Mac鼠须管或小企鹅及iOS Hamster输入法请在本程序结束后手动重新部署")
+        print_success("方案更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
         return True  # 成功更新
 
     def get_local_time(self):
@@ -1044,7 +1044,7 @@ class DictUpdater(UpdateHandler):
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
-            print_success("词库更新完成，Windows小狼毫将自动部署，Mac鼠须管或小企鹅及iOS Hamster输入法请在本程序结束后手动重新部署")
+            print_success("词库更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
             return True
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
@@ -1137,7 +1137,7 @@ class ModelUpdater(UpdateHandler):
         self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
-        print_success("模型更新完成，Windows小狼毫将自动部署，Mac鼠须管或小企鹅及iOS Hamster输入法请在本程序结束后手动重新部署")
+        print_success("模型更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
         return True
 
     def get_local_time(self):
@@ -1195,6 +1195,25 @@ def check_for_update(updater):
                 print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
             print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
             return True
+
+def deploy_for_mac(system=sys.platform):
+    if system == 'darwin':
+        import osascript
+        cmd = """
+tell application "System Events"
+	keystroke "`" using {control down, option down}
+end tell
+"""
+        print_warning("即将通过快捷键自动部署，如果使用小企鹅，请在3秒内切换到rime以进行自动部署")
+        time.sleep(3)
+        try:
+            osascript.run(cmd)
+            print_success("部署命令已发送，请查看通知中心确认部署")
+            return True
+        except:
+            print_error("发送部署命令失败，请手动部署或检查权限设置")
+            return False
+    
 
 # ====================== 主程序 ======================
 def main():
@@ -1305,6 +1324,12 @@ def main():
                                 print_warning("部署失败，请检查日志")
                         else:
                             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
+                    elif sys.platform == 'darwin':
+                        if updated and deployer:
+                            print_header("重新部署输入法")
+                            deploy_for_mac()
+                    else:
+                        pass
                     # 自动退出逻辑
                     print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
                     time.sleep(4)
@@ -1320,6 +1345,12 @@ def main():
                             print_warning("部署失败，请检查日志")
                     else:
                         print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
+                elif sys.platform == 'darwin':
+                    if updated and deployer:
+                        print_header("重新部署输入法")
+                        deploy_for_mac()
+                else:
+                    pass
 
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
