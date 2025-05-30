@@ -575,7 +575,7 @@ if ($InputSchemaDown -eq "0") {
     $SchemaUpdateTimeKey = $KeyTable[$InputSchemaType] + "_schema_update_time"
     $SchemaUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey
     $SchemaRemoteTime = [datetime]::Parse($ExpectedSchemaTypeInfo.published_at)
-    Write-Host "正在检查方案是否需要更新..." -ForegroundColor Green
+    Write-Host "正在检查方案是否需要更新..." -ForegroundColor Yellow
     Write-Host "本地时间: $SchemaUpdateTime" -ForegroundColor Green
     Write-Host "远程时间: $SchemaRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $SchemaUpdateTime -remoteTime $SchemaRemoteTime) {
@@ -634,7 +634,7 @@ if ($InputDictDown -eq "0") {
     $DictUpdateTimeKey = $KeyTable[$InputSchemaType] + "_dict_update_time"
     $DictUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey
     $DictRemoteTime = [datetime]::Parse($ExpectedDictTypeInfo.updated_at)
-    Write-Host "正在检查词库是否需要更新..." -ForegroundColor Green
+    Write-Host "正在检查词库是否需要更新..." -ForegroundColor Yellow
     Write-Host "本地时间: $DictUpdateTime" -ForegroundColor Green
     Write-Host "远程时间: $DictRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
@@ -706,7 +706,7 @@ if ($InputGramModel -eq "0") {
     $GramUpdateTimeKey = $GramReleaseTag + "_gram_update_time"
     $GramUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $GramUpdateTimeKey
     $GramRemoteTime = [datetime]::Parse($ExpectedGramTypeInfo.updated_at)
-    Write-Host "正在检查模型是否需要更新..." -ForegroundColor Green
+    Write-Host "正在检查模型是否需要更新..." -ForegroundColor Yellow
     # 检查目标文件 $targetDir/$tempGram 是否存在
     $filePath = Join-Path $targetDir $GramModelFileName
     if ($Debug) {

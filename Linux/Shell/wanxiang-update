@@ -380,13 +380,7 @@ main() {
   log INFO "更新成功!"
   log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
   if [[ "$input_type" == "Fcitx5" ]]; then
-    if command -v qdbus6 >/dev/null; then
-      qdbus6 org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
-    elif command -v qdbus >/dev/null; then
-      qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
-    else
-      log WARN "你的系统没有 qdbus 工具, 请手动重部署！" && sleep 1
-    fi
+    dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.ReloadAddonConfig string:rime
   elif [[ "$input_type" == "iBus" ]]; then
     ibus-daemon -drx
   fi
