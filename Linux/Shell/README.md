@@ -28,15 +28,31 @@ chmod +x wanxiang-update
 ## 自动化配置（无人值守更新）
 
 ```bash
-WANXIANG=""
-SCHEMA=""
-DEPLOYDIR=""
+# 输入框架, 可选 "Fcitx5" "iBus"
+# 例如: INPUT_TYPE="Fcitx5"
+INPUT_TYPE=""
+# 方案类型, 可选 "base" "pro"
+# 例如: SCHEME_TYPE="pro"
+SCHEME_TYPE=""
+# 辅助码类型, 基础版请填 "base"
+# 专业版可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"
+# 例如: HELP_CODE="zrm"
+HELP_CODE=""
+# 部署目录, 填入你需要部署的目录
+# 例如:
+# DEPLOY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime" # Fcitx5 默认路径
+# DEPLOY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ibus/rime" # iBus 默认路径
+DEPLOY_DIR=""
+# 用户确认选项, 自动化填 Yes 即可, 可选 "Yes" "No"
+# 例如: IS_TRUE="Yes"
+IS_TRUE=""
+# 更新时需要保留的文件
+# 例如: EXCLUDE_FILE=(
+#   "这是一个目录"
+#   "这是一个文件"
+#   "......"
+# )
+EXCLUDE_FILE=()
 ```
 
-参照脚本注释设置文件开头这三个变量，即可自动化整个更新过程。
-
-## 注意事项
-
-- 你需要一个良好的网络连接。
-- 脚本会在部署目录生成 `updatetime.txt` 文件，请不要修改。
-- 第一次运行脚本会出现 `awk：致命错误` 字样，这是预期的，无需干预。
+参照脚本注释设置文件开头这些变量，即可自动化整个更新过程。
