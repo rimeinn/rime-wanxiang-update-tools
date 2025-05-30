@@ -1229,17 +1229,19 @@ def main():
         config_loaded = False
 
         # ========== 自动更新检测（仅在程序启动时执行一次）==========
-        update_flag = False  # 标记是否存在更新
+        update_flag = True  # 标记是否存在更新
         
         # 方案更新检测
         scheme_updater = SchemeUpdater(config_manager)
-        update_flag = check_for_update(scheme_updater)
+        scheme_update_flag = check_for_update(scheme_updater)
         # 词库更新检测
         dict_updater = DictUpdater(config_manager)
-        update_flag = check_for_update(dict_updater)
+        dict_update_flag = check_for_update(dict_updater)
         # 模型更新检测
         model_updater = ModelUpdater(config_manager)
-        update_flag = check_for_update(model_updater)
+        model_update_flag = check_for_update(model_updater)
+
+        update_flag = scheme_update_flag or dict_update_flag or model_update_flag
         # 如果没有更新显示提示
         if not update_flag:
             print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
