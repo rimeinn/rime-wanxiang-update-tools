@@ -38,11 +38,6 @@ SCHEME_TYPE=""
 # 专业版可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"
 # 例如: HELP_CODE="zrm"
 HELP_CODE=""
-# 部署目录, 填入你需要部署的目录
-# 例如:
-# DEPLOY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime" # Fcitx5 默认路径
-# DEPLOY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ibus/rime" # iBus 默认路径
-DEPLOY_DIR=""
 # 用户确认选项, 自动化填 Yes 即可, 可选 "Yes" "No"
 # 例如: IS_TRUE="Yes"
 IS_TRUE=""
