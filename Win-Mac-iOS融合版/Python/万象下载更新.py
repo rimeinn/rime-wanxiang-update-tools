@@ -11,6 +11,8 @@ import zipfile
 import shutil
 import fnmatch
 import re
+import io
+from typing import Tuple, Optional, List, Dict
 
 # ====================== 全局配置 ======================
 
@@ -131,6 +133,7 @@ class ConfigManager:
         self.rime_dir = ''
         self.scheme_type = ''
         self.reload_flag = False
+        self.first_install = False # 首次安装标识
         self._ensure_config_exists()
 
     def detect_installation_paths(self, show=False):
@@ -175,8 +178,19 @@ class ConfigManager:
             detected['rime_user_dir'] = self.rime_dir
             return detected
 
+    def check_wanxiang_exists(self) -> bool:
+        """检查万象方案文件是否存在"""
+        rime_dir = self.detect_installation_paths()['rime_user_dir']
+        if os.path.exists(rime_dir):
+            # 检查方案文件是否存在
+            files = os.listdir(rime_dir)
+            scheme_files = [f for f in files if 'wanxiang.schema.yaml' in f]
+            return True if scheme_files else False
+        else:
+            return False
 
-    def _check_hamster_path(self):
+    def _check_hamster_path(self) -> bool:
+        """检查脚本是否放置在正确的Hamster目录下"""
         hamster_path_names = os.listdir('.')
         if "RIME" in hamster_path_names:
             self.rime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'RIME', 'Rime')
@@ -188,7 +202,7 @@ class ConfigManager:
             print_error('请将脚本放置到正确的位置（Hamster目录下）')
             return False
         
-    def _select_rime_engine(self):
+    def _select_rime_engine(self) -> None:
         """选择输入法引擎：鼠须管/小企鹅"""
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行引擎选择向导")
@@ -212,7 +226,8 @@ class ConfigManager:
             else:
                 print(f"{INDENT}无效的选择，请重新选择。")
 
-    def _get_config_path(self):
+    def _get_config_path(self) -> str:
+        """获取配置文件路径"""
         # 检查程序是否是打包后的可执行文件。如果是，sys.frozen 属性会被设置为 True
         if getattr(sys, 'frozen', False):
             # 如果是打包后的可执行文件，获取可执行文件所在的目录
@@ -223,7 +238,8 @@ class ConfigManager:
         # 将基础目录和配置文件名 'settings.ini' 拼接成完整的配置文件路径并返回
         return os.path.join(base_dir, 'settings.ini')
 
-    def _ensure_config_exists(self):
+    def _ensure_config_exists(self) -> None:
+        """确保配置文件存在，如果不存在则创建一个新的配置文件"""
         if sys.platform == 'ios':
             if not self._check_hamster_path():
                 return
@@ -237,6 +253,8 @@ class ConfigManager:
             if self._guide_scheme_type_selection() and self._guide_scheme_selection():
                 self._write_config() # 写入配置文件
                 print_success("配置文件创建成功。")
+                if not self.check_wanxiang_exists(): # 检查万象方案文件是否存在
+                    self.first_install = True
             else:
                 print_error("配置向导失败，请手动配置。")
                 exit(1)  # 终止程序执行
@@ -247,7 +265,7 @@ class ConfigManager:
             self._print_config_info()  # 打印配置信息
             self._confirm_config()  # 确认配置是否符合预期
 
-    def _print_config_info(self):
+    def _print_config_info(self) -> None:
         """打印配置信息"""
         print(f"\n{BORDER}")
         print(f"{INDENT}当前配置信息")
@@ -259,7 +277,7 @@ class ConfigManager:
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
         print(f"{BORDER}")
 
-    def _confirm_config(self):
+    def _confirm_config(self) -> None:
         """确认配置是否符合预期"""
         # 让用户确认配置是否符合预期
         while True:
@@ -288,7 +306,7 @@ class ConfigManager:
             else:
                 print_error("无效的输入，请重新输入。")
 
-    def _try_load_config(self):
+    def _try_load_config(self) -> None:
         """尝试加载配置文件"""
         # 加载并验证配置
         try:
@@ -305,7 +323,7 @@ class ConfigManager:
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
 
-    def _init_empty_config(self):
+    def _init_empty_config(self) -> None:
         """创建空配置"""
         self.config['Settings'] = {
             'engine': '',
@@ -317,11 +335,13 @@ class ConfigManager:
             'exclude_files': ''
         }
         
-    def _write_config(self):
+    def _write_config(self) -> None:
+        """写入配置文件"""
         with open(self.config_path, 'w', encoding='utf-8') as f:
             self.config.write(f)
 
     def _guide_scheme_type_selection(self) -> bool:
+        """首次运行引导选择万象版本"""
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行方案版本选择向导")
         print(f"{BORDER}")
@@ -345,6 +365,7 @@ class ConfigManager:
                 print_error("无效的选项，请重新输入")
 
     def _guide_scheme_selection(self) -> bool:
+        """首次运行引导选择方案"""
         if self.scheme_type == 'rime_wanxiang_pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
@@ -378,8 +399,14 @@ class ConfigManager:
             return True
 
             
-    def _get_actual_filenames(self, scheme_key):
-        """获取实际文件名（带网络请求）"""
+    def _get_actual_filenames(self, scheme_key) -> Tuple[str, str]:
+        """
+        获取实际文件名（带网络请求）
+        Args:
+            scheme_key (str): 方案关键字
+        Returns:
+            Tuple[str, str]: 方案文件名，词库文件名
+        """
         try:
             # 方案文件检查器（使用最新Release）
             if self.scheme_type == 'rime_wanxiang_pro':
@@ -430,7 +457,7 @@ class ConfigManager:
                     f"*-{scheme_key}_dicts.zip"
                 )
 
-    def _show_config_guide(self):
+    def _show_config_guide(self) -> None:
         """配置引导界面"""
         # 显示第一个路径检测界面
         print(f"\n{BORDER}")
@@ -456,7 +483,7 @@ class ConfigManager:
             None
         input("\n请按需修改上述路径，保存后按回车键继续...")
 
-    def display_config_instructions(self):
+    def display_config_instructions(self) -> None:
         """静默显示配置说明"""
         print_header("请检查配置文件路径,需用户修改")
         print("\n▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
@@ -479,7 +506,20 @@ class ConfigManager:
         print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         
 
-    def load_config(self, system=sys.platform, show=False):
+    def load_config(self, 
+                    system=sys.platform, 
+                    show=False, 
+                    first_download=False
+                ) -> Tuple[str, str, str, str, bool, str, list]:
+        """
+        加载配置文件
+        Args:
+            system (str): 系统类型
+            show (bool): 是否显示小狼毫路径说明
+            first_download (bool): 是否是第一次下载
+        Returns:
+            Tuple[str, str, str, str, bool, str, list]: 配置信息
+        """
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
         github_token = config.get('github_token', '')
@@ -510,24 +550,30 @@ class ConfigManager:
                 '方案解压目录': self.rime_dir,
                 '词库解压目录': os.path.join(self.rime_dir, 'cn_dicts')
             }
-        
-        missing = [name for name, path in required_paths.items() if not os.path.exists(path)]
+
+        if first_download:
+            missing = [] if os.path.exists(required_paths['方案解压目录']) else [required_paths['方案解压目录']]
+        else:
+            if not os.path.exists(required_paths['方案解压目录']):
+                print(f"\n{COLOR['FAIL']}关键路径配置错误：{COLOR['ENDC']}")
+                for name in missing:
+                    print(f"{INDENT}{name}: {required_paths[name]}")
+                print(f"\n{INDENT}可能原因：")
+                if system == 'win32':
+                    print(f"{INDENT}1. 小狼毫输入法未正确安装")
+                    print(f"{INDENT}2. 注册表信息被修改")
+                    print(f"{INDENT}3. 自定义路径配置错误")
+                elif system == 'darwin':
+                    print(f"{INDENT}1. 鼠须管或小企鹅输入法未正确安装")
+                    print(f"{INDENT}2. 自定义路径配置错误")
+                else:
+                    print(f"{INDENT}1. 该路径不存在")
+                    print(f"{INDENT}2. 没有将该脚本放置在Hamster路径下")
+                sys.exit(1)
+            missing = [path for name, path in required_paths.items() if not os.path.exists(path)]
         if missing:
-            print(f"\n{COLOR['FAIL']}关键路径配置错误：{COLOR['ENDC']}")
-            for name in missing:
-                print(f"{INDENT}{name}: {required_paths[name]}")
-            print(f"\n{INDENT}可能原因：")
-            if system == 'win32':
-                print(f"{INDENT}1. 小狼毫输入法未正确安装")
-                print(f"{INDENT}2. 注册表信息被修改")
-                print(f"{INDENT}3. 自定义路径配置错误")
-            elif system == 'darwin':
-                print(f"{INDENT}1. 鼠须管或小企鹅输入法未正确安装")
-                print(f"{INDENT}2. 自定义路径配置错误")
-            else:
-                print(f"{INDENT}1. 该路径不存在")
-                print(f"{INDENT}2. 没有将该脚本放置在Hamster路径下")
-            sys.exit(1)
+            self.ensure_directories(missing)
+            
             
         return (
             config['engine'],
@@ -538,6 +584,12 @@ class ConfigManager:
             github_token,
             exclude_files
         )
+    
+    def ensure_directories(self, dirs: List) -> None:
+        """目录保障系统"""
+        for dir in dirs:
+            os.makedirs(dir, exist_ok=True)
+
 
 class GithubFileChecker:
     def __init__(self, owner, repo, pattern, tag=None):
@@ -546,7 +598,7 @@ class GithubFileChecker:
         self.pattern_regex = re.compile(pattern.replace('*', '.*'))
         self.tag = tag  # 新增标签参数
 
-    def get_latest_file(self):
+    def get_latest_file(self) -> Optional[str]:
         """获取匹配模式的最新文件"""
         releases = self._get_releases()
         for release in releases:
@@ -555,7 +607,7 @@ class GithubFileChecker:
                     return asset['name']
         return None  # 如果未找到，返回None
 
-    def _get_releases(self):
+    def _get_releases(self) -> List:
         """根据标签获取对应的Release"""
         if self.tag:
             # 获取指定标签的Release
@@ -575,7 +627,13 @@ class GithubFileChecker:
 # ====================== 更新基类 ======================
 class UpdateHandler:
     """更新系统核心基类"""
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, first_download=False):
+        """
+        初始化更新处理器
+        Args:
+            config_manager (ConfigManager): 配置管理器
+            first_download (bool): 是否是第一次下载，用于传递给load_config方法，默认False，需手动设置为True
+        """
         self.config_manager = config_manager
         (
             self.engine,
@@ -585,16 +643,17 @@ class UpdateHandler:
             self.use_mirror,
             self.github_token,
             self.exclude_files
-        ) = config_manager.load_config(show=False)
+        ) = config_manager.load_config(show=False, first_download=first_download)
         (
             self.custom_dir,
             self.extract_path,
             self.dict_extract_path,
             self.weasel_server
         ) = self.get_all_dir()
-        self.ensure_directories()
+        os.makedirs(self.custom_dir, exist_ok=True)
 
-    def get_all_dir(self):
+    def get_all_dir(self) -> Tuple[str, str, str, str]:
+        """获取所有目录"""
         rime_user_dir = self.config_manager.detect_installation_paths().get('rime_user_dir', '')
         server = self.config_manager.detect_installation_paths().get('server_exe', '')
         return (
@@ -604,14 +663,15 @@ class UpdateHandler:
             server
         )
         
-    def ensure_directories(self):
-        """目录保障系统"""
-        os.makedirs(self.custom_dir, exist_ok=True)
-        os.makedirs(self.extract_path, exist_ok=True)
-        os.makedirs(self.dict_extract_path, exist_ok=True)
 
-    def github_api_request(self, url):
-        """带令牌认证的API请求"""
+    def github_api_request(self, url) -> Optional[Dict]:
+        """
+        带令牌认证的API请求
+        Args:
+            url (str): API请求的URL
+        Returns:
+            dict: API响应的JSON数据
+        """
         headers = {"User-Agent": "RIME-Updater/1.0"}
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
@@ -644,12 +704,23 @@ class UpdateHandler:
         return None
 
 
-    def mirror_url(self, url):
-        """智能镜像处理"""
+    def mirror_url(self, url) -> str:
+        """
+        智能镜像处理
+        Args:
+            url (str): 原始URL
+        Returns:
+            str: 处理后的URL
+        """
         return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url
 
-    def download_file(self, url, save_path):
-        """带进度显示的稳健下载"""
+    def download_file(self, url, save_path) -> bool:
+        """
+        带进度显示的稳健下载
+        Args:
+            url (str): 下载链接
+            save_path (str): 保存路径
+        """
         try:
             # 统一提示镜像状态
             if self.use_mirror:
@@ -673,8 +744,14 @@ class UpdateHandler:
             print_error(f"下载失败: {str(e)}")
             return False
 
-    def extract_zip(self, zip_path, target_dir, is_dict=False):
-        """智能解压系统（支持排除文件）"""
+    def extract_zip(self, zip_path, target_dir, is_dict=False) -> bool:
+        """
+        智能解压系统（支持排除文件）
+        Args:
+            zip_path (str): 压缩文件路径
+            target_dir (str): 解压目标路径
+            is_dict (bool): 是否为词库文件（决定解压方式）
+        """
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 exclude_patterns = self.exclude_files  # 获取排除模式
@@ -825,11 +902,11 @@ class UpdateHandler:
 # ====================== 方案更新 ======================
 class SchemeUpdater(UpdateHandler):
     """方案更新处理器"""
-    def __init__(self, config_manager):
-        super().__init__(config_manager)
+    def __init__(self, config_manager, first_download=False):
+        super().__init__(config_manager, first_download)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
 
-    def check_update(self):
+    def check_update(self) -> Optional[Dict]:
         releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases")
         if not releases:
             return None
@@ -853,8 +930,69 @@ class SchemeUpdater(UpdateHandler):
                     }
                 
         return None
+    
 
-    def run(self):
+    def first_download_scheme(self) -> bool:
+        """首次下载方案并解压至配置目录"""
+        remote_info = self.check_update()
+        if not remote_info:
+            return False
+
+        # 1. 下载ZIP文件内容（不保存到磁盘）
+        response = requests.get(remote_info["url"])
+
+        # 确保下载成功
+        if response.status_code == 200:
+            # 删除原有的方案文件
+            old_files = os.listdir(self.extract_path)
+            for file_name in old_files:
+                file_path = os.path.join(self.extract_path, file_name)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            # 2. 将下载的二进制数据存储到BytesIO对象中
+            zip_data = io.BytesIO(response.content)
+
+            # 3. 使用zipfile模块处理这个BytesIO对象
+            with zipfile.ZipFile(zip_data, 'r') as zip_ref:
+                # 获取ZIP文件中的所有文件名
+                zip_contents = zip_ref.namelist()
+
+                # 获取第一层级的文件夹（假设只有一个第一层级文件夹）
+                first_level_folder = None
+                for file_name in zip_contents:
+                    # 找到第一个文件夹的路径
+                    if '/' in file_name:  # 判断是否为文件夹
+                        first_level_folder = file_name.split('/')[0]
+                    break
+
+                if first_level_folder:
+                    # 4. 提取文件到指定的路径
+                    output_directory =  self.extract_path  # 提取内容的目标路径
+                    os.makedirs(output_directory, exist_ok=True)  # 创建目标目录，如果不存在的话
+
+                    for file_name in zip_contents:
+                        if file_name.startswith(first_level_folder + '/'):
+                            # 去除第一层级文件夹部分，提取文件
+                            extracted_path = os.path.join(output_directory, file_name[len(first_level_folder)+1:])
+
+                            # 创建目标路径所在的目录
+                            if not file_name.endswith('/'):  # 判断是不是文件
+                                os.makedirs(os.path.dirname(extracted_path), exist_ok=True)
+
+
+                                # 解压文件内容到目标路径
+                                with open(extracted_path, 'wb') as f:
+                                    f.write(zip_ref.read(file_name))
+
+            print_success("首次下载方案成功，已解压到配置目录")
+            return True
+        else:
+            print_error(f"首次下载方案失败，状态码: {response.status_code}")
+            return False
+
+    def run(self) -> bool:
         print_header("方案更新流程")
         remote_info = self.check_update()
         if not remote_info:
@@ -892,7 +1030,7 @@ class SchemeUpdater(UpdateHandler):
         print_success("方案更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
         return True  # 成功更新
 
-    def get_local_time(self):
+    def get_local_time(self) -> Optional[datetime]:
         if not os.path.exists(self.record_file):
             return None
         try:
@@ -903,12 +1041,19 @@ class SchemeUpdater(UpdateHandler):
         except:
             return None
 
-    def file_compare(self, file1, file2):
+    def file_compare(self, file1, file2) -> bool:
         hash1 = calculate_sha256(file1)
         hash2 = calculate_sha256(file2)
         return hash1 == hash2
 
-    def apply_update(self, temp, target, info):
+    def apply_update(self, temp, target, info) -> None:
+        """
+        应用更新（替换文件）
+        Args:
+            temp (str): 临时文件路径
+            target (str): 目标文件路径
+            info (dict): 更新信息
+        """
         if hasattr(self, 'terminate_processes'):
             # 新增终止进程步骤
             self.terminate_processes()
@@ -929,7 +1074,8 @@ class SchemeUpdater(UpdateHandler):
                 "apply_time": datetime.now(timezone.utc).isoformat()
             }, f)
 
-    def clean_build(self):
+    def clean_build(self) -> None:
+        """清理build目录"""
         build_dir = os.path.join(self.extract_path, "build")
         if os.path.exists(build_dir):
             shutil.rmtree(build_dir)
@@ -946,7 +1092,8 @@ class DictUpdater(UpdateHandler):
         self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
 
-    def check_update(self):
+    def check_update(self) -> Dict:
+        """检查词库更新"""
         release = self.github_api_request(
             f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases/tags/{self.target_tag}"
         )
@@ -966,7 +1113,8 @@ class DictUpdater(UpdateHandler):
             "size": target_asset["size"]
         }
     
-    def get_local_time(self):
+    def get_local_time(self) -> Optional[datetime]:
+        """获取本地记录的更新时间"""
         if not os.path.exists(self.record_file):
             return None
         try:
@@ -977,12 +1125,12 @@ class DictUpdater(UpdateHandler):
         except:
             return None
 
-    def file_compare(self, file1, file2):
+    def file_compare(self, file1, file2) -> bool:
         """文件比对"""
         return calculate_sha256(file1) == calculate_sha256(file2)
 
-    def apply_update(self, temp, target, info):
-        """ 参数不再需要传递路径，使用实例变量 """
+    def apply_update(self, temp, target, info) -> None:
+        """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
@@ -1014,7 +1162,7 @@ class DictUpdater(UpdateHandler):
                 os.remove(self.temp_file)
             raise
 
-    def run(self):
+    def run(self) -> bool:
         """执行更新"""
         print_header("词库更新流程")
         remote_info = self.check_update()
@@ -1064,7 +1212,7 @@ class ModelUpdater(UpdateHandler):
         self.temp_file = os.path.join(self.custom_dir, f"{self.model_file}.tmp") 
         self.target_path = os.path.join(self.extract_path, self.model_file) 
 
-    def check_update(self):
+    def check_update(self) -> Optional[Dict]:
         """检查模型更新"""
         release = self.github_api_request(
             f"https://api.github.com/repos/{OWNER}/{MODEL_REPO}/releases/tags/{MODEL_TAG}"
@@ -1084,7 +1232,7 @@ class ModelUpdater(UpdateHandler):
 
 
 
-    def run(self):
+    def run(self) -> bool:
         """执行模型更新主流程"""
         print_header("模型更新流程")
         remote_info = self.check_update()
@@ -1140,7 +1288,7 @@ class ModelUpdater(UpdateHandler):
         print_success("模型更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
         return True
 
-    def get_local_time(self):
+    def get_local_time(self) -> Optional[datetime]:
         if not os.path.exists(self.record_file):
             return None
         try:
@@ -1151,13 +1299,14 @@ class ModelUpdater(UpdateHandler):
         except:
             return None
 
-    def _check_hash_match(self):
+    def _check_hash_match(self) -> bool:
         """检查临时文件与目标文件哈希是否一致"""
         temp_hash = calculate_sha256(self.temp_file)
         target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
         return temp_hash == target_hash
 
-    def _save_update_record(self, update_time):
+    def _save_update_record(self, update_time) -> None:
+        """保存更新记录"""
         record = {
             "model_name": self.model_file,
             "update_time": update_time,  # 使用传入的更新时间
@@ -1168,8 +1317,14 @@ class ModelUpdater(UpdateHandler):
 
 
 # ====================== 工具函数 ======================
-def calculate_sha256(file_path):
-    """计算文件SHA256值"""
+def calculate_sha256(file_path) -> Optional[str]:
+    """
+    计算文件SHA256值
+    Args:
+        file_path (str): 文件路径
+    Returns:
+        str: SHA256值
+    """
     sha256_hash = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
@@ -1180,7 +1335,12 @@ def calculate_sha256(file_path):
         print_error(f"计算哈希失败: {str(e)}")
         return None
 
-def check_for_update(updater):
+def check_for_update(updater) -> bool:
+    """
+    检查更新并打印提示
+    Args:
+        updater (Updater): 更新器对象
+    """
     updater_info = updater.check_update()
     if updater_info:
         remote_time = datetime.strptime(updater_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -1196,7 +1356,8 @@ def check_for_update(updater):
             print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
             return True
 
-def deploy_for_mac(system=sys.platform):
+def deploy_for_mac(system=sys.platform) -> bool:
+    """macOS自动部署"""
     if system == 'darwin':
         import osascript
         cmd = """
@@ -1213,7 +1374,7 @@ end tell
         except:
             print_error("发送部署命令失败，请手动部署或检查权限设置")
             return False
-    
+
 
 # ====================== 主程序 ======================
 def main():
@@ -1230,6 +1391,26 @@ def main():
 
         # ========== 自动更新检测（仅在程序启动时执行一次）==========
         update_flag = True  # 标记是否存在更新
+        
+        # 检测是否存在万象方案
+        if config_manager.first_install:
+            print_header("未检测到万象方案，将直接下载完整方案到配置目录")
+            # 首次加载配置
+            scheme_updater = SchemeUpdater(config_manager, first_download=True)
+            if scheme_updater.first_download_scheme():
+                if sys.platform == 'win32':
+                    print_header("重新部署输入法")
+                    if scheme_updater.deploy_weasel():
+                        print_success("部署成功")
+                    else:
+                        print_warning("部署失败，请检查日志")
+                elif sys.platform == 'darwin':
+                    print_header("重新部署输入法")
+                    deploy_for_mac()
+                else:
+                    pass
+            sys.exit(0)
+            
         
         # 方案更新检测
         scheme_updater = SchemeUpdater(config_manager)
