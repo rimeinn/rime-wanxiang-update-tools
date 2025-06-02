@@ -12,11 +12,6 @@ SCHEME_TYPE=""
 # 专业版可选 "cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm"
 # 例如: HELP_CODE="zrm"
 HELP_CODE=""
-# 部署目录, 填入你需要部署的目录
-# 例如:
-# DEPLOY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime" # Fcitx5 默认路径
-# DEPLOY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ibus/rime" # iBus 默认路径
-DEPLOY_DIR=""
 # 用户确认选项, 自动化填 Yes 即可, 可选 "Yes" "No"
 # 例如: IS_TRUE="Yes"
 IS_TRUE=""
@@ -38,25 +33,27 @@ readonly RED GREEN YELLOW NC
 
 # 常量定义
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-BASE_REPO="rime_wanxiang"
-PRO_REPO="rime_wanxiang_pro"
-LMDG_REPO="RIME-LMDG"
-GH_API="https://api.github.com/repos/amzxyz"
-GH_DL="https://github.com/amzxyz"
+UPDATE_TOOLS_REPO="expoli/rime-wanxiang-update-tools"
+BASE_REPO="amzxyz/rime_wanxiang"
+PRO_REPO="amzxyz/rime_wanxiang_pro"
+LMDG_REPO="amzxyz/RIME-LMDG"
+GH_API="https://api.github.com/repos"
+GH_DL="https://github.com"
 STATUS_FILE="update_status.txt"
 TEMP_DIR=$(mktemp -d)
 INPUT_TYPES=("Fcitx5" "iBus")
 SCHEME_TYPES=("base" "pro")
 HELP_CODES=("cj" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
 EXCLUDE_FILE+=(
-  *.userdb          # 用户词库
-  *.custom.yaml     # 用户自定义内容
-  installation.yaml # 部署信息
-  user.yaml         # 用户设置
-  *.gram            # 语法模型, 不是每次都需要更新
-  "$STATUS_FILE"    # 更新脚本时间戳记录文件, 用于判断是否需要更新
+  *.userdb            # 用户词库
+  *.custom.yaml       # 用户自定义内容
+  "lua/seq_words.lua" # 用户造词
+  installation.yaml   # 部署信息
+  user.yaml           # 用户设置
+  *.gram              # 语法模型, 不是每次都需要更新
+  "$STATUS_FILE"      # 更新脚本时间戳记录文件, 用于判断是否需要更新
 )
-readonly UPDATE_TOOLS_VERSION
+readonly UPDATE_TOOLS_VERSION UPDATE_TOOLS_REPO
 readonly BASE_REPO PRO_REPO LMDG_REPO GH_API GH_DL STATUS_FILE
 readonly EXCLUDE_FILE TEMP_DIR HELP_CODES SCHEME_TYPES
 
@@ -141,9 +138,9 @@ choice_scheme_repo() {
 check_version() {
   local version scheme_repo="$1"
   version=$(
-    curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
-      grep "tag_name" | awk -F '"' '{print $4}' |
-      grep -v "dict-nightly" | sort -Vr | head -n 1
+    curl -sL -m 10 "$GH_API/$scheme_repo/releases" | grep "tag_name" |
+      awk -F '"' '{print $4}' | grep -v "rc" | grep -v "dict-nightly" |
+      sort -Vr | head -n 1
   )
   echo "$version"
 }
@@ -160,7 +157,7 @@ update_scheme() {
   local scheme_url scheme_file
   if [[ "$scheme_type" == "base" ]]; then
     scheme_url="$GH_DL/$scheme_repo/archive/refs/tags/$version.zip"
-    scheme_file="rime_wanxiang-${version}.zip"
+    scheme_file="rime_wanxiang-${version#v}.zip"
   elif [[ "$scheme_type" == "pro" ]]; then
     scheme_url=$(curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
       grep "$version" | grep "$help_code" | awk -F '"' '{print $4}')
@@ -175,15 +172,24 @@ update_scheme() {
     download_and_unzip "$scheme_url" "$scheme_file"
     rm -rf "$TEMP_DIR/${scheme_file%.zip}/"{简纯+.trime.yaml,squirrel.yaml,weasel.yaml}
     rm -rf "$TEMP_DIR/${scheme_file%.zip}/"custom_phrase.txt
-    log INFO "正在移除旧版方案文件" && sleep 0.5
-    local excludes=""
-    for _exclude in "${EXCLUDE_FILE[@]}"; do
-      excludes="$excludes -not -path \"$deploy_dir/$_exclude/*\""
-      excludes="$excludes -not -path \"$deploy_dir/$_exclude\""
+    log INFO "正在备份需要排除的文件" && sleep 0.5
+    for _backup_file in "${EXCLUDE_FILE[@]}"; do
+      local backupdir backupfile
+      find "$deploy_dir" -maxdepth 1 -type d -name "$_backup_file" |
+        while read -r backupdir; do
+          if [[ -d "$backupdir" ]]; then
+            cp -rf "$backupdir" "$TEMP_DIR/${scheme_file%.zip}"
+          fi
+        done
+      find "$deploy_dir" -maxdepth 1 -type f -name "$_backup_file" |
+        while read -r backupfile; do
+          if [[ -f "$backupfile" ]]; then
+            cp -rf "$backupfile" "$TEMP_DIR/${scheme_file%.zip}"
+          fi
+        done
     done
-    # 一个文件特殊处理
-    cp -rf "$deploy_dir/lua/seq_words.lua" "$TEMP_DIR/${scheme_file%.zip}/lua/seq_words.lua"
-    eval "find \"$deploy_dir\" -mindepth 1 \( $excludes \) -exec rm -rf {} +"
+    log INFO "正在移除旧版方案文件" && sleep 0.5
+    rm -rf "${deploy_dir:?}/"*
     log INFO "正在更新方案文件" && sleep 0.5
     cp -rf "$TEMP_DIR/${scheme_file%.zip}/"* "$deploy_dir"
     log INFO "方案文件更新成功"
@@ -195,7 +201,7 @@ update_scheme() {
 # 更新词典文件
 update_dicts() {
   local scheme_type="$1" help_code="$2" deploy_dir="$3"
-  local scheme_repo version
+  local scheme_repo
   scheme_repo=$(choice_scheme_repo "$scheme_type")
   log INFO "正在检查 $scheme_type 方案词典是否需要更新"
 
@@ -219,7 +225,11 @@ update_dicts() {
     log INFO "正在移除旧版词典文件" && sleep 0.5
     rm -rf "$deploy_dir/cn_dicts/"*
     log INFO "正在更新词典文件" && sleep 0.5
-    cp -rf "$TEMP_DIR/${help_code}_dicts/"* "$deploy_dir/cn_dicts"
+    if [[ "$scheme_type" == "base" ]]; then
+      cp -rf "$TEMP_DIR/cn_dicts/"* "$deploy_dir/cn_dicts"
+    elif [[ "$scheme_type" == "pro" ]]; then
+      cp -rf "$TEMP_DIR/${help_code}_dicts/"* "$deploy_dir/cn_dicts"
+    fi
     log INFO "词典文件更新成功"
   else
     log INFO "词典文件无需更新"
@@ -270,6 +280,17 @@ main() {
   else
     log INFO "更新工具版本: $UPDATE_TOOLS_VERSION" && echo ""
   fi
+  log INFO "正在检查 GitHub 连接状态" && http_check "$GH_DL"
+  log INFO "正在检查更新助手是否需要更新"
+  local remote_update_tools_version
+  remote_update_tools_version=$(check_version "$UPDATE_TOOLS_REPO")
+  if [[ ! "$UPDATE_TOOLS_VERSION" > "$remote_update_tools_version" ]]; then
+    log WARN "更新助手当前版本 $UPDATE_TOOLS_VERSION, 最新版本 $remote_update_tools_version"
+    log WARN "检测到更新助手有更新, 建议更新, 3s 后将继续" && echo ""
+    sleep 3
+  else
+    log INFO "更新助手无需更新" && echo ""
+  fi
   # 输入法选择
   local input_type
   if [[ -n "${INPUT_TYPE:-}" ]]; then
@@ -317,13 +338,12 @@ main() {
     done
   fi
 
-  # 部署目录选择
+  # 部署目录
   local deploy_dir
-  if [[ -n "${DEPLOY_DIR:-}" ]]; then
-    deploy_dir="$DEPLOY_DIR"
-  else
-    read -rp "请输入部署目录: " deploy_dir
-    deploy_dir=$(eval echo "$deploy_dir")
+  if [[ "$input_type" == "Fcitx5" ]]; then
+    deploy_dir="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime"
+  elif [[ "$input_type" == "iBus" ]]; then
+    deploy_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ibus/rime"
   fi
 
   # 用户确认
@@ -350,12 +370,14 @@ main() {
 
   # 开始更新
   if [[ ! -f "$deploy_dir/$STATUS_FILE" ]]; then
+    echo ""
     log INFO "=================================================="
     log INFO "你好像是第一次使用该脚本, 建议你中断操作"
     log INFO "并将需要排除的文件写入数组 EXCLUDE_FILE=() 中"
     log INFO "脚本默认排除 *.userdb 文件夹, 以及 *.custom.yaml 文件"
     log INFO "脚本将在 3s 后继续 (如需中断请按下 Ctrl + C )"
     log INFO "=================================================="
+    echo ""
     sleep 3
     if [[ ! -d "$deploy_dir" ]]; then
       mkdir -p "$deploy_dir" || error_exit "你无权创建部署目录"
@@ -364,7 +386,6 @@ main() {
     echo "# 请不要修改该文件内容" >"$deploy_dir/$STATUS_FILE"
     echo -e "0 0 0\n0 0 0\n0 0 0" >>"$deploy_dir/$STATUS_FILE"
   fi
-  log INFO "检查 GitHub 连接状态" && http_check "$GH_DL"
   log INFO "开始更新方案文件"
   touch "$TEMP_DIR/$STATUS_FILE"
   echo "# 请不要修改该文件内容" >"$TEMP_DIR/$STATUS_FILE"
@@ -380,13 +401,8 @@ main() {
   log INFO "更新成功!"
   log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
   if [[ "$input_type" == "Fcitx5" ]]; then
-    if command -v qdbus6 >/dev/null; then
-      qdbus6 org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
-    elif command -v qdbus >/dev/null; then
-      qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
-    else
-      log WARN "你的系统没有 qdbus 工具, 请手动重部署！" && sleep 1
-    fi
+    dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
+      org.fcitx.Fcitx.Controller1.ReloadAddonConfig string:rime
   elif [[ "$input_type" == "iBus" ]]; then
     ibus-daemon -drx
   fi
