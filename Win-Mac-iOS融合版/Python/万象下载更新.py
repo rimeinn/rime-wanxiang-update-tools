@@ -133,7 +133,6 @@ class ConfigManager:
         self.rime_dir = ''
         self.scheme_type = ''
         self.reload_flag = False
-        self.first_install = False # 首次安装标识
         self._ensure_config_exists()
 
     def detect_installation_paths(self, show=False):
