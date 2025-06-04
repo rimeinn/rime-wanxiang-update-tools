@@ -11,7 +11,6 @@ import zipfile
 import shutil
 import fnmatch
 import re
-import io
 from typing import Tuple, Optional, List, Dict
 
 # ====================== 全局配置 ======================
@@ -901,19 +900,23 @@ class SchemeUpdater(UpdateHandler):
             if self.scheme_type == 'rime_wanxiang_pro':
                 for asset in release.get("assets", []):
                     if asset["name"] == self.scheme_file:
+                        update_description = release.get("body", "无更新说明")
                         return {
                             "url": self.mirror_url(asset["browser_download_url"]),
                             # 修改为获取asset的更新时间
                             "update_time": asset["updated_at"],
-                            "tag": release["tag_name"]
+                            "tag": release["tag_name"],
+                            "description": update_description
                         }
             else:
                 tag_name = release.get("tag_name", "")
                 if tag_name:
+                    update_description = release.get("body", "无更新说明")
                     return {
                         "url": self.mirror_url(f"https://github.com/amzxyz/rime_wanxiang/archive/refs/tags/{tag_name}.zip"),
                         "update_time": release["published_at"],
-                        "tag": tag_name
+                        "tag": tag_name,
+                        "description": update_description
                     }
                 
         return None
@@ -1276,6 +1279,8 @@ def check_for_update(updater) -> bool:
             china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
             if isinstance(updater, SchemeUpdater):
                 print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{updater_info['tag']}）")
+                update_description = updater_info['description'].split('\r\n\r\n')[0] 
+                print(f"\n{INDENT}更新说明：\n{update_description}")
             elif isinstance(updater, DictUpdater):
                 print(f"\n{COLOR['WARNING']}[!] 词库有更新可用（版本：{updater_info['tag']}）")
             else:
