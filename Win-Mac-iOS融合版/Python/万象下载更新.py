@@ -179,12 +179,13 @@ class ConfigManager:
 
     def _check_hamster_path(self) -> bool:
         """检查脚本是否放置在正确的Hamster目录下"""
-        hamster_path_names = os.listdir('.')
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        hamster_path_names = os.listdir(file_dir)
         if "RIME" in hamster_path_names:
-            self.rime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'RIME', 'Rime')
+            self.rime_dir = os.path.join(file_dir, 'RIME', 'Rime')
             return True
         elif "Rime" in hamster_path_names:
-            self.rime_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Rime')
+            self.rime_dir = os.path.join(file_dir, 'Rime')
             return True
         else:
             print_error('请将脚本放置到正确的位置（Hamster目录下）')
@@ -259,7 +260,8 @@ class ConfigManager:
         print(f"{INDENT}▪ 方案版本：{self.config['Settings']['scheme_type']}")
         print(f"{INDENT}▪ 方案文件：{self.config['Settings']['scheme_file']}")
         print(f"{INDENT}▪ 词库文件：{self.config['Settings']['dict_file']}")
-        print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
+        if sys.platform == 'darwin':
+            print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
         print(f"{BORDER}")
 
