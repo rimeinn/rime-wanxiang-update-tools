@@ -290,6 +290,7 @@ class ConfigManager:
                     print_warning("请在打开的配置文件中手动修改，保存后继续执行。")
                 input("按任意键继续...")
                 self._try_load_config()  # 再次尝试加载配置
+                self._print_config_info()
                 break
             else:
                 print_error("无效的输入，请重新输入。")
@@ -300,13 +301,6 @@ class ConfigManager:
         try:
             settings = self.load_config(show=True)
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
-            print(f"{INDENT}▪ 方案版本：{settings[1]}")
-            if settings[1]:
-                print(f"{INDENT}▪ 方案文件：{settings[2]}")
-            print(f"{INDENT}▪ 词库文件：{settings[3]}")
-            if sys.platform == 'darwin':
-                print(f"{INDENT}▪ 输入法引擎：{settings[0]}")
-
         except Exception as e:
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
