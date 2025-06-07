@@ -25,13 +25,12 @@
   - 下载链接：[按需下载万象方案-词库-模型(UTF-8版本：文件名：**rime-wanxiang-update-windows-utf-8.ps1**](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-utf-8.ps1)
   - 基础版特供链接 GBK 版本：[wanxiang-update-tools-for-basic.ps1](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-for-basic.ps1)
   - 基础版特供链接 UTF-8 版本：[wanxiang-update-tools-for-basic-utf-8.ps1](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-for-basic-utf-8.ps1)
-- [x] [Python版本](./Windows/Python/README.md)
-  - 下载链接：[Windows/Python/按需下载万象方案-词库-模型.py](https://github.com/expoli/rime-wanxiang-update-tools/raw/refs/heads/main/Windows/Python/%E6%8C%89%E9%9C%80%E4%B8%8B%E8%BD%BD%E4%B8%87%E8%B1%A1%E6%96%B9%E6%A1%88-%E8%AF%8D%E5%BA%93-%E6%A8%A1%E5%9E%8B.py)
-  - 下载链接：[rime-wanxiang-update-windows.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows.py)
+- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios.py)
 
-### macOS版本
-- [x] [Python版本](./Mac/Python/README.md)
-
+### Win-Mac-iOS融合版(Python)
+- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios.py)
 
 ### Linux版本
 
@@ -39,7 +38,7 @@
   - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
 
 ### iOS版本
-- [x] [Python版本](./iOS/Python/README.md)
+- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
 - [x] [Shortcuts版本](./iOS/Shortcuts/README.md)
 
 ## 使用说明
