@@ -90,7 +90,7 @@ check_deps() {
 # HTTP 状态检查
 http_check() {
   local url="$1" http_code
-  http_code=$(curl -sIL -m 10 -o /dev/null -w "%{http_code}" "$url")
+  http_code=$(curl -sIL --connect-timeout 10 -o /dev/null -w "%{http_code}" "$url")
   case "$http_code" in
   200) log INFO "200 OK: 请求成功。" ;;
   400) error_exit "400 Bad Request: 请求格式错误。" ;;
@@ -110,8 +110,8 @@ update_check() {
   local local_etag remote_etag local_date remote_date
   local_etag=$(awk -v ln="$line" 'NR==ln {print $2}' "$deploy_dir/$STATUS_FILE")
   local_date=$(awk -v ln="$line" 'NR==ln {print $3}' "$deploy_dir/$STATUS_FILE")
-  remote_etag=$(curl -sIL -m 10 "$url" | grep "etag" | awk -F '"' '{print $2}')
-  remote_date=$(date -d "$(curl -sIL -m 10 "$url" |
+  remote_etag=$(curl -sIL --connect-timeout 10 "$url" | grep "etag" | awk -F '"' '{print $2}')
+  remote_date=$(date -d "$(curl -sIL --connect-timeout 10 "$url" |
     grep "last-modified" | awk -F ': ' '{print $2}')" +%s)
   [[ "$local_etag" == "$remote_etag" && "$local_date" == "$remote_date" ]] || echo yes
   echo "$url $remote_etag $remote_date" >>"$TEMP_DIR/$STATUS_FILE"
@@ -120,7 +120,7 @@ update_check() {
 download_and_unzip() {
   local url="$1" file="$2"
   log INFO "正在使用 curl 下载文件"
-  curl -L -m 10 -o "$TEMP_DIR/$file" "$url" || error_exit "下载出错"
+  curl -L --connect-timeout 10 -o "$TEMP_DIR/$file" "$url" || error_exit "下载出错"
   log INFO "正在使用 unzip 解压文件"
   unzip -q "$TEMP_DIR/$file" -d "$TEMP_DIR" || error_exit "解压出错"
 }
@@ -138,7 +138,7 @@ choice_scheme_repo() {
 check_version() {
   local version scheme_repo="$1"
   version=$(
-    curl -sL -m 10 "$GH_API/$scheme_repo/releases" | grep "tag_name" |
+    curl -sL --connect-timeout 10 "$GH_API/$scheme_repo/releases" | grep "tag_name" |
       awk -F '"' '{print $4}' | grep -v "rc" | grep -v "dict-nightly" |
       sort -Vr | head -n 1
   )
@@ -159,7 +159,7 @@ update_scheme() {
     scheme_url="$GH_DL/$scheme_repo/archive/refs/tags/$version.zip"
     scheme_file="rime_wanxiang-${version#v}.zip"
   elif [[ "$scheme_type" == "pro" ]]; then
-    scheme_url=$(curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
+    scheme_url=$(curl -sL --connect-timeout 10 "$GH_API/$scheme_repo/releases" |
       grep "$version" | grep "$help_code" | awk -F '"' '{print $4}')
     scheme_file=$(echo "$scheme_url" | awk -F '/' '{print $NF}')
   fi
@@ -211,7 +211,7 @@ update_dicts() {
     dicts_url="$GH_DL/$scheme_repo/releases/download/dict-nightly/cn_dicts.zip"
     dicts_file="cn_dicts.zip"
   elif [[ "$scheme_type" == "pro" ]]; then
-    dicts_url=$(curl -sL -m 10 "$GH_API/$scheme_repo/releases" |
+    dicts_url=$(curl -sL --connect-timeout 10 "$GH_API/$scheme_repo/releases" |
       grep "dict-nightly" | grep "$help_code" | awk -F '"' '{print $4}')
     dicts_file=$(echo "$dicts_url" | awk -F '/' '{print $NF}')
   fi
@@ -249,11 +249,11 @@ update_gram() {
   if [[ "$needed_update" == "yes" ]]; then
     log INFO "语法模型文件需要更新, 开始更新"
     log INFO "正在使用 curl 下载文件"
-    curl -L -m 10 -o "$TEMP_DIR/$gram_file" "$gram_url" || error_exit "下载出错"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$gram_file" "$gram_url" || error_exit "下载出错"
     log INFO "正在检查下载文件是否正确"
     local local_md5 remote_md5
     local_md5=$(md5sum "$TEMP_DIR/$gram_file" | awk '{print $1}')
-    remote_md5=$(curl -sL -m 10 "$gram_md5_url" | head -n 1 | awk '{print $1}')
+    remote_md5=$(curl -sL --connect-timeout 10 "$gram_md5_url" | head -n 1 | awk '{print $1}')
     log INFO "已下载文件 md5 为 $local_md5"
     log INFO "  远程文件 md5 为 $remote_md5"
     [[ "$local_md5" == "$remote_md5" ]] || error_exit "语法模型下载异常, 请重试"

@@ -45,7 +45,7 @@ jobs:
           find Windows/ -type f -name '*.py' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
           iconv -f utf-8 -t gbk Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1 > Windows/PowerShell/rime-wanxiang-update-windows.ps1
           mv Linux/Shell/wanxiang-update Linux/Shell/rime-wanxiang-update-linux
-          mv Win-Mac-iOS融合版/Python/万象下载更新.py Win-Mac-iOS融合版/Python/rime-wanxiang-update-win-mac-ios.py
+          mv Win-Mac-iOS融合版(Python)/Python/万象下载更新.py Win-Mac-iOS融合版(Python)/Python/rime-wanxiang-update-win-mac-ios.py
           find basic/ -type f -name '*.ps1' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型-基础版/rime-wanxiang-update-windows-for-basic/")"' {} \;
           iconv -f utf-8 -t gbk basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic-utf-8.ps1 > basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic.ps1
 
@@ -65,4 +65,4 @@ jobs:
             Linux/Shell/rime-wanxiang-update-linux
             basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic.ps1
             basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic-utf-8.ps1
-            Win-Mac-iOS融合版/Python/rime-wanxiang-update-win-mac-ios.py
+            Win-Mac-iOS融合版(Python)/Python/rime-wanxiang-update-win-mac-ios.py
