@@ -4,8 +4,5 @@
 
 
 ## 使用须知
-- Mac用户使用前请安装第三方包：
-`pip install osascript`
-
 - iOS仓输入法：
 请在Pythonista中添加仓输入法的整个文件夹，并将脚本放在该路径下

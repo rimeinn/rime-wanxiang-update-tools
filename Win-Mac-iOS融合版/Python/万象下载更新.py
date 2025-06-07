@@ -1293,7 +1293,6 @@ def check_for_update(updater) -> bool:
 def deploy_for_mac(system=sys.platform) -> bool:
     """macOS自动部署"""
     if system == 'darwin':
-        import osascript
         cmd = """
 tell application "System Events"
 	keystroke "`" using {control down, option down}
@@ -1302,7 +1301,7 @@ end tell
         print_warning("即将通过快捷键自动部署，如果使用小企鹅，请在3秒内切换到rime以进行自动部署")
         time.sleep(3)
         try:
-            osascript.run(cmd)
+            subprocess.run(["osascript", "-e", cmd], capture_output=True, text=True)
             print_success("部署命令已发送，请查看通知中心确认部署")
             return True
         except:
