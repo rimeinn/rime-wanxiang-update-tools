@@ -10,6 +10,7 @@
 - [x] [macOS版本](./Mac/README.md)
 - [x] [Linux版本](./Linux/README.md)
 - [x] [iOS版本](./iOS/README.md)
+- [x] [Android版本(通用小企鹅导入包构建脚本)](./Fcitx5-For-Android/README.md)
 
 ### Windows版本
 
