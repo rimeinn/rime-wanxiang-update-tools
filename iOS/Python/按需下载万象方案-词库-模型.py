@@ -816,7 +816,7 @@ def calculate_sha256(file_path):
 def main():
     # 打印更新工具版本
     if (UPDATE_TOOLS_VERSION.startswith("DEFAULT")):
-        print(f"\n{COLOR['WARNING']}[!] 你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。{COLOR['ENDC']}")
+        print(f"\n{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
     else:
         print(f"\n{COLOR['GREEN']}[√] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")
 

@@ -9,7 +9,7 @@ $AutoUpdate = $false;
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
-    Write-Host "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。" -ForegroundColor Yellow;
+    Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
 } else {
     Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
 }
