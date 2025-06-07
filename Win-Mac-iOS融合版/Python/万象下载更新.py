@@ -290,6 +290,7 @@ class ConfigManager:
                     print_warning("请在打开的配置文件中手动修改，保存后继续执行。")
                 input("按任意键继续...")
                 self._try_load_config()  # 再次尝试加载配置
+                self._print_config_info()
                 break
             else:
                 print_error("无效的输入，请重新输入。")
@@ -300,13 +301,6 @@ class ConfigManager:
         try:
             settings = self.load_config(show=True)
             print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
-            print(f"{INDENT}▪ 方案版本：{settings[1]}")
-            if settings[1]:
-                print(f"{INDENT}▪ 方案文件：{settings[2]}")
-            print(f"{INDENT}▪ 词库文件：{settings[3]}")
-            if sys.platform == 'darwin':
-                print(f"{INDENT}▪ 输入法引擎：{settings[0]}")
-
         except Exception as e:
             print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
             sys.exit(1)
@@ -652,7 +646,7 @@ class UpdateHandler:
         )
         
 
-    def github_api_request(self, url) -> Optional[Dict]:
+    def github_api_request(self, url, output_json=True) -> Optional[Dict]:
         """
         带令牌认证的API请求
         Args:
@@ -669,7 +663,10 @@ class UpdateHandler:
             try:
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                if output_json:
+                    return response.json()
+                else:
+                    return response
                 
             except requests.HTTPError as e:
                 if e.response.status_code == 401:
@@ -1308,6 +1305,63 @@ end tell
             print_error("发送部署命令失败，请手动部署或检查权限设置")
             return False
 
+class ScriptUpdater(UpdateHandler):
+    def __init__(self, config_manager):
+        super().__init__(config_manager)
+        self.script_path = os.path.abspath(__file__)
+
+    def check_update(self) -> Optional[Dict]:
+        releases = self.github_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
+        if not releases:
+            return None
+        
+        remote_version = releases[0].get("tag_name", "DEFAULT")
+        update_info = releases[0].get("body", "无更新说明")
+        for asset in releases[0].get("assets", []):
+            if asset["name"] == 'rime-wanxiang-update-win-mac-ios.py':
+                return {
+                    "url": self.mirror_url(asset["browser_download_url"]),
+                    "update_time": asset["updated_at"],
+                    "tag": remote_version,
+                    "description": update_info
+                }
+            
+    def update_script(self, url: str) -> None:
+        """更新脚本"""
+        res = self.github_api_request(url=url, output_json=False)
+        if res.status_code == 200:
+            with open(self.script_path, 'wb') as f:
+                f.write(res.content)
+            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出Pythonista重新启动）")
+            return True
+        else:
+            print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
+            return False
+        
+    def compare_version(self, local_version: str, remote_version: str) -> bool:
+        if local_version == "DEFAULT_UPDATE_TOOLS_VERSION_TAG":
+            return False
+        return local_version != remote_version
+    
+    def run(self):
+        remote_info = self.check_update()
+        if not remote_info:
+            print_warning("未找到脚本更新信息")
+            return False
+        
+        remote_version = remote_info.get("tag", "DEFAULT")
+        if self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
+            user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
+            if user_choose.lower() == 'y':
+                print_header("正在更新脚本，请勿进行其他操作...")
+                if self.update_script(remote_info["url"]):
+                    sys.exit(0)
+            else:
+                return False
+        else:
+            print(f"\n{COLOR['WARNING']}[!] 你当前使用的脚本无版本号或已是最新版本。{COLOR['ENDC']}")
+        
+        
 
 # ====================== 主程序 ======================
 def main():
@@ -1315,7 +1369,7 @@ def main():
     if (UPDATE_TOOLS_VERSION.startswith("DEFAULT")):
         print(f"\n{COLOR['WARNING']}[!] 你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。{COLOR['ENDC']}")
     else:
-        print(f"\n{COLOR['GREEN']}[√] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")
+        print(f"\n{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
 
     try:
         # 初始化配置
@@ -1340,19 +1394,26 @@ def main():
         # 如果没有更新显示提示
         if not update_flag:
             print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
+        
+        # ========== 版本更新检测（仅在程序启动时执行一次）==========
+        script_updater = ScriptUpdater(config_manager)
+        script_remote_info = script_updater.check_update()
+        script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
+        if script_update_flag:  # 如果存在更新，显示提示
+            print(f"\n{COLOR['WARNING']}[!] 当前更新工具版本：{UPDATE_TOOLS_VERSION}，最新版本：{script_remote_info.get('tag', 'DEFAULT')}{COLOR['ENDC']}")
 
         # 主菜单循环
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
             if sys.platform == 'ios':
-                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 退出程序")
-                choice = input("请输入选择（1-5，单独按回车键默认选择全部更新）: ").strip() or '4'
-            else:
-                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 修改配置\n[6] 退出程序")
+                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 退出程序")
                 choice = input("请输入选择（1-6，单独按回车键默认选择全部更新）: ").strip() or '4'
+            else:
+                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+                choice = input("请输入选择（1-7，单独按回车键默认选择全部更新）: ").strip() or '4'
             
-            if choice == '5':
+            if choice == '6':
                 if sys.platform == 'ios':
                     break
                 else:
@@ -1382,7 +1443,7 @@ def main():
                         continue  # 继续主循环
                     else:
                         break
-            elif choice == '6':
+            elif choice == '7':
                 if sys.platform != 'ios':
                     break
             else:
@@ -1427,11 +1488,19 @@ def main():
                             deploy_for_mac()
                     else:
                         pass
+
                     # 自动退出逻辑
-                    print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
+                    if script_update_flag:
+                        print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
+                    else:
+                        print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
+                    script_updater.run()
                     time.sleep(4)
                     sys.exit(0)
-
+                elif choice == '5':
+                    # 脚本更新
+                    script_updater.run()
+                    continue  
                 if sys.platform == 'win32':
                     # win平台统一部署检查（安全判断）
                     if updated and deployer:
@@ -1466,5 +1535,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
