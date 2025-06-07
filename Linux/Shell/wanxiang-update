@@ -276,7 +276,7 @@ main() {
 
   echo -e "${GREEN}========= 欢迎使用 Rime 万象方案更新助手 =========${NC}\n"
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^DEFAULT ]]; then
-    log WARN "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本" && echo ""
+    log WARN "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases" && echo ""
   else
     log INFO "更新工具版本: $UPDATE_TOOLS_VERSION" && echo ""
   fi

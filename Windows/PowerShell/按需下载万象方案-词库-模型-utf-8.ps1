@@ -13,7 +13,7 @@ $InputSchemaType = "7";
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
-    Write-Host "你下载的是仓库版本，没有版本号信息，请在 releases 页面下载最新版本。" -ForegroundColor Yellow;
+    Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
 } else {
     Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
 }
@@ -30,6 +30,8 @@ $GramRepo = "RIME-LMDG"
 $GramReleaseTag = "LTS"
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
 $ReleaseTimeRecordFile = "release_time_record.json"
+$UpdateToolsOwner = "expoli"
+$UpdateToolsRepo = "rime-wanxiang-update-tools"
 # 定义临时文件路径
 $tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
 $tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
@@ -237,6 +239,29 @@ function Get-ReleaseInfo {
         exit 1
     }
     return $response
+}
+
+$UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo
+
+# 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
+# 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本,
+# UpdateToolsVersion
+if ($UpdateTollsResponse.Count -eq 0) {
+    Write-Host "没有找到更新工具的版本信息，请检查网络连接或仓库是否存在" -ForegroundColor Red
+    exit 1
+}
+# 过滤掉包含 -rc 的 tag_name
+$StableUpdateToolsReleases = $UpdateTollsResponse | Where-Object { $_.tag_name -notmatch '-rc' }
+if ($StableUpdateToolsReleases.Count -eq 0) {
+    Write-Host "没有找到稳定版的更新工具版本信息" -ForegroundColor Yellow
+} else {
+    $LatestUpdateToolsRelease = $StableUpdateToolsReleases | Select-Object -First 1
+    if ($LatestUpdateToolsRelease.tag_name -ne $UpdateToolsVersion) {
+        Write-Host "发现新版本的更新工具: $($LatestUpdateToolsRelease.tag_name)" -ForegroundColor Yellow
+        Write-Host "如需更新,请访问 https://github.com/expoli/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
+        Write-Host "当前版本: $UpdateToolsVersion" -ForegroundColor Yellow
+        Write-Host "更新日志: $($LatestUpdateToolsRelease.body)" -ForegroundColor Yellow
+    }
 }
 
 # 获取最新的版本信息
