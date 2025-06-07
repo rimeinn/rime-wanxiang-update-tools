@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import time
+import argparse
 from pathlib import Path
 
 def create_zip_package(source_dir, output_zip, model_path=None):
@@ -110,26 +111,19 @@ def create_zip_package(source_dir, output_zip, model_path=None):
         if model_path:
             print(f"模型文件内容已添加到ZIP包中")
 
-if __name__ == "__main__":
-    # 解析命令行参数
-    model_path = None
 
-    if len(sys.argv) == 3:
-        # 用法: script.py <源目录> <输出ZIP路径>
-        source_directory = sys.argv[1]
-        output_zip_path = sys.argv[2]
-    elif len(sys.argv) == 4:
-        # 用法: script.py <源目录> <模型目录> <输出ZIP路径>
-        source_directory = sys.argv[1]
-        model_path = sys.argv[2]
-        output_zip_path = sys.argv[3]
-    else:
-        print("用法:")
-        print("  基本用法: python package_rime.py <源目录> <输出ZIP路径>")
-        print("  添加模型: python package_rime.py <源目录> <模型目录> <输出ZIP路径>")
-        print("示例:")
-        print("  python package_rime.py ./rime-data ./dist/rime-package.zip")
-        print("  python package_rime.py ./rime-data ./models ./dist/rime-with-models.zip")
-        sys.exit(1)
-    
-    create_zip_package(source_directory, output_zip_path, model_path)
+
+def main():
+    parser = argparse.ArgumentParser(description="打包 Rime 文件目录为 zip 包")
+
+    parser.add_argument("--source", "-s", required=True, help="源目录")
+    parser.add_argument("--output", "-o", required=True, help="输出 zip 路径")
+    parser.add_argument("--model", "-m", help="模型目录（可选）", default=None)
+
+    args = parser.parse_args()
+
+    create_zip_package(args.source, args.output, args.model)
+
+
+if __name__ == "__main__":
+    main()
