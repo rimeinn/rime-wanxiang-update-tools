@@ -7,7 +7,6 @@
 ## 版本列表
 
 - [PowerShell版本](./PowerShell/README.md)
-- [Python版本](./Python/README.md)
 
 ## 使用说明
 
