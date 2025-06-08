@@ -956,7 +956,7 @@ class SchemeUpdater(UpdateHandler):
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
         self.clean_build()
-        print_success("方案更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
+        print_success("方案更新完成")
         return True  # 成功更新
 
     def get_local_time(self) -> Optional[datetime]:
@@ -1121,7 +1121,7 @@ class DictUpdater(UpdateHandler):
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
-            print_success("词库更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
+            print_success("词库更新完成")
             return True
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
@@ -1214,7 +1214,7 @@ class ModelUpdater(UpdateHandler):
         self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
-        print_success("模型更新完成，尝试自动部署，iOS Hamster输入法请在本程序结束后手动重新部署")
+        print_success("模型更新完成")
         return True
 
     def get_local_time(self) -> Optional[datetime]:
@@ -1486,6 +1486,15 @@ def main():
                         if updated and deployer:
                             print_header("重新部署输入法")
                             deploy_for_mac()
+                    elif sys.platform == 'ios':
+                        import webbrowser
+                        if updated and deployer:
+                            print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
+                            is_deploy = input("是否跳转到Hamster进行部署(y/n)?").strip().lower()
+                            if is_deploy == 'y':
+                                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                            else:
+                                pass
                     else:
                         pass
 
@@ -1515,6 +1524,15 @@ def main():
                     if updated and deployer:
                         print_header("重新部署输入法")
                         deploy_for_mac()
+                elif sys.platform == 'ios':
+                    import webbrowser
+                    if updated and deployer:
+                        print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
+                        is_deploy = input("是否进行部署(y/n)? ").strip().lower()
+                        if is_deploy == 'y':
+                            webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                        else:
+                            pass
                 else:
                     pass
 
