@@ -226,7 +226,7 @@ function Get-ReleaseInfo {
 
     # 检查是否有可下载资源
     if ($response.assets.Count -eq 0) {
-        Write-Error "该版本没有可下载资源" -ForegroundColor Red
+        Write-Error "该版本没有可下载资源"
         exit 1
     }
     return $response
@@ -310,7 +310,7 @@ if (-not $Debug) {
         # Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
         # 方案号只支持0-7
         if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 0) {
-            Write-Error "错误：方案号只能是0" -ForegroundColor Red
+            Write-Error "错误：方案号只能是0"
             exit 1
         }
         $InputAllUpdate = "0"
@@ -371,7 +371,7 @@ $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -ke
 $ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
 if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
-    Write-Error "未找到符合条件的下载链接" -ForegroundColor Red
+    Write-Error "未找到符合条件的下载链接"
     exit 1
 }
 
