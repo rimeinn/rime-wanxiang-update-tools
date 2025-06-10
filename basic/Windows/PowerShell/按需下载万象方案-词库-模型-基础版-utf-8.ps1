@@ -55,6 +55,15 @@ $GramMd5TableIndex = 1;
 # 设置安全协议为TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+function Exit-Tip {
+    param(
+        [string]$exitCode = 0
+    )
+    Write-Host '按任意键退出...'
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    exit $exitCode
+}
+
 # 获取 Weasel 用户目录路径
 function Get-RegistryValue {
     param(
@@ -145,7 +154,7 @@ $rimeServerExecutable = Get-WeaselServerExecutable
 function Stop-WeaselServer {
     if (-not $rimeServerExecutable) {
         Write-Host "警告：未找到Weasel服务端可执行程序，请确保已正确安装小狼毫输入法" -ForegroundColor Yellow
-        exit 1
+        Exit-Tip 1
     }
     Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q'
 }
@@ -153,7 +162,7 @@ function Stop-WeaselServer {
 function Start-WeaselServer {
     if (-not $rimeServerExecutable) {
         Write-Host "警告：未找到Weasel服务端可执行程序，请确保已正确安装小狼毫输入法" -ForegroundColor Yellow
-        exit 1
+        Exit-Tip 1
     }
     Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable)
 }
@@ -173,7 +182,7 @@ function Start-WeaselReDeploy{
 # 检查必要路径是否为空
 if (-not $rimeUserDir -or -not $rimeInstallDir -or -not $rimeServerExecutable) {
     Write-Host "错误：无法获取Weasel必要路径，请检查输入法是否正确安装" -ForegroundColor Red
-    exit 1
+    Exit-Tip 1
 }
 Write-Host "Weasel用户目录路径为: $rimeUserDir"
 $targetDir = $rimeUserDir
@@ -221,13 +230,13 @@ function Get-ReleaseInfo {
         else {
             Write-Error "API请求失败 [$statusCode]：$_"
         }
-        exit 1
+        Exit-Tip 1
     }
 
     # 检查是否有可下载资源
     if ($response.assets.Count -eq 0) {
-        Write-Error "该版本没有可下载资源" -ForegroundColor Red
-        exit 1
+        Write-Error "该版本没有可下载资源"
+        Exit-Tip 1
     }
     return $response
 }
@@ -292,7 +301,7 @@ if ($SelectedDictRelease -and $SelectedSchemaRelease -and $SelectedGramRelease) 
     Write-Host "解析出最新的模型链接为：$($SelectedGramRelease.html_url)" -ForegroundColor Green
 } else {
     Write-Error "未找到符合条件的版本或词库链接"
-    exit 1
+    Exit-Tip 1
 }
 
 # 获取最新的版本的tag_name
@@ -310,8 +319,8 @@ if (-not $Debug) {
         # Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
         # 方案号只支持0-7
         if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 0) {
-            Write-Error "错误：方案号只能是0" -ForegroundColor Red
-            exit 1
+            Write-Error "错误：方案号只能是0"
+            Exit-Tip 1
         }
         $InputAllUpdate = "0"
         $InputSchemaDown = "0"
@@ -371,8 +380,19 @@ $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -ke
 $ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
 if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
-    Write-Error "未找到符合条件的下载链接" -ForegroundColor Red
-    exit 1
+    if (-not $ExpectedSchemaTypeInfo) {
+        Write-Error "未找到符合条件的方案下载链接"
+    }
+    if (-not $ExpectedDictTypeInfo) {
+        Write-Error "未找到符合条件的词库下载链接"
+    }
+    if (-not $ExpectedGramTypeInfo) {
+        Write-Error "未找到符合条件的模型下载链接"
+    }
+    if (-not $ExpectedGramMd5TypeInfo) {
+        Write-Error "未找到符合条件的模型md5下载链接"
+    }
+    Exit-Tip 1
 }
 
 # 打印
@@ -542,7 +562,7 @@ function Download-Files {
     }
     catch {
         Write-Host "下载失败: $_" -ForegroundColor Red
-        exit 1
+        Exit-Tip 1
     }
 }
 
@@ -561,7 +581,7 @@ function Download-BasicSchemaFiles {
     }
     catch {
         Write-Host "下载失败: $_" -ForegroundColor Red
-        exit 1
+        Exit-Tip 1
     }
 }
 
@@ -581,7 +601,7 @@ function Expand-ZipFile {
     catch {
         Write-Host "解压失败: $_" -ForegroundColor Red
         Remove-Item -Path $zipFilePath -Force -ErrorAction SilentlyContinue
-        exit 1
+        Exit-Tip 1
     }
 }
 
@@ -590,7 +610,7 @@ if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq 
     Write-Host "正在更新词库，请不要操作键盘，直到更新完成" -ForegroundColor Red
     Write-Host "更新完成后会自动拉起小狼毫" -ForegroundColor Red
 } else {
-    exit 0
+    Exit-Tip 0
 }
 
 $UpdateFlag = $false
@@ -615,7 +635,7 @@ if ($InputSchemaDown -eq "0") {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
             Remove-Item -Path $tempSchemaZip -Force
             Remove-Item -Path $SchemaExtractPath -Recurse -Force
-            exit 1
+            Exit-Tip 1
         }
         Stop-WeaselServer
         # 等待1秒
@@ -673,7 +693,7 @@ if ($InputDictDown -eq "0") {
         if (-not (Test-Path $sourceDir)) {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
             Remove-Item -Path $DictExtractPath -Force -Recurse
-            exit 1
+            Exit-Tip 1
         }
         Stop-WeaselServer
         # 等待1秒
@@ -712,7 +732,7 @@ function Update-GramModel {
         Write-Host "模型MD5验证失败" -ForegroundColor Red
         # Remove-Item -Path $tempGram -Force
         Remove-Item -Path $tempGramMd5 -Force
-        exit 1
+        Exit-Tip 1
     }
     Write-Host "正在复制文件..." -ForegroundColor Green
 
@@ -766,3 +786,5 @@ if ($UpdateFlag) {
     Write-Host "内容更新，触发小狼毫重新部署..." -ForegroundColor Green
     Start-WeaselReDeploy
 }
+
+Exit-Tip 0
