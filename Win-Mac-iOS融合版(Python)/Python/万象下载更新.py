@@ -1398,9 +1398,11 @@ def main():
         # ========== 版本更新检测（仅在程序启动时执行一次）==========
         script_updater = ScriptUpdater(config_manager)
         script_remote_info = script_updater.check_update()
-        script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
-        if script_update_flag:  # 如果存在更新，显示提示
-            print(f"\n{COLOR['WARNING']}[!] 当前更新工具版本：{UPDATE_TOOLS_VERSION}，最新版本：{script_remote_info.get('tag', 'DEFAULT')}{COLOR['ENDC']}")
+        if script_remote_info:
+            script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
+
+            if script_update_flag:  # 如果存在更新，显示提示
+                print(f"\n{COLOR['WARNING']}[!] 当前更新工具版本：{UPDATE_TOOLS_VERSION}，最新版本：{script_remote_info.get('tag', 'DEFAULT')}{COLOR['ENDC']}")
 
         # 主菜单循环
         while True:
