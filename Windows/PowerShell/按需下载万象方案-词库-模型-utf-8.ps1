@@ -18,6 +18,16 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
     Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
 }
 
+# 设置GitHub Token请求头，防止api请求频繁错误，配置好后删除注释符号
+# $env:GITHUB_TOKEN = "填入这里你的token字符串"    #打开链接https://github.com/settings/tokens，注册一个token(Public repositories) 
+$GitHubHeaders = @{
+    "User-Agent" = "PowerShell Release Downloader"
+    "Accept"     = "application/vnd.github.v3+json"
+}
+if ($env:GITHUB_TOKEN) {
+    $GitHubHeaders["Authorization"] = "token $($env:GITHUB_TOKEN)"
+}
+
 # 设置代理地址和端口，配置好后删除注释符号
 # $proxyAddress = "http://127.0.0.1:7897"
 # [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
@@ -226,10 +236,7 @@ function Get-ReleaseInfo {
 
     try {
         # 发送API请求
-        $response = Invoke-RestMethod -Uri $apiUrl -Headers @{
-            "User-Agent" = "PowerShell Release Downloader"
-            "Accept" = "application/vnd.github.v3+json"
-        }
+        $response = Invoke-RestMethod -Uri $apiUrl -Headers $GitHubHeaders
     }
     catch {
         $statusCode = $_.Exception.Response.StatusCode.Value__
