@@ -1427,7 +1427,6 @@ def main():
                         subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
                     else:
                         subprocess.run(['open', config_manager.config_path])
-                    print_success("配置文件修改已完成")
                     
                     # 返回主菜单或退出
                     user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
