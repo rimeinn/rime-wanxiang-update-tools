@@ -11,13 +11,18 @@
 ```shell
 python 小企鹅导入包构建脚本.py 
 用法:
-  基本用法: python package_rime.py <源目录> <输出ZIP路径>
-  添加模型: python package_rime.py <源目录> <模型目录> <输出ZIP路径>
+  基本用法: python package_rime.py -s <源目录> -o <输出ZIP路径>
+  添加模型: python package_rime.py -s <源目录> -m <模型目录> -o <输出ZIP路径>
 示例:
-  python package_rime.py ./rime-data ./dist/rime-package.zip
-  python package_rime.py ./rime-data ./models ./dist/rime-with-models.zip
+  python package_rime.py -s ./rime-data -o ./dist/rime-package.zip
+  python package_rime.py -s ./rime-data -m ./models -m ./dist/rime-with-models.zip
 
 ```
+## Fcitx5 for Android导入步骤
+1. 打开输入法的设置
+2. 打开高级
+3. 导入用户数据, 点确定
+4. 选择本脚本打包好的 zip 文件等待完成后即可使用
 
 ## 脚本文件
 

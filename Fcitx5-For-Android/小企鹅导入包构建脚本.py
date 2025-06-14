@@ -1,11 +1,13 @@
 import os
 import shutil
 import json
+import subprocess
 import sys
 import tempfile
 import time
 import argparse
 from pathlib import Path
+import winreg
 
 def create_zip_package(source_dir, output_zip, model_path=None):
     """
@@ -49,6 +51,7 @@ def create_zip_package(source_dir, output_zip, model_path=None):
             os.makedirs(dest_path, exist_ok=True)
             
             # 复制文件（跳过指定文件）
+            print(f"  正在复制目录: {root} 到 {dest_path}") # 简化复制输出
             for file in files:
                 if file in skip_files:
                     print(f"  跳过文件: {os.path.join(root, file)}")
@@ -57,7 +60,7 @@ def create_zip_package(source_dir, output_zip, model_path=None):
                 src_file = os.path.join(root, file)
                 dst_file = dest_path / file
                 shutil.copy2(src_file, dst_file)
-                print(f"  已复制: {src_file} -> {dst_file}")
+                # print(f"  已复制: {src_file} -> {dst_file}") # 简化复制输出
         
         # ========== 步骤2: 可选添加模型目录内容 ==========
         if model_path:
@@ -111,7 +114,50 @@ def create_zip_package(source_dir, output_zip, model_path=None):
         if model_path:
             print(f"模型文件内容已添加到ZIP包中")
 
+# 照着win-mac-ios融合版抄来的代码
+if sys.platform == 'win32':
+    def terminate_processes():
+        """组合式进程终止策略"""
+        if not graceful_stop():  # 先尝试优雅停止
+            hard_stop()          # 失败则强制终止
 
+    def graceful_stop():
+        """优雅停止服务"""
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Rime\Weasel") as key:
+                exe, _ = winreg.QueryValueEx(key, "ServerExecutable")
+                root, _ = winreg.QueryValueEx(key, "WeaselRoot")
+                value = os.path.join(root, exe)
+            subprocess.run(
+                [value, "/q"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            print(f"{exe} 服务已优雅退出")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"优雅退出失败: {e}")
+            return False
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            print(f"优雅退出失败: {e}")
+            return False
+        except Exception as e:
+            print(f"未知错误: {str(e)}")
+            return False
+
+    def hard_stop():
+        """强制终止保障"""
+        print("强制终止残留进程")
+        for _ in range(3):
+            subprocess.run(["taskkill", "/IM", "WeaselServer.exe", "/F"], 
+                        shell=True, stderr=subprocess.DEVNULL)
+            subprocess.run(["taskkill", "/IM", "WeaselDeployer.exe", "/F"], 
+                        shell=True, stderr=subprocess.DEVNULL)
+            time.sleep(0.5)
+        print("进程清理完成")
 
 def main():
     parser = argparse.ArgumentParser(description="打包 Rime 文件目录为 zip 包")
@@ -121,8 +167,10 @@ def main():
     parser.add_argument("--model", "-m", help="模型目录（可选）", default=None)
 
     args = parser.parse_args()
-
+    terminate_processes() # 在复制前终止相关进程
     create_zip_package(args.source, args.output, args.model)
+
+
 
 
 if __name__ == "__main__":
