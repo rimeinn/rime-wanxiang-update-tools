@@ -19,6 +19,9 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 # [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
 # [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
 
+# 设置GitHub Token请求头，防止api请求频繁错误，配置好后删除注释符号
+# $env:GITHUB_TOKEN = "填入这里你的token字符串"    #打开链接https://github.com/settings/tokens，注册一个token(Public repositories) 
+
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
 $SchemaRepo = "rime_wanxiang"
@@ -215,12 +218,18 @@ function Get-ReleaseInfo {
     # 构建API请求URL
     $apiUrl = "https://api.github.com/repos/$owner/$repo/releases"
 
+    # 构建API请求头
+    $GitHubHeaders = @{
+    "User-Agent" = "PowerShell Release Downloader"
+    "Accept"     = "application/vnd.github.v3+json"
+    }
+    if ($env:GITHUB_TOKEN) {
+        $GitHubHeaders["Authorization"] = "token $($env:GITHUB_TOKEN)"
+    }
+    
     try {
         # 发送API请求
-        $response = Invoke-RestMethod -Uri $apiUrl -Headers @{
-            "User-Agent" = "PowerShell Release Downloader"
-            "Accept" = "application/vnd.github.v3+json"
-        }
+        $response = Invoke-RestMethod -Uri $apiUrl -Headers $GitHubHeaders
     }
     catch {
         $statusCode = $_.Exception.Response.StatusCode.Value__
