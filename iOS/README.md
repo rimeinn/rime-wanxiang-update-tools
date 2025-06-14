@@ -22,7 +22,7 @@
 5. 更新完成后需手动打开Hamster输入法重新部署
 
 ### Shortcuts版本
-1. 获取两个快捷指令（[万象Pro版本下载](https://www.icloud.com/shortcuts/8ee215300f234979b55b3b04ad66c1b7)和[日常自动更新万象中文词库](https://www.icloud.com/shortcuts/b1fd814b065c4900bcc2ea4b079a06f0)）
+1. 获取两个快捷指令（[万象Pro版本下载](https://www.icloud.com/shortcuts/8ee215300f234979b55b3b04ad66c1b7)和[日常自动更新万象中文词库](https://www.icloud.com/shortcuts/074c63d170514348835a82b3b72c4bf0)）
 2. 打开并根据提示配置
 3. 执行一次获取权限
 4. `日常自动更新万象中文词库`可以添加到自动化设置时间进行执行，`万象Pro版本下载`可以根据需要手动执行
