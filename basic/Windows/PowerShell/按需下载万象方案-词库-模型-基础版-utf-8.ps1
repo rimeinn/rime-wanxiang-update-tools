@@ -257,7 +257,7 @@ $UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToo
 # UpdateToolsVersion
 if ($UpdateTollsResponse.Count -eq 0) {
     Write-Host "没有找到更新工具的版本信息，请检查网络连接或仓库是否存在" -ForegroundColor Red
-    exit 1
+    Exit-Tip 1
 }
 # 过滤掉包含 -rc 的 tag_name
 $StableUpdateToolsReleases = $UpdateTollsResponse | Where-Object { $_.tag_name -notmatch '-rc' }
