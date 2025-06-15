@@ -173,8 +173,13 @@ class ConfigManager:
         elif sys.platform == 'ios':
             detected['rime_user_dir'] = self.rime_dir
         else:
-            detected['rime_user_dir'] = os.path.dirname(os.path.abspath(__file__))
-		
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            if os.path.exists(os.path.join(current_file_dir, 'Rime')):
+                detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
+            if os.path.exists(os.path.join(current_file_dir, 'rime')):
+                detected['rime_user_dir'] = os.path.join(current_file_dir, 'rime')
+            os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
+            detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')		
         return detected
 
 
