@@ -935,12 +935,18 @@ class SchemeUpdater(UpdateHandler):
         return None
     
 
-    def run(self) -> bool:
+    def run(self) -> int:
+        """
+        return:
+            -1: 更新失败
+            0: 已经是最新/无可用更新
+            1: 更新成功
+        """
         print_header("方案更新流程")
         remote_info = self.check_update()
         if not remote_info:
             print_warning("未找到可用更新")
-            return False  # 返回False表示没有更新
+            return 0  # 返回False表示没有更新
         remote_info = self.check_update()
 
         # 时间比较
@@ -949,13 +955,13 @@ class SchemeUpdater(UpdateHandler):
         
         if local_time and remote_time <= local_time:
             print_success("当前已是最新方案")
-            return False  # 没有更新
+            return 0  # 没有更新
 
 
         # 下载更新
         temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
         if not self.download_file(remote_info["url"], temp_file):
-            return False
+            return -1
 
         # 校验文件
         if self.scheme_file:
@@ -965,13 +971,13 @@ class SchemeUpdater(UpdateHandler):
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
             os.remove(temp_file)
-            return False
+            return 0
 
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
         self.clean_build()
         print_success("方案更新完成")
-        return True  # 成功更新
+        return 1  # 成功更新
 
     def get_local_time(self) -> Optional[datetime]:
         if not os.path.exists(self.record_file):
@@ -1105,13 +1111,19 @@ class DictUpdater(UpdateHandler):
                 os.remove(self.temp_file)
             raise
 
-    def run(self) -> bool:
-        """执行更新"""
+    def run(self) -> int:
+        """
+        执行更新
+        return:
+            -1: 更新失败
+            0: 已经是最新/无可用更新
+            1: 更新成功
+        """
         print_header("词库更新流程")
         remote_info = self.check_update()
         if not remote_info:
             print_warning("未找到可用更新")
-            return False
+            return 0
 
         # 时间比对（精确到秒）
         remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -1119,13 +1131,13 @@ class DictUpdater(UpdateHandler):
         
         if local_time and remote_time <= local_time:
             print_success("当前已是最新词库")
-            return False
+            return 0
 
         # 下载流程
         temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
         target_file = os.path.join(self.custom_dir, self.dict_file)
         if not self.download_file(remote_info["url"], temp_file):
-            return False
+            return -1
 
         # 哈希校验
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
@@ -1136,13 +1148,13 @@ class DictUpdater(UpdateHandler):
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
             print_success("词库更新完成")
-            return True
+            return 1
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
             # 回滚临时文件
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-            return False
+            return -1
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
@@ -1175,26 +1187,32 @@ class ModelUpdater(UpdateHandler):
 
 
 
-    def run(self) -> bool:
-        """执行模型更新主流程"""
+    def run(self) -> int:
+        """
+        执行模型更新主流程
+        return:
+            -1: 更新失败
+            0: 已经是最新/无可用更新
+            1: 更新成功
+        """
         print_header("模型更新流程")
         remote_info = self.check_update()
         if not remote_info:
             print_warning("未找到模型更新信息")
-            return False
+            return 0
 
         # 时间比较（本地记录 vs 远程更新时间）
         remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)  # 修改字段
         local_time = self.get_local_time()
         
         if local_time and remote_time <= local_time:
-            print_success("当前模型已是最新版本")
-            return False
+            print_success("当前已是最新模型")
+            return 0
 
         # 下载到临时文件
         if not self.download_file(remote_info["url"], self.temp_file):
             print_error("模型下载失败")
-            return False
+            return -1
 
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match()
@@ -1208,7 +1226,7 @@ class ModelUpdater(UpdateHandler):
             # 强制更新记录（解决记录文件丢失的问题）
             if not local_time or remote_time > local_time:
                 self._save_update_record(remote_info["update_time"])  # 使用新字段
-            return False
+            return 0
 
 
         # 停止服务再覆盖
@@ -1222,14 +1240,14 @@ class ModelUpdater(UpdateHandler):
             os.replace(self.temp_file, self.target_path)  # 原子操作更安全
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
-            return False
+            return -1
 
         # 保存更新记录
         self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
         print_success("模型更新完成")
-        return True
+        return 1
 
     def get_local_time(self) -> Optional[datetime]:
         if not os.path.exists(self.record_file):
@@ -1460,8 +1478,8 @@ def main():
                 break
             else:
                 # 执行更新操作
-                updated = False
                 deployer = None
+                updated = -200
                 if choice == '1':
                     updater = DictUpdater(config_manager)
                     updated = updater.run()
@@ -1482,11 +1500,11 @@ def main():
                     dict_updated = dict_updater.run()
                     model_updater = ModelUpdater(config_manager)
                     model_updated = model_updater.run()
-                    updated = scheme_updated or dict_updated or model_updated
+                    updated = [scheme_updated, dict_updated, model_updated]
                     
                     # win平台统一部署检查
                     if sys.platform == 'win32':
-                        if updated and deployer:
+                        if updated == [1,1,1] and deployer:
                             print_header("重新部署输入法")
                             if deployer.deploy_weasel():
                                 print_success("部署成功")
@@ -1495,12 +1513,12 @@ def main():
                         else:
                             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
                     elif sys.platform == 'darwin':
-                        if updated and deployer:
+                        if updated == [1,1,1]  and deployer:
                             print_header("重新部署输入法")
                             deploy_for_mac()
                     elif sys.platform == 'ios':
                         import webbrowser
-                        if updated and deployer:
+                        if updated == [1,1,1]  and deployer:
                             print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
                             is_deploy = input("是否跳转到Hamster进行部署(y/n)?").strip().lower()
                             if is_deploy == 'y':
@@ -1510,7 +1528,10 @@ def main():
                     else:
                         pass
 
-                    if updated:
+                    if -1 in updated:
+                        print_warning("部分内容下载更新失败，请重试")
+                        continue
+                    else:
                         if script_update_flag:
                             print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
                             script_updater.run()
@@ -1518,16 +1539,15 @@ def main():
                             print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
                             time.sleep(4)
                             sys.exit(0)
-                    else:
-                        print_warning("部分内容下载更新失败，请重试")
-                        continue
+                        
                 elif choice == '5':
                     # 脚本更新
                     script_updater.run()
-                    continue  
+                    continue 
+
                 if sys.platform == 'win32':
                     # win平台统一部署检查（安全判断）
-                    if updated and deployer:
+                    if updated == 1 and deployer:
                         print_header("重新部署输入法")
                         if deployer.deploy_weasel():
                             print_success("部署成功")
@@ -1536,12 +1556,12 @@ def main():
                     else:
                         print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
                 elif sys.platform == 'darwin':
-                    if updated and deployer:
+                    if updated == 1 and deployer:
                         print_header("重新部署输入法")
                         deploy_for_mac()
                 elif sys.platform == 'ios':
                     import webbrowser
-                    if updated and deployer:
+                    if updated == 1 and deployer:
                         print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
                         is_deploy = input("是否进行部署(y/n)? ").strip().lower()
                         if is_deploy == 'y':
