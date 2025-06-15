@@ -176,10 +176,12 @@ class ConfigManager:
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             if os.path.exists(os.path.join(current_file_dir, 'Rime')):
                 detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
-            if os.path.exists(os.path.join(current_file_dir, 'rime')):
+            elif os.path.exists(os.path.join(current_file_dir, 'rime')):
                 detected['rime_user_dir'] = os.path.join(current_file_dir, 'rime')
-            os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
-            detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')		
+            else:
+                os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
+                detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
+            
         return detected
 
 
@@ -1420,45 +1422,39 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
-            if sys.platform == 'ios':
-                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 退出程序")
-                choice = input("请输入选择（1-6，单独按回车键默认选择全部更新）: ").strip() or '4'
-            else:
-                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
-                choice = input("请输入选择（1-7，单独按回车键默认选择全部更新）: ").strip() or '4'
+            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            choice = input("请输入选择（1-7，单独按回车键默认选择全部更新）: ").strip() or '4'
             
             if choice == '6':
-                if sys.platform == 'ios':
-                    break
+                config_manager.display_config_instructions()
+                print("保存后关闭配置文件以继续...")
+                # 用记事本打开配置文件
+                if os.name == 'nt':
+                    subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
                 else:
-                    config_manager.display_config_instructions()
-                    print("保存后关闭配置文件以继续...")
-
-                    # 用记事本打开配置文件
-                    if os.name == 'nt':
-                        subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
-                    else:
+                    try:
                         subprocess.run(['open', config_manager.config_path])
-                    
-                    # 返回主菜单或退出
-                    user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
-                    if user_choice == '':
-                        update_flag = False
-                        scheme_updater = SchemeUpdater(config_manager)
-                        dict_updater = DictUpdater(config_manager)
-                        model_updater = ModelUpdater(config_manager)
-                        # 重新检查更新
-                        update_flag = check_for_update(scheme_updater) and \
-                                      check_for_update(dict_updater) and \
-                                      check_for_update(model_updater)
-                        if not update_flag:
-                            print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
-                        continue  # 继续主循环
-                    else:
-                        break
-            elif choice == '7':
-                if sys.platform != 'ios':
+                    except:
+                        print_warning("无法打开配置文件，请手动编辑。")
+                
+                # 返回主菜单或退出
+                user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
+                if user_choice == '':
+                    update_flag = False
+                    scheme_updater = SchemeUpdater(config_manager)
+                    dict_updater = DictUpdater(config_manager)
+                    model_updater = ModelUpdater(config_manager)
+                    # 重新检查更新
+                    update_flag = check_for_update(scheme_updater) and \
+                                  check_for_update(dict_updater) and \
+                                  check_for_update(model_updater)
+                    if not update_flag:
+                        print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
+                    continue  # 继续主循环
+                else:
                     break
+            elif choice == '7':
+                break
             else:
                 # 执行更新操作
                 updated = False
