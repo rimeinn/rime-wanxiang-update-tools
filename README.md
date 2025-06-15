@@ -10,7 +10,7 @@
 - [x] [macOS版本](./Mac/README.md)
 - [x] [Linux版本](./Linux/README.md)
 - [x] [iOS版本](./iOS/README.md)
-- [x] [Android版本(同文、小企鹅导入包通用构建脚本)](./Android/README.md)
+- [x] [Android版本(同文、小企鹅导入包通用构建脚本)](./Android/README.MD)
 
 ### Windows版本
 
