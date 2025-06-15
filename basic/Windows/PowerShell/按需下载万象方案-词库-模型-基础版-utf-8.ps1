@@ -314,7 +314,10 @@ if ($SelectedDictRelease -and $SelectedSchemaRelease -and $SelectedGramRelease) 
 }
 
 # 获取最新的版本的tag_name
-Write-Host "最新的版本为：$($SelectedSchemaRelease.tag_name)"
+Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_name)"
+Write-Host "方案更新日志: " -ForegroundColor Yellow
+Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
+
 $SchemaTag = $SelectedSchemaRelease.tag_name
 
 $promptAllUpdate = "是否更新所有内容（方案、词库、模型）:`n[0]-更新所有; [1]-不更新所有"

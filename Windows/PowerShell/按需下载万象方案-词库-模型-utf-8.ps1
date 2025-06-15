@@ -322,7 +322,10 @@ if ($SelectedDictRelease -and $SelectedSchemaRelease -and $SelectedGramRelease) 
 }
 
 # 获取最新的版本的tag_name
-Write-Host "最新的版本为：$($SelectedSchemaRelease.tag_name)"
+Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_name)"
+Write-Host "方案更新日志: " -ForegroundColor Yellow
+Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
+
 $SchemaTag = $SelectedSchemaRelease.tag_name
 
 $promptSchemaType = "请选择你要下载的辅助码方案类型的编号: `n[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
