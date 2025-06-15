@@ -1504,21 +1504,32 @@ def main():
                     
                     # win平台统一部署检查
                     if sys.platform == 'win32':
-                        if updated == [1,1,1] and deployer:
+                        if -1 in updated and deployer:
+                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+                        elif updated == [0,0,0]  and deployer:
+                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+                        else:
                             print_header("重新部署输入法")
                             if deployer.deploy_weasel():
                                 print_success("部署成功")
                             else:
                                 print_warning("部署失败，请检查日志")
-                        else:
-                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
                     elif sys.platform == 'darwin':
-                        if updated == [1,1,1]  and deployer:
+                        if -1 in updated and deployer:
+                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+                        elif updated == [0,0,0]  and deployer:
+                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+                        else:
                             print_header("重新部署输入法")
                             deploy_for_mac()
+
                     elif sys.platform == 'ios':
                         import webbrowser
-                        if updated == [1,1,1]  and deployer:
+                        if -1 in updated and deployer:
+                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+                        elif updated == [0,0,0]  and deployer:
+                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+                        else:
                             print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
                             is_deploy = input("是否跳转到Hamster进行部署(y/n)?").strip().lower()
                             if is_deploy == 'y':
