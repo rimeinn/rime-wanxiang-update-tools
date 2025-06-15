@@ -8,7 +8,7 @@
 
 ## 版本列表
 
-- [Python版本](../Win-Mac-iOS融合版(Python)/README.md)
+- [Python版本](../Python-全平台版本/README.md)
 - [Shortcuts版本](./Shortcuts/README.md)
 
 ## 使用说明

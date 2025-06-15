@@ -10,7 +10,7 @@
 - [x] [macOS版本](./Mac/README.md)
 - [x] [Linux版本](./Linux/README.md)
 - [x] [iOS版本](./iOS/README.md)
-- [x] [Android版本(通用小企鹅导入包构建脚本)](./Fcitx5-For-Android/README.md)
+- [x] [Android版本(同文、小企鹅导入包通用构建脚本)](./Android/README.md)
 
 ### Windows版本
 
@@ -25,12 +25,12 @@
   - 下载链接：[按需下载万象方案-词库-模型(UTF-8版本：文件名：**rime-wanxiang-update-windows-utf-8.ps1**](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-utf-8.ps1)
   - 基础版特供链接 GBK 版本：[wanxiang-update-tools-for-basic.ps1](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-for-basic.ps1)
   - 基础版特供链接 UTF-8 版本：[wanxiang-update-tools-for-basic-utf-8.ps1](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-for-basic-utf-8.ps1)
-- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
-  - 下载链接：[rime-wanxiang-update-win-mac-ios.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios.py)
+- [x] [Python版本](./Python-全平台版本/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
-### Win-Mac-iOS融合版(Python)
-- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
-  - 下载链接：[rime-wanxiang-update-win-mac-ios.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios.py)
+### Python-全平台版本
+- [x] [Python版本](./Python-全平台版本/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
 ### Linux版本
 
@@ -38,7 +38,7 @@
   - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
 
 ### iOS版本
-- [x] [Python版本](./Win-Mac-iOS融合版(Python)/README.md)
+- [x] [Python版本](./Python-全平台版本/README.md)
 - [x] [Shortcuts版本](./iOS/Shortcuts/README.md)
 
 ## 使用说明
