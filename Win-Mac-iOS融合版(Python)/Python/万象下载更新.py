@@ -1510,14 +1510,17 @@ def main():
                     else:
                         pass
 
-                    # 自动退出逻辑
-                    if script_update_flag:
-                        print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
-                        script_updater.run()
+                    if updated:
+                        if script_update_flag:
+                            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
+                            script_updater.run()
+                        else:
+                            print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
+                            time.sleep(4)
+                            sys.exit(0)
                     else:
-                        print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
-                        time.sleep(4)
-                        sys.exit(0)
+                        print_warning("部分内容下载更新失败，请重试")
+                        continue
                 elif choice == '5':
                     # 脚本更新
                     script_updater.run()
