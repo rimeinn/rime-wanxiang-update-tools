@@ -173,7 +173,7 @@ class ConfigManager:
         elif sys.platform == 'ios':
             detected['rime_user_dir'] = self.rime_dir
         else:
-            detected['rime_user_dir'] = os.path.abspath(__file__)
+            detected['rime_user_dir'] = os.path.dirname(os.path.abspath(__file__))
 		
         return detected
 
