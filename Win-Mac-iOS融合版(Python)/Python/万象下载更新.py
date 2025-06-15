@@ -534,6 +534,7 @@ class ConfigManager:
                 '词库解压目录': os.path.join(self.rime_dir, 'cn_dicts')
             }
         else:
+            paths = self.detect_installation_paths()
             required_paths = {
                 '方案解压目录': paths['rime_user_dir'],
                 '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
