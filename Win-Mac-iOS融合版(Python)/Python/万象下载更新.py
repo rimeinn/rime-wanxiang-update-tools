@@ -162,7 +162,6 @@ class ConfigManager:
             else:
                 if not self.reload_flag and show:
                     print_success("检测到小狼毫自定义 RimeUserDir：" + detected["rime_user_dir"])
-            return detected
         elif sys.platform == 'darwin':
             # 处理macOS
             if self.config.get('Settings', 'engine') == '鼠须管':
@@ -171,10 +170,12 @@ class ConfigManager:
                 detected['rime_user_dir'] = os.path.expanduser('~/.local/share/fcitx5/rime')
             else:
                 detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
-            return detected     
-        else:
+        elif sys.platform == 'ios':
             detected['rime_user_dir'] = self.rime_dir
-            return detected
+        else:
+            detected['rime_user_dir'] = os.path.abspath(__file__)
+		
+        return detected
 
 
     def _check_hamster_path(self) -> bool:
