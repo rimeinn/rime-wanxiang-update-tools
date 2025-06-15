@@ -528,12 +528,12 @@ class ConfigManager:
                 '方案解压目录': paths['rime_user_dir'],
                 '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
             }
-	elif system == 'ios':
+        elif system == 'ios':
             required_paths = {
                 '方案解压目录': self.rime_dir,
                 '词库解压目录': os.path.join(self.rime_dir, 'cn_dicts')
             }
-	else:
+        else:
             required_paths = {
                 '方案解压目录': paths['rime_user_dir'],
                 '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
