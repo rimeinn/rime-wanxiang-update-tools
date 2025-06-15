@@ -1300,6 +1300,7 @@ def check_for_update(updater) -> bool:
                 print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
             print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
             return True
+    return False
 
 def deploy_for_mac(system=sys.platform) -> bool:
     """macOS自动部署"""
@@ -1391,7 +1392,7 @@ def main():
         config_loaded = False
 
         # ========== 自动更新检测（仅在程序启动时执行一次）==========
-        update_flag = True  # 标记是否存在更新
+        # update_flag = True  # 标记是否存在更新
             
         
         # 方案更新检测
@@ -1417,6 +1418,8 @@ def main():
 
             if script_update_flag:  # 如果存在更新，显示提示
                 print(f"\n{COLOR['WARNING']}[!] 当前更新工具版本：{UPDATE_TOOLS_VERSION}，最新版本：{script_remote_info.get('tag', 'DEFAULT')}{COLOR['ENDC']}")
+        else:
+            script_update_flag = False
 
         # 主菜单循环
         while True:
