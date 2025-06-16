@@ -616,7 +616,16 @@ class GithubFileChecker:
         response.raise_for_status()
         # 返回结果处理：指定标签时为单个Release，否则为列表
         return [response.json()] if self.tag else response.json()
-
+    
+def iso_to_china_str(iso_str):
+    """将ISO格式UTC时间转换为北京时间字符串"""
+    try:
+        utc_time = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ")
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+        china_tz = timezone(timedelta(hours=8))
+        return utc_time.astimezone(china_tz).strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        return "未知时间"
 
 
 
@@ -647,6 +656,36 @@ class UpdateHandler:
             self.weasel_server
         ) = self.get_all_dir()
         os.makedirs(self.custom_dir, exist_ok=True)
+        self.update_info = None
+
+    def format_update_info(self):
+        """
+        提取和格式化远程更新时间及标签(版本)
+        Returns:
+            Tuple: (更新时间str, 版本tag)
+        """
+        if not self.update_info:
+            return "未知时间", "未知版本"
+        return (
+            iso_to_china_str(self.update_info.get("update_time", "")),
+            self.update_info.get("tag", "未知版本")
+        )
+
+    def has_update(self) -> bool:
+        """检查是否有更新可用"""
+        # 如果没有更新信息或本地没有获取本地时间
+        if not self.update_info:
+            return False
+        
+        remote_time = datetime.strptime(self.update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        local_time = self.get_local_time()
+        
+        # 如果本地没有时间记录或有新更新
+        return not local_time or remote_time > local_time
+    
+    def get_local_time(self) -> Optional[datetime]:
+        """获取本地记录的更新时间"""
+        return None
 
     def get_all_dir(self) -> Tuple[str, str, str, str]:
         """获取所有目录"""
@@ -943,11 +982,13 @@ class SchemeUpdater(UpdateHandler):
             1: 更新成功
         """
         print_header("方案更新流程")
-        remote_info = self.check_update()
-        if not remote_info:
+        # 使用缓存信息而不是重复API调用
+        remote_info = self.update_info
+        
+        # 如果没有缓存的更新信息或者本地比远程新，不需要更新
+        if not remote_info or not self.has_update():
             print_warning("未找到可用更新")
-            return 0  # 返回False表示没有更新
-        remote_info = self.check_update()
+            return 0
 
         # 时间比较
         remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -1120,8 +1161,10 @@ class DictUpdater(UpdateHandler):
             1: 更新成功
         """
         print_header("词库更新流程")
-        remote_info = self.check_update()
-        if not remote_info:
+        # 使用缓存信息而不是重复API调用
+        remote_info = self.update_info
+        # 如果没有缓存的更新信息或者本地比远程新，不需要更新
+        if not remote_info or not self.has_update():
             print_warning("未找到可用更新")
             return 0
 
@@ -1196,8 +1239,9 @@ class ModelUpdater(UpdateHandler):
             1: 更新成功
         """
         print_header("模型更新流程")
-        remote_info = self.check_update()
-        if not remote_info:
+        # 使用缓存信息而不是重复API调用
+        remote_info = self.update_info
+        if not remote_info or not self.has_update():
             print_warning("未找到模型更新信息")
             return 0
 
@@ -1296,29 +1340,59 @@ def calculate_sha256(file_path) -> Optional[str]:
         print_error(f"计算哈希失败: {str(e)}")
         return None
 
-def check_for_update(updater) -> bool:
-    """
-    检查更新并打印提示
-    Args:
-        updater (Updater): 更新器对象
-    """
-    updater_info = updater.check_update()
-    if updater_info:
-        remote_time = datetime.strptime(updater_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = updater.get_local_time()
-        if local_time is None or remote_time > local_time:
-            china_time = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-            if isinstance(updater, SchemeUpdater):
-                print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{updater_info['tag']}）")
-                update_description = updater_info['description'].split('\r\n\r\n')[0] 
-                print(f"\n{INDENT}更新说明：\n{update_description}")
-            elif isinstance(updater, DictUpdater):
-                print(f"\n{COLOR['WARNING']}[!] 词库有更新可用（版本：{updater_info['tag']}）")
-            else:
-                print(f"\n{COLOR['WARNING']}[!] 模型有更新可用")
-            print(f"{INDENT}发布时间：{china_time}{COLOR['ENDC']}")
-            return True
-    return False
+    
+def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
+    """打印更新状态信息"""
+    # 检查哪些组件有更新
+    has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
+    has_dict_update = dict_updater.update_info and dict_updater.has_update()
+    has_model_update = model_updater.update_info and model_updater.has_update()
+    
+    # 方案更新提示(仅当有更新时显示)
+    if has_scheme_update:
+        scheme_update_info = scheme_updater.update_info
+        # 统一时间格式处理
+        remote_time = datetime.strptime(scheme_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        scheme_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+                
+        print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{scheme_update_info.get('tag', '未知版本')}）{COLOR['ENDC']}")
+        print(f"{INDENT}发布时间：{scheme_local}")
+        # 分割更新说明（取第一个段落）
+        description = scheme_update_info.get('description', '无更新说明')
+        desc_parts = description.split('\r\n\r\n', 1)
+        if desc_parts:
+            print(f"{INDENT}更新说明：")
+            # 处理说明内容为多行
+            desc_lines = desc_parts[0].split('\n')
+            for line in desc_lines:
+                if line.strip():  # 跳过空行
+                    print(f"    {line.rstrip()}")
+            
+    # 词库更新提示(仅当有更新时显示)
+    if has_dict_update:
+        dict_update_info = dict_updater.update_info
+        # 统一时间格式处理
+        remote_time = datetime.strptime(dict_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dict_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{COLOR['WARNING']}[!] 词库有更新可用（版本：{dict_update_info.get('tag', '未知版本')}）{COLOR['ENDC']}")
+        print(f"  发布时间：{dict_local}\n")
+        
+    # 模型更新提示(仅当有更新时显示)
+    if has_model_update:
+        model_update_info = model_updater.update_info
+        # 统一时间格式处理
+        remote_time = datetime.strptime(model_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        model_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{COLOR['WARNING']}[!] 模型有更新可用{COLOR['ENDC']}")
+        print(f"  发布时间：{model_local}\n")
+        
+    # 如果没有更新显示提示
+    if not (has_scheme_update or has_dict_update or has_model_update):
+        print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
+        print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
+        time.sleep(4)
+        sys.exit(0)
+
 
 def deploy_for_mac(system=sys.platform) -> bool:
     """macOS自动部署"""
@@ -1410,24 +1484,32 @@ def main():
         config_loaded = False
 
         # ========== 自动更新检测（仅在程序启动时执行一次）==========
-        # update_flag = True  # 标记是否存在更新
-            
-        
-        # 方案更新检测
-        scheme_updater = SchemeUpdater(config_manager)
-        scheme_update_flag = check_for_update(scheme_updater)
-        # 词库更新检测
-        dict_updater = DictUpdater(config_manager)
-        dict_update_flag = check_for_update(dict_updater)
-        # 模型更新检测
-        model_updater = ModelUpdater(config_manager)
-        model_update_flag = check_for_update(model_updater)
+        print_subheader("正在检查可用更新...")
+        print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
 
-        update_flag = scheme_update_flag or dict_update_flag or model_update_flag
-        # 如果没有更新显示提示
-        if not update_flag:
-            print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
-        
+        # 获取所有更新器的更新信息
+        scheme_updater = SchemeUpdater(config_manager)
+        scheme_update_info = scheme_updater.check_update()
+        scheme_updater.update_info = scheme_update_info
+
+        dict_updater = DictUpdater(config_manager)
+        dict_update_info = dict_updater.check_update()
+        dict_updater.update_info = dict_update_info
+
+        model_updater = ModelUpdater(config_manager)
+        model_update_info = model_updater.check_update()
+        model_updater.update_info = model_update_info
+
+        # 检查哪些组件有更新
+        has_scheme_update = scheme_update_info and scheme_updater.has_update()
+        has_dict_update = dict_update_info and dict_updater.has_update()
+        has_model_update = model_update_info and model_updater.has_update()
+
+        # 第一次自动更新检测后调用
+        print_update_status(scheme_updater, dict_updater, model_updater)
+
+
+
         # ========== 版本更新检测（仅在程序启动时执行一次）==========
         script_updater = ScriptUpdater(config_manager)
         script_remote_info = script_updater.check_update()
@@ -1443,8 +1525,8 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
-            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 全部更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
-            choice = input("请输入选择（1-7，单独按回车键默认选择全部更新）: ").strip() or '4'
+            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
             
             if choice == '6':
                 config_manager.display_config_instructions()
@@ -1461,16 +1543,31 @@ def main():
                 # 返回主菜单或退出
                 user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
                 if user_choice == '':
-                    update_flag = False
+                    # 重新加载配置
+                    config_manager = ConfigManager()
+                    
+                    # 重新检查更新
+                    print_subheader("正在重新检查可用更新...")
+                    print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
+                    
+                    # 重新创建更新器实例
                     scheme_updater = SchemeUpdater(config_manager)
                     dict_updater = DictUpdater(config_manager)
                     model_updater = ModelUpdater(config_manager)
-                    # 重新检查更新
-                    update_flag = check_for_update(scheme_updater) and \
-                                  check_for_update(dict_updater) and \
-                                  check_for_update(model_updater)
-                    if not update_flag:
-                        print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
+                    
+                    # 重新获取更新信息
+                    scheme_update_info = scheme_updater.check_update()
+                    scheme_updater.update_info = scheme_update_info
+                    
+                    dict_update_info = dict_updater.check_update()
+                    dict_updater.update_info = dict_update_info
+                    
+                    model_update_info = model_updater.check_update()
+                    model_updater.update_info = model_update_info
+                    
+                    # 使用函数打印更新状态
+                    print_update_status(scheme_updater, dict_updater, model_updater)
+                    
                     continue  # 继续主循环
                 else:
                     break
@@ -1481,25 +1578,38 @@ def main():
                 deployer = None
                 updated = -200
                 if choice == '1':
-                    updater = DictUpdater(config_manager)
-                    updated = updater.run()
-                    deployer = updater
+                    updated = dict_updater.run()  # 使用已填充更新信息的更新器
+                    deployer = dict_updater
                 elif choice == '2':
-                    updater = SchemeUpdater(config_manager)
-                    updated = updater.run()
-                    deployer = updater
+                    updated = scheme_updater.run()  # 使用已填充更新信息的更新器
+                    deployer = scheme_updater
                 elif choice == '3':
-                    updater = ModelUpdater(config_manager)
-                    updated = updater.run()
-                    deployer = updater
+                    updated = model_updater.run()  # 使用已填充更新信息的更新器
+                    deployer = model_updater
                 elif choice == '4':
-                    # 全部更新模式
-                    deployer = SchemeUpdater(config_manager)
-                    scheme_updated = deployer.run()
-                    dict_updater = DictUpdater(config_manager)
-                    dict_updated = dict_updater.run()
-                    model_updater = ModelUpdater(config_manager)
-                    model_updated = model_updater.run()
+                    # 全部更新 - 复用已经存在的实例
+                    print_header("智能更新检测中...")
+                    
+                    # 使用已有的实例（在自动检测中已经初始化并缓存了更新信息）
+                    deployer = scheme_updater
+                    
+                    # 初始化更新状态
+                    scheme_updated = 0
+                    dict_updated = 0
+                    model_updated = 0
+                    
+                    # 方案更新
+                    if scheme_updater.has_update():
+                        scheme_updated = scheme_updater.run()
+                    
+                    # 词库更新
+                    if dict_updater.has_update():
+                        dict_updated = dict_updater.run()
+                    
+                    # 模型更新
+                    if model_updater.has_update():
+                        model_updated = model_updater.run()
+                    
                     updated = [scheme_updated, dict_updated, model_updated]
                     
                     # win平台统一部署检查
