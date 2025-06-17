@@ -1702,6 +1702,8 @@ def main():
         print("\n✨ 升级完毕，欢迎下次使用！")
         time.sleep(2)
         sys.exit(0)
+    except KeyboardInterrupt:
+        print(f"\n{COLOR['FAIL']}🚫 终止操作 {COLOR['ENDC']}")
         
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
