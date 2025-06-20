@@ -17,22 +17,25 @@ from typing import Tuple, Optional, List, Dict
 
 # GitHub 仓库信息
 OWNER = "amzxyz"
-# REPO = "rime_wanxiang_pro"
+REPO = "rime_wanxiang"
 DICT_TAG = "dict-nightly"
 # 模型相关配置
 MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 
+# 基础版方案和词库文件名
+BASE_SCHEME_FILE = "rime-wanxiang.zip"
+BASE_DICT_FILE = "9-zh-dicts.zip"
+
 SCHEME_MAP = {
-    '1': 'cj',
+    '1': 'moqi',
     '2': 'flypy',
-    '3': 'hanxin',
+    '3': 'zrm',
     '4': 'jdh', 
-    '5': 'moqi',
-    '6': 'tiger',
-    '7': 'wubi',
-    '8': 'zrm'
+    '5': 'tiger',
+    '6': 'wubi',
+    '7': 'hanxin'
 }
 # ====================== 界面函数 ======================
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -335,36 +338,36 @@ class ConfigManager:
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行方案版本选择向导")
         print(f"{BORDER}")
-        print("[1]-万象基础版 [2]-万象Pro（支持各种辅助码）")
+        print("[1]-万象基础版 [2]-万象增强版（支持各种辅助码）")
 
         while True:
             choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
             if choice == '1':
-                self.scheme_type = 'rime_wanxiang'
-                # 更新配置文件
+                self.scheme_type = 'base'
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
+                self.config.set('Settings', 'scheme_file', BASE_SCHEME_FILE)
+                self.config.set('Settings', 'dict_file', BASE_DICT_FILE)
                 print_success("已选择方案：万象基础版")
                 return True
             elif choice == '2':
-                self.scheme_type = 'rime_wanxiang_pro'
-                # 更新配置文件
+                self.scheme_type = 'pro'
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
-                print_success("已选择方案：万象Pro")
+                print_success("已选择方案：万象增强版")
                 return True
             else:
                 print_error("无效的选项，请重新输入")
 
     def _guide_scheme_selection(self) -> bool:
         """首次运行引导选择方案"""
-        if self.scheme_type == 'rime_wanxiang_pro':
+        if self.scheme_type == 'pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
-            print(f"{BORDER}")
-            print("[1]-仓颉 [2]-小鹤 [3]-汉心 [4]-简单鹤")
-            print("[5]-墨奇 [6]-虎码 [7]-五笔 [8]-自然码")
+            # 更新方案描述，移除仓颉选项
+            print("[1]-墨奇 [2]-小鹤 [3]-自然码 [4]-简单鹤")
+            print("[5]-虎码 [6]-五笔 [7]-汉心")
         
             while True:
-                choice = input("请选择你的辅助码方案（1-8）: ").strip()
+                choice = input("请选择你的辅助码方案（1-7）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
                     
@@ -380,12 +383,8 @@ class ConfigManager:
                     return True
                 print_error("无效的选项，请重新输入")
         else:
-            _, dict_file = self._get_actual_filenames('cn_dicts.zip')
-            # 更新配置文件
-            self.config.set('Settings', 'scheme_type', self.scheme_type)
-            self.config.set('Settings', 'dict_file', dict_file)
-
-            print(f"词库文件: {dict_file}")
+            self.config.set('Settings', 'dict_file', BASE_DICT_FILE)
+            print_success(f"基础版使用固定词库: {BASE_DICT_FILE}")
             return True
 
             
@@ -398,54 +397,33 @@ class ConfigManager:
             Tuple[str, str]: 方案文件名，词库文件名
         """
         try:
-            # 方案文件检查器（使用最新Release）
-            if self.scheme_type == 'rime_wanxiang_pro':
-                scheme_pattern = f"wanxiang-{scheme_key}*.zip"
-                dict_pattern = f"*{scheme_key}_dicts.zip"
-            else:
-                scheme_pattern = "rime_wanxiang*.zip"
-                dict_pattern = "cn_dicts.zip"
-
-            scheme_checker = GithubFileChecker(
-                owner=OWNER,
-                repo=self.scheme_type,
-                pattern=scheme_pattern
-            )
-            # 词库文件检查器（使用dict-nightly标签）
-            dict_checker = GithubFileChecker(
-                owner=OWNER,
-                repo=self.scheme_type,
-                pattern=dict_pattern,
-                tag=DICT_TAG
-            )
-            
-            # 获取最新文件名
-            if self.scheme_type == 'rime_wanxiang_pro':
+            if self.scheme_type == 'base':
+                return BASE_SCHEME_FILE, BASE_DICT_FILE
+                
+            elif self.scheme_type == 'pro':
+                scheme_pattern = f"*{scheme_key}*fuzhu.zip"
+                dict_pattern = f"*{scheme_key}*dicts.zip"
+                
+                scheme_checker = GithubFileChecker(
+                    owner=OWNER,
+                    repo=REPO,
+                    pattern=scheme_pattern
+                )
+                dict_checker = GithubFileChecker(
+                    owner=OWNER,
+                    repo=REPO,
+                    pattern=dict_pattern,
+                    tag=DICT_TAG
+                )
+                
                 scheme_file = scheme_checker.get_latest_file()
-                # 确保返回有效文件名
-                if not scheme_file or '*' in scheme_file:
-                    raise ValueError("无法获取有效的方案文件名")
-            else:
-                scheme_file = ""
-                
-            dict_file = dict_checker.get_latest_file()
-            if not dict_file or '*' in dict_file:
-                raise ValueError("无法获取有效的词库文件名")
-                
-            return scheme_file, dict_file
+                dict_file = dict_checker.get_latest_file()
+
+                return scheme_file, dict_file
             
         except Exception as e:
-            print_warning(f"无法获取最新文件名，使用默认模式: {str(e)}")
-            if self.scheme_type == 'rime_wanxiang_pro':
-                return (
-                    f"wanxiang-{scheme_key}-fuzhu.zip",
-                    f"*-{scheme_key}_dicts.zip"
-                )
-            else:
-                return (
-                    "",
-                    f"*-{scheme_key}_dicts.zip"
-                )
+            print_error(f"无法获取最新文件名，请检查是否开启了代理,如有,请关闭后再试...")
+            exit(-1)
 
     def _show_config_guide(self) -> None:
         """配置引导界面"""
@@ -592,7 +570,7 @@ class GithubFileChecker:
         self.owner = owner
         self.repo = repo
         self.pattern_regex = re.compile(pattern.replace('*', '.*'))
-        self.tag = tag  # 新增标签参数
+        self.tag = tag
 
     def get_latest_file(self) -> Optional[str]:
         """获取匹配模式的最新文件"""
@@ -601,7 +579,7 @@ class GithubFileChecker:
             for asset in release.get("assets", []):
                 if self.pattern_regex.match(asset['name']):
                     return asset['name']
-        return None  # 如果未找到，返回None
+        return None
 
     def _get_releases(self) -> List:
         """根据标签获取对应的Release"""
@@ -710,6 +688,9 @@ class UpdateHandler:
         headers = {"User-Agent": "RIME-Updater/1.0"}
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
+        # # 在请求前打印通知
+        # if "api.github.com" in url:
+        #     print(f"{COLOR['BLUE']}请求 api.github.com: {url}{COLOR['ENDC']}")
         
         max_retries = 2  # 最大重试次数
         for attempt in range(max_retries + 1):
@@ -763,6 +744,7 @@ class UpdateHandler:
             # 统一提示镜像状态
             if self.use_mirror:
                 print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://bgithub.xyz 下载{COLOR['ENDC']}")
+                # print(f"{COLOR['WARNING']}注意: 如果使用代理，请确保关闭后再尝试下载{COLOR['ENDC']}")
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
             response = requests.get(url, stream=True)
@@ -784,22 +766,41 @@ class UpdateHandler:
 
     def extract_zip(self, zip_path, target_dir, is_dict=False) -> bool:
         """
-        智能解压系统（支持排除文件）
+        智能解压系统(支持排除文件)
         Args:
             zip_path (str): 压缩文件路径
             target_dir (str): 解压目标路径
-            is_dict (bool): 是否为词库文件（决定解压方式）
+            is_dict (bool): 是否为词库文件(决定解压方式)
         """
+        def get_common_base_dir(members):
+            """获取所有文件成员的共同基础目录"""
+            if not members:
+                return ""
+            try:
+                common_path = os.path.pathsep.join(members)
+                # 使用正确的方法计算共同基础目录
+                prefix = os.path.dirname(common_path)
+                for sep in ("/", "\\"):
+                    if sep in prefix:
+                        prefix = prefix.split(sep)[0] + sep
+                        break
+                return prefix
+            except:
+                return ""
+
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 exclude_patterns = self.exclude_files  # 获取排除模式
                 if is_dict:
-                    # 处理词库多级目录（应用排除规则）
                     members = [m for m in zip_ref.namelist() if not m.endswith('/')]
                     common_prefix = os.path.commonpath(members) if members else ''
                     for member in members:
-                        relative_path = os.path.relpath(member, common_prefix)
-                        # 转换为系统路径分隔符
+                        # 计算相对于共同前缀的相对路径
+                        if common_prefix:
+                            relative_path = os.path.relpath(member, common_prefix)
+                        else:
+                            relative_path = member
+                        # 标准化路径格式
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
                         file_name = os.path.basename(normalized_path)
                         # 检查排除规则
@@ -816,40 +817,45 @@ class UpdateHandler:
                         with open(target_path, 'wb') as f:
                             f.write(zip_ref.read(member))
                 else:
-                    # 保持方案文件结构（应用排除规则）
-                    base_dir = os.path.splitext(os.path.basename(zip_path))[0] + "/"
-                    exclude_patterns = self.exclude_files
-                    exclude_patterns.append('.github')  # 万象普通版排除.github目录
+                    # 方案文件处理：智能检测并去除根目录
+                    # 获取所有非目录成员
+                    valid_members = [m for m in zip_ref.namelist() if not m.endswith('/')]
                     
+                    # 智能检测最合理的根目录（优先压缩包内唯一目录，或通过通用算法计算）
+                    base_dir = ""
+                    dirs = {m.split('/', 1)[0] for m in valid_members if '/' in m}
+                    if len(dirs) == 1:
+                        base_dir = list(dirs)[0] + "/"
+                    else:
+                        base_dir = get_common_base_dir(valid_members)
+                    exclude_patterns = self.exclude_files
                     for member in zip_ref.namelist():
-                        if self.scheme_type == 'rime_wanxiang_pro':
-                            rule_check = member.startswith(base_dir) and not member.endswith('/')
+                        # 跳过目录项
+                        if member.endswith('/'):
+                            continue
+                        # 计算相对路径（去除根目录）
+                        if base_dir and member.startswith(base_dir):
                             relative_path = member[len(base_dir):]
                         else:
-                            rule_check = 'rime_wanxiang' in member and not member.endswith('/')
-                            relative_path = member[member.index('/')+1:]
-
-                        if rule_check:
-                            # 统一路径分隔符为当前系统格式
-                            normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
-                            # 获取纯文件名部分
-                            file_name = os.path.basename(normalized_path)
-                            
-                            # 检查是否匹配排除规则（支持路径模式和纯文件名）
-                            exclude = any(
-                                # 匹配完整路径或纯文件名
-                                fnmatch.fnmatch(normalized_path, pattern) or 
-                                fnmatch.fnmatch(file_name, pattern)
-                                for pattern in exclude_patterns
-                            )
-                            
-                            if exclude:
-                                print_warning(f"跳过排除文件: {normalized_path}")
-                                continue
-                            target_path = os.path.join(target_dir, relative_path)
-                            os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                            with open(target_path, 'wb') as f:
-                                f.write(zip_ref.read(member))
+                            relative_path = member
+                        # 标准化路径
+                        normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
+                        if not normalized_path.strip():  # 跳过空路径
+                            continue
+                        file_name = os.path.basename(normalized_path)
+                        # 检查排除规则（支持路径模式和纯文件名）
+                        exclude = any(
+                            fnmatch.fnmatch(normalized_path, pattern) or 
+                            fnmatch.fnmatch(file_name, pattern)
+                            for pattern in exclude_patterns
+                        )
+                        if exclude:
+                            print_warning(f"跳过排除文件: {normalized_path}")
+                            continue
+                        target_path = os.path.join(target_dir, normalized_path)
+                        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                        with open(target_path, 'wb') as f:
+                            f.write(zip_ref.read(member))
             return True
         except zipfile.BadZipFile:
             print_error("ZIP文件损坏")
@@ -857,6 +863,7 @@ class UpdateHandler:
         except Exception as e:
             print_error(f"解压失败: {str(e)}")
             return False
+
 
     if sys.platform == 'win32':
         def terminate_processes(self):
@@ -937,42 +944,67 @@ class UpdateHandler:
                 return False
 
 
+# ====================== 组合更新器 ======================
+class CombinedUpdater:
+    """组合更新处理器 - 同时检查方案和词库更新"""
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        # 初始化子更新器
+        self.scheme_updater = SchemeUpdater(config_manager)
+        self.dict_updater = DictUpdater(config_manager)
+        self.model_updater = ModelUpdater(config_manager)
+        # 存储共享的releases数据
+        self.shared_releases = None
+    def fetch_all_updates(self):
+        """获取所有更新信息"""
+        # 获取方案和词库的releases数据
+        self.shared_releases = self.scheme_updater.github_api_request(
+            f"https://api.github.com/repos/{OWNER}/{REPO}/releases"
+        )
+        # 使用共享的releases数据检查方案和词库更新
+        self.scheme_updater.update_info = self._extract_scheme_update()
+        self.dict_updater.update_info = self._extract_dict_update()
+        # 模型更新独立检查
+        self.model_updater.update_info = self.model_updater.check_update()
+    def _extract_scheme_update(self) -> Optional[Dict]:
+        """从仓库数据中提取方案更新"""
+        if not self.shared_releases:
+            return None
+            
+        for release in self.shared_releases[:2]:
+            for asset in release.get("assets", []):
+                if asset["name"] == self.scheme_updater.scheme_file:
+                    update_description = release.get("body", "无更新说明")
+                    return {
+                        "url": self.scheme_updater.mirror_url(asset["browser_download_url"]),
+                        "update_time": asset["updated_at"],
+                        "tag": release["tag_name"],
+                        "description": update_description
+                    }
+        return None
+    
+    def _extract_dict_update(self) -> Optional[Dict]:
+        """从仓库数据中提取词库更新"""
+        if not self.shared_releases:
+            return None
+            
+        for release in self.shared_releases[:2]:
+            for asset in release.get("assets", []):
+                if asset["name"] == self.dict_updater.dict_file:
+                    return {
+                        "url": self.dict_updater.mirror_url(asset["browser_download_url"]),
+                        "update_time": asset["updated_at"],
+                        "tag": release["tag_name"],
+                    }
+        return None
+
+
 # ====================== 方案更新 ======================
 class SchemeUpdater(UpdateHandler):
     """方案更新处理器"""
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
-
-    def check_update(self) -> Optional[Dict]:
-        releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases")
-        if not releases:
-            return None
-        for release in releases[:2]:
-            if self.scheme_type == 'rime_wanxiang_pro':
-                for asset in release.get("assets", []):
-                    if asset["name"] == self.scheme_file:
-                        update_description = release.get("body", "无更新说明")
-                        return {
-                            "url": self.mirror_url(asset["browser_download_url"]),
-                            # 修改为获取asset的更新时间
-                            "update_time": asset["updated_at"],
-                            "tag": release["tag_name"],
-                            "description": update_description
-                        }
-            else:
-                tag_name = release.get("tag_name", "")
-                if tag_name:
-                    update_description = release.get("body", "无更新说明")
-                    return {
-                        "url": self.mirror_url(f"https://github.com/amzxyz/rime_wanxiang/archive/refs/tags/{tag_name}.zip"),
-                        "update_time": release["published_at"],
-                        "tag": tag_name,
-                        "description": update_description
-                    }
-                
-        return None
-    
 
     def run(self) -> int:
         """
@@ -1077,32 +1109,11 @@ class DictUpdater(UpdateHandler):
     """词库更新处理器"""
     def __init__(self, config_manager):
         super().__init__(config_manager)
-        self.target_tag = DICT_TAG  # 使用全局配置的标签
+        self.target_tag = DICT_TAG
         self.target_file = os.path.join(self.custom_dir, self.dict_file)  
         self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
 
-    def check_update(self) -> Dict:
-        """检查词库更新"""
-        release = self.github_api_request(
-            f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases/tags/{self.target_tag}"
-        )
-        if not release:
-            return None
-        target_asset = next(
-            (a for a in release["assets"] if a["name"] == self.dict_file),
-            None
-        )
-        if not target_asset:
-            return None
-        return {
-            "url": self.mirror_url(target_asset["browser_download_url"]),
-            # 使用asset的更新时间
-            "update_time": target_asset["updated_at"],
-            "tag": release["tag_name"],
-            "size": target_asset["size"]
-        }
-    
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
         if not os.path.exists(self.record_file):
@@ -1389,9 +1400,9 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
     # 如果没有更新显示提示
     if not (has_scheme_update or has_dict_update or has_model_update):
         print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
-        print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
-        time.sleep(4)
-        sys.exit(0)
+        # print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
+        # time.sleep(4)
+        # sys.exit(0)
 
 
 def deploy_for_mac(system=sys.platform) -> bool:
@@ -1479,32 +1490,22 @@ def main():
         print(f"\n{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
 
     try:
-        # 初始化配置
         config_manager = ConfigManager()
-        config_loaded = False
-
-        # ========== 自动更新检测（仅在程序启动时执行一次）==========
+        
         print_subheader("正在检查可用更新...")
         print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
-
-        # 获取所有更新器的更新信息
-        scheme_updater = SchemeUpdater(config_manager)
-        scheme_update_info = scheme_updater.check_update()
-        scheme_updater.update_info = scheme_update_info
-
-        dict_updater = DictUpdater(config_manager)
-        dict_update_info = dict_updater.check_update()
-        dict_updater.update_info = dict_update_info
-
-        model_updater = ModelUpdater(config_manager)
-        model_update_info = model_updater.check_update()
-        model_updater.update_info = model_update_info
-
+        # 创建组合更新器并获取所有更新信息
+        combined_updater = CombinedUpdater(config_manager)
+        combined_updater.fetch_all_updates()
+        
+        # 获取各个更新器的实例
+        scheme_updater = combined_updater.scheme_updater
+        dict_updater = combined_updater.dict_updater
+        model_updater = combined_updater.model_updater
         # 检查哪些组件有更新
-        has_scheme_update = scheme_update_info and scheme_updater.has_update()
-        has_dict_update = dict_update_info and dict_updater.has_update()
-        has_model_update = model_update_info and model_updater.has_update()
-
+        has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
+        has_dict_update = dict_updater.update_info and dict_updater.has_update()
+        has_model_update = model_updater.update_info and model_updater.has_update()
         # 第一次自动更新检测后调用
         print_update_status(scheme_updater, dict_updater, model_updater)
 
@@ -1550,20 +1551,14 @@ def main():
                     print_subheader("正在重新检查可用更新...")
                     print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
                     
-                    # 重新创建更新器实例
-                    scheme_updater = SchemeUpdater(config_manager)
-                    dict_updater = DictUpdater(config_manager)
-                    model_updater = ModelUpdater(config_manager)
+                    # 使用组合更新器重新获取更新信息
+                    combined_updater = CombinedUpdater(config_manager)
+                    combined_updater.fetch_all_updates()
                     
-                    # 重新获取更新信息
-                    scheme_update_info = scheme_updater.check_update()
-                    scheme_updater.update_info = scheme_update_info
-                    
-                    dict_update_info = dict_updater.check_update()
-                    dict_updater.update_info = dict_update_info
-                    
-                    model_update_info = model_updater.check_update()
-                    model_updater.update_info = model_update_info
+                    # 获取各个更新器的实例
+                    scheme_updater = combined_updater.scheme_updater
+                    dict_updater = combined_updater.dict_updater
+                    model_updater = combined_updater.model_updater
                     
                     # 使用函数打印更新状态
                     print_update_status(scheme_updater, dict_updater, model_updater)
