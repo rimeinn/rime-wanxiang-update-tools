@@ -28,7 +28,7 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
-$SchemaRepo = "rime_wanxiang_pro"
+$SchemaRepo = "rime_wanxiang"
 $GramRepo = "RIME-LMDG"
 $GramReleaseTag = "LTS"
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
@@ -46,15 +46,17 @@ $DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
 $Debug = $false;
 
 $KeyTable = @{
-    "0" = "cj";
+    "0" = "base";
     "1" = "flypy";
     "2" = "hanxin";
     "3" = "jdh";
     "4" = "moqi";
     "5" = "tiger";
     "6" = "wubi";
-    "7" = "zrm"
+    "7" = "zrm";
 }
+
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -328,7 +330,7 @@ Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
 
 $SchemaTag = $SelectedSchemaRelease.tag_name
 
-$promptSchemaType = "请选择你要下载的辅助码方案类型的编号: `n[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
+$promptSchemaType = "请选择你要下载的方案类型的编号: `n$SchemaDownloadTip"
 $promptAllUpdate = "是否更新所有内容（方案、词库、模型）:`n[0]-更新所有; [1]-不更新所有"
 $promptSchemaDown = "是否下载方案:`n[0]-下载; [1]-不下载"
 $promptGramModel = "是否下载模型:`n[0]-下载; [1]-不下载"
