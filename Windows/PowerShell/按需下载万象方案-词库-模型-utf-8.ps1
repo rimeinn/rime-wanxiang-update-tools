@@ -402,19 +402,22 @@ $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -ke
 $ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
 if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
-    if (-not $ExpectedSchemaTypeInfo) {
+    if (($InputSchemaDown -eq 0) -and (-not $ExpectedSchemaTypeInfo)) {
         Write-Error "未找到符合条件的方案下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedDictTypeInfo) {
+    if (($InputDictDown -eq 0) -and (-not $ExpectedDictTypeInfo)) {
         Write-Error "未找到符合条件的词库下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedGramTypeInfo) {
+    if (($InputGramModel -eq 0) -and (-not $ExpectedGramTypeInfo)) {
         Write-Error "未找到符合条件的模型下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedGramMd5TypeInfo) {
+    if (($InputGramModel -eq 0) -and (-not $ExpectedGramMd5TypeInfo)) {
         Write-Error "未找到符合条件的模型md5下载链接"
+        Exit-Tip 1
     }
-    Exit-Tip 1
 }
 
 # 打印
