@@ -390,6 +390,7 @@ function Get-ExpectedAssetTypeInfo {
                 Write-Host "匹配成功，asset.name: $($asset.name)" -ForegroundColor Green
                 Write-Host "目标信息为：$($info)"
             }
+            break
         }
     }
 
