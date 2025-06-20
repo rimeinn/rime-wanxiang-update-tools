@@ -17,7 +17,7 @@ from typing import Tuple, Optional, List, Dict
 
 # GitHub 仓库信息
 OWNER = "amzxyz"
-# REPO = "rime_wanxiang_pro"
+REPO = "rime_wanxiang"
 DICT_TAG = "dict-nightly"
 # 模型相关配置
 MODEL_REPO = "RIME-LMDG"
@@ -132,6 +132,9 @@ class ConfigManager:
         self.rime_dir = ''
         self.scheme_type = ''
         self.reload_flag = False
+        self.github_release_info = []
+        self.scheme_release_info = []
+        self.dict_release_info = []
         self._ensure_config_exists()
 
     def detect_installation_paths(self, show=False):
@@ -371,8 +374,8 @@ class ConfigManager:
                     # 立即获取实际文件名
                     scheme_file, dict_file = self._get_actual_filenames(scheme_key)
                     
-                    self.config.set('Settings', 'scheme_file', scheme_file)
-                    self.config.set('Settings', 'dict_file', dict_file)
+                    # self.config.set('Settings', 'scheme_file', scheme_file)
+                    # self.config.set('Settings', 'dict_file', dict_file)
                     
                     print_success(f"已选择方案：{scheme_key.upper()}")
                     print(f"方案文件: {scheme_file}")
@@ -400,52 +403,59 @@ class ConfigManager:
         try:
             # 方案文件检查器（使用最新Release）
             if self.scheme_type == 'rime_wanxiang_pro':
-                scheme_pattern = f"wanxiang-{scheme_key}*.zip"
+                scheme_pattern = f"wanxiang-*{scheme_key}*.zip"
                 dict_pattern = f"*{scheme_key}_dicts.zip"
             else:
-                scheme_pattern = "rime_wanxiang*.zip"
-                dict_pattern = "cn_dicts.zip"
+                scheme_pattern = "wanxiang_base.zip"
+                dict_pattern = "*cn_dicts.zip"
 
-            scheme_checker = GithubFileChecker(
+            github_releases = GithubFileChecker(
                 owner=OWNER,
-                repo=self.scheme_type,
-                pattern=scheme_pattern
+                repo=REPO
             )
-            # 词库文件检查器（使用dict-nightly标签）
-            dict_checker = GithubFileChecker(
-                owner=OWNER,
-                repo=self.scheme_type,
-                pattern=dict_pattern,
-                tag=DICT_TAG
-            )
-            
-            # 获取最新文件名
-            if self.scheme_type == 'rime_wanxiang_pro':
-                scheme_file = scheme_checker.get_latest_file()
-                # 确保返回有效文件名
-                if not scheme_file or '*' in scheme_file:
-                    raise ValueError("无法获取有效的方案文件名")
-            else:
-                scheme_file = ""
-                
-            dict_file = dict_checker.get_latest_file()
+
+            self.github_release_info = github_releases.get_releases()
+
+            schema_pattern_regex = re.compile(scheme_pattern.replace('*', '.*'))
+            dict_pattern_regex = re.compile(dict_pattern.replace('*', '.*'))
+
+            scheme_file = ""
+            dict_file = ""
+
+            for release in self.github_release_info:
+                if len(self.scheme_release_info) == 0 and scheme_file == "":
+                    for asset in release.get("assets", []):
+                        if schema_pattern_regex.match(asset['name']):
+                            self.scheme_release_info = release
+                            scheme_file = asset['name']
+                            break
+                else:
+                    break
+
+            for release in self.github_release_info:
+                if release['tag_name'] == DICT_TAG:
+                    if dict_file == "" and len(self.dict_release_info) == 0:
+                        for asset in release.get("assets", []):
+                            if dict_pattern_regex.match(asset['name']):
+                                self.dict_release_info = release
+                                dict_file = asset['name']
+                                break
+                    else:
+                        break
+
+            # 确保返回有效文件名
+            if not scheme_file or '*' in scheme_file:
+                raise ValueError("无法获取有效的方案文件名")
+
             if not dict_file or '*' in dict_file:
                 raise ValueError("无法获取有效的词库文件名")
                 
             return scheme_file, dict_file
             
         except Exception as e:
-            print_warning(f"无法获取最新文件名，使用默认模式: {str(e)}")
-            if self.scheme_type == 'rime_wanxiang_pro':
-                return (
-                    f"wanxiang-{scheme_key}-fuzhu.zip",
-                    f"*-{scheme_key}_dicts.zip"
-                )
-            else:
-                return (
-                    "",
-                    f"*-{scheme_key}_dicts.zip"
-                )
+            print_error(f"无法获取最新文件名，请检查是否设置了 GitHub token: {str(e)}")
+            # 应该直接退出
+            exit(-1)
 
     def _show_config_guide(self) -> None:
         """配置引导界面"""
@@ -546,7 +556,7 @@ class ConfigManager:
                 '方案解压目录': paths['rime_user_dir'],
                 '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
             }
-
+        missing = []
         if first_download:
             missing = [] if os.path.exists(required_paths['方案解压目录']) else [required_paths['方案解压目录']]
         else:
@@ -588,34 +598,28 @@ class ConfigManager:
 
 
 class GithubFileChecker:
-    def __init__(self, owner, repo, pattern, tag=None):
+    def __init__(self, owner, repo):
         self.owner = owner
         self.repo = repo
-        self.pattern_regex = re.compile(pattern.replace('*', '.*'))
-        self.tag = tag  # 新增标签参数
+        self.releases = []
 
-    def get_latest_file(self) -> Optional[str]:
-        """获取匹配模式的最新文件"""
-        releases = self._get_releases()
-        for release in releases:
-            for asset in release.get("assets", []):
-                if self.pattern_regex.match(asset['name']):
-                    return asset['name']
-        return None  # 如果未找到，返回None
-
-    def _get_releases(self) -> List:
+    def get_releases(self) -> List:
         """根据标签获取对应的Release"""
-        if self.tag:
-            # 获取指定标签的Release
-            url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/tags/{self.tag}"
-        else:
-            # 获取所有Release（按时间排序）
-            url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases"
+        if len(self.releases):
+            return self.releases
+
+        # if self.tag:
+        #     # 获取指定标签的Release
+        #     url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/tags/{self.tag}"
+        # else:
+        # 获取所有Release（按时间排序）
+        url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases"
         
         response = requests.get(url)
         response.raise_for_status()
         # 返回结果处理：指定标签时为单个Release，否则为列表
-        return [response.json()] if self.tag else response.json()
+        self.releases = response.json()
+        return self.releases
     
 def iso_to_china_str(iso_str):
     """将ISO格式UTC时间转换为北京时间字符串"""
@@ -944,8 +948,7 @@ class SchemeUpdater(UpdateHandler):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
 
-    def check_update(self) -> Optional[Dict]:
-        releases = self.github_api_request(f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases")
+    def check_update(self, releases) -> Optional[Dict]:
         if not releases:
             return None
         for release in releases[:2]:
@@ -1082,11 +1085,11 @@ class DictUpdater(UpdateHandler):
         self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
 
-    def check_update(self) -> Dict:
+    def check_update(self, release) -> Dict:
         """检查词库更新"""
-        release = self.github_api_request(
-            f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases/tags/{self.target_tag}"
-        )
+        # release = self.github_api_request(
+        #     f"https://api.github.com/repos/{OWNER}/{self.scheme_type}/releases/tags/{self.target_tag}"
+        # )
         if not release:
             return None
         target_asset = next(
@@ -1444,12 +1447,12 @@ class ScriptUpdater(UpdateHandler):
         else:
             print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
             return False
-        
+
     def compare_version(self, local_version: str, remote_version: str) -> bool:
         if local_version == "DEFAULT_UPDATE_TOOLS_VERSION_TAG":
             return False
         return local_version != remote_version
-    
+
     def run(self):
         remote_info = self.check_update()
         if not remote_info:
@@ -1489,11 +1492,11 @@ def main():
 
         # 获取所有更新器的更新信息
         scheme_updater = SchemeUpdater(config_manager)
-        scheme_update_info = scheme_updater.check_update()
+        scheme_update_info = scheme_updater.check_update(config_manager.github_release_info)
         scheme_updater.update_info = scheme_update_info
 
         dict_updater = DictUpdater(config_manager)
-        dict_update_info = dict_updater.check_update()
+        dict_update_info = dict_updater.check_update(config_manager.dict_release_info)
         dict_updater.update_info = dict_update_info
 
         model_updater = ModelUpdater(config_manager)
