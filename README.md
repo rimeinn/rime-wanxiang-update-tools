@@ -12,6 +12,10 @@
 - [x] [iOS版本](./iOS/README.md)
 - [x] [Android版本(同文、小企鹅导入包通用构建脚本)](./Android/README.MD)
 
+### Python-全平台版本
+- [x] [Python版本](./Python-全平台版本/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
+
 ### Windows版本
 
 - **版本区别**
@@ -26,14 +30,17 @@
 - [x] [Python版本](./Python-全平台版本/README.md)
   - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
-### Python-全平台版本
-- [x] [Python版本](./Python-全平台版本/README.md)
-  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
+
 
 ### Linux版本
 
 - [x] [Shell版本](./Linux/Shell/README.md)
   - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
+
+### Mac版本
+
+- [x] [Python版本](./Python-全平台版本/README.md)
+- [x] [Shell版本](./Mac/Shell/README.md)
 
 ### iOS版本
 - [x] [Python版本](./Python-全平台版本/README.md)
