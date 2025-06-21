@@ -60,11 +60,9 @@ $SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
-    "1" = "md5sum";
 }
 
 $GramFileTableIndex = 0;
-$GramMd5TableIndex = 1;
 
 # 设置安全协议为TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -402,9 +400,8 @@ function Get-ExpectedAssetTypeInfo {
 $ExpectedSchemaTypeInfo = Get-ExpectedAssetTypeInfo -index $InputSchemaType -keyTable $KeyTable -releaseObject $SelectedSchemaRelease
 $ExpectedDictTypeInfo = Get-ExpectedAssetTypeInfo -index $InputSchemaType -keyTable $KeyTable -releaseObject $SelectedDictRelease
 $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
-$ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
-if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
+if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo) {
     if (($InputSchemaDown -eq 0) -and (-not $ExpectedSchemaTypeInfo)) {
         Write-Error "未找到符合条件的方案下载链接"
         Exit-Tip 1
@@ -415,10 +412,6 @@ if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $Expect
     }
     if (($InputGramModel -eq 0) -and (-not $ExpectedGramTypeInfo)) {
         Write-Error "未找到符合条件的模型下载链接"
-        Exit-Tip 1
-    }
-    if (($InputGramModel -eq 0) -and (-not $ExpectedGramMd5TypeInfo)) {
-        Write-Error "未找到符合条件的模型md5下载链接"
         Exit-Tip 1
     }
 }
@@ -763,17 +756,6 @@ if ($InputDictDown -eq "0") {
 function Update-GramModel {
     Write-Host "正在下载模型..." -ForegroundColor Green
     Download-Files -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
-    Write-Host "正在下载模型MD5..." -ForegroundColor Green
-    Download-Files -assetInfo $ExpectedGramMd5TypeInfo -outFilePath $tempGramMd5
-    Write-Host "正在验证模型MD5..." -ForegroundColor Green
-    $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
-    $localMd5 = (Get-FileHash $tempGram -Algorithm MD5).Hash.ToLower()
-    if ($remoteMd5 -ne $localMd5) {
-        Write-Host "模型MD5验证失败" -ForegroundColor Red
-        # Remove-Item -Path $tempGram -Force
-        Remove-Item -Path $tempGramMd5 -Force
-        Exit-Tip 1
-    }
     Write-Host "正在复制文件..." -ForegroundColor Green
 
     Stop-WeaselServer
@@ -804,11 +786,11 @@ if ($InputGramModel -eq "0") {
         $UpdateFlag = $true
     }elseif (Test-Path -Path $filePath) {
         # 计算目标文件的MD5
-        $localMd5 = (Get-FileHash $filePath -Algorithm MD5).Hash.ToLower()
+        $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
         # 计算远程文件的MD5
-        $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
+        $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
         # 比较MD5
-        if ($localMd5 -ne $remoteMd5) {
+        if ($localSHA256 -ne $remoteSHA256) {
             Write-Host "模型MD5不匹配，需要更新" -ForegroundColor Red
             Update-GramModel
             $UpdateFlag = $true
