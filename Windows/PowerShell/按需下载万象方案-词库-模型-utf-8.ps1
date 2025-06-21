@@ -64,6 +64,13 @@ $GramKeyTable = @{
 
 $GramFileTableIndex = 0;
 
+$DictFileSaveDirTable = @{
+    "base" = "zh_dicts";
+    "pro" = "zh_dicts_pro";
+}
+
+$DictFileSaveDirTableIndex = "base";
+
 # 设置安全协议为TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -371,6 +378,12 @@ if (-not $Debug) {
     $InputSchemaDown = "0"
     $InputGramModel = "0"
     $InputDictDown = "0"
+}
+
+if ($InputSchemaType -eq "0") {
+    $DictFileSaveDirTableIndex = "base"
+} else {
+    $DictFileSaveDirTableIndex = "pro"
 }
 
 # 根据用户输入的方案号获取下载链接
@@ -739,8 +752,8 @@ if ($InputDictDown -eq "0") {
         Stop-WeaselServer
         # 等待1秒
         Start-Sleep -Seconds 1
-        if (-not (Test-Path -Path $(Join-Path $targetDir "cn_dicts"))){
-            New-Item -ItemType Directory -Path $(Join-Path $targetDir "cn_dicts") | Out-Null
+        if (-not (Test-Path -Path $(Join-Path $targetDir $DictFileSaveDirTable[$DictFileSaveDirTableIndex]))){
+            New-Item -ItemType Directory -Path $(Join-Path $targetDir $DictFileSaveDirTable[$DictFileSaveDirTableIndex]) | Out-Null
         }
         Get-ChildItem -Path $sourceDir | ForEach-Object {
             if ($Debug) {
@@ -749,7 +762,7 @@ if ($InputDictDown -eq "0") {
             if (Test-SkipFile -filePath $_.Name) {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             } else {
-                Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir "cn_dicts") -Recurse -Force
+                Copy-Item -Path $_.FullName -Destination $(Join-Path $targetDir $DictFileSaveDirTable[$DictFileSaveDirTableIndex]) -Recurse -Force
             }
         }
 
