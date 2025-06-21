@@ -575,6 +575,31 @@ if (-not (Test-Path $targetDir)) {
     New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
 }
 
+function Test-FileSHA256 {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+        [Parameter(Mandatory=$true)]
+        [string]$CompareSHA256
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        Write-Host "文件不存在：$FilePath" -ForegroundColor Red
+        return $false
+    }
+
+    $hash = Get-FileHash -Path $FilePath -Algorithm SHA256
+    if ($hash.Hash.ToLower() -eq $CompareSHA256.ToLower()) {
+        Write-Host "SHA256 匹配。" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "SHA256 不匹配。" -ForegroundColor Red
+        Write-Host "文件 SHA256: $($hash.Hash)"
+        Write-Host "期望 SHA256: $CompareSHA256"
+        return $false
+    }
+}
+
 # 下载函数
 function Download-Files {
     param(
@@ -587,6 +612,12 @@ function Download-Files {
         Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
         Write-Host "下载完成" -ForegroundColor Green
+        $SHA256 = $assetInfo.digest.Split(":")[1]
+        if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
+            Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
+            Remove-Item -Path $outFilePath -Force
+            Exit-Tip 1
+        }
     }
     catch {
         Write-Host "下载失败: $_" -ForegroundColor Red
