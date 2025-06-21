@@ -24,9 +24,13 @@ MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 
-# 基础版方案和词库文件名
-BASE_SCHEME_FILE = "rime-wanxiang.zip"
-BASE_DICT_FILE = "9-zh-dicts.zip"
+# # 基础版方案和词库文件名
+# BASE_SCHEME_FILE = "rime-wanxiang-base.zip"
+# BASE_DICT_FILE = "9-base-zh-dicts.zip"
+
+# # Zh词库目录
+# ZH_DICTS = "zh_dicts"
+# ZH_DICTS_PRO = "zh_dicts_pro"
 
 SCHEME_MAP = {
     '1': 'moqi',
@@ -134,6 +138,7 @@ class ConfigManager:
         self.rime_engine = ''
         self.rime_dir = ''
         self.scheme_type = ''
+        self.zh_dicts_dir = ''
         self.reload_flag = False
         self._ensure_config_exists()
 
@@ -344,13 +349,16 @@ class ConfigManager:
             choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
             if choice == '1':
                 self.scheme_type = 'base'
+                self.zh_dicts_dir = 'zh_dicts'
+                scheme_file, dict_file = self._get_actual_filenames('base')
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
-                self.config.set('Settings', 'scheme_file', BASE_SCHEME_FILE)
-                self.config.set('Settings', 'dict_file', BASE_DICT_FILE)
-                print_success("已选择方案：万象基础版")
+                self.config.set('Settings', 'scheme_file', scheme_file)
+                self.config.set('Settings', 'dict_file', dict_file)
+                print_success(f"已选择方案：万象基础版，方案文件: {scheme_file}，词库文件: {dict_file}")
                 return True
             elif choice == '2':
                 self.scheme_type = 'pro'
+                self.zh_dicts_dir = 'zh_dicts_pro'
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象增强版")
                 return True
@@ -383,8 +391,7 @@ class ConfigManager:
                     return True
                 print_error("无效的选项，请重新输入")
         else:
-            self.config.set('Settings', 'dict_file', BASE_DICT_FILE)
-            print_success(f"基础版使用固定词库: {BASE_DICT_FILE}")
+            print_success(f"基础版使用方案文件: {self.config.get('Settings', 'scheme_file')} 和词库文件: {self.config.get('Settings', 'dict_file')}")
             return True
 
             
@@ -398,32 +405,39 @@ class ConfigManager:
         """
         try:
             if self.scheme_type == 'base':
-                return BASE_SCHEME_FILE, BASE_DICT_FILE
-                
-            elif self.scheme_type == 'pro':
+                scheme_pattern = f"*base.zip"
+                dict_pattern = f"*base*.zip"
+            else:
                 scheme_pattern = f"*{scheme_key}*fuzhu.zip"
                 dict_pattern = f"*{scheme_key}*dicts.zip"
-                
-                scheme_checker = GithubFileChecker(
-                    owner=OWNER,
-                    repo=REPO,
-                    pattern=scheme_pattern
-                )
-                dict_checker = GithubFileChecker(
-                    owner=OWNER,
-                    repo=REPO,
-                    pattern=dict_pattern,
-                    tag=DICT_TAG
-                )
-                
-                scheme_file = scheme_checker.get_latest_file()
-                dict_file = dict_checker.get_latest_file()
+            
 
-                return scheme_file, dict_file
+            scheme_checker = GithubFileChecker(
+                owner=OWNER,
+                repo=REPO,
+                pattern=scheme_pattern
+            )
+            dict_checker = GithubFileChecker(
+                owner=OWNER,
+                repo=REPO,
+                pattern=dict_pattern,
+                tag=DICT_TAG
+            )
+            
+            # 获取文件名
+            scheme_file = scheme_checker.get_latest_file()
+            dict_file = dict_checker.get_latest_file()
+            
+            # 验证文件名是否有效
+            if not scheme_file or not dict_file:
+                raise ValueError(f"未找到匹配的文件: {scheme_pattern} 或 {dict_pattern}")
+            
+            return scheme_file, dict_file
             
         except Exception as e:
-            print_error(f"无法获取最新文件名，请检查是否开启了代理,如有,请关闭后再试...")
-            exit(-1)
+            print_error(f"无法获取最新文件名: {str(e)}")
+            print_error("请检查网络连接，或关闭代理后重试...")
+            sys.exit(-1)
 
     def _show_config_guide(self) -> None:
         """配置引导界面"""
@@ -499,30 +513,36 @@ class ConfigManager:
             if pattern.strip()
         ]
 
+        self.scheme_type = config.get('scheme_type', 'pro')
+        if self.scheme_type == 'base':
+            self.zh_dicts_dir = 'zh_dicts'
+        else:
+            self.zh_dicts_dir = 'zh_dicts_pro'
+
         # 验证关键路径
         if system == 'win32':
             paths = self.detect_installation_paths(show=show)
             required_paths = {
                 '小狼毫服务程序': paths['server_exe'],
                 '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
+                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir)
             }
         elif system == 'darwin':
             paths = self.detect_installation_paths()
             required_paths = {
                 '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts'),
+                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir),
             }
         elif system == 'ios':
             required_paths = {
                 '方案解压目录': self.rime_dir,
-                '词库解压目录': os.path.join(self.rime_dir, 'cn_dicts')
+                '词库解压目录': os.path.join(self.rime_dir, self.zh_dicts_dir)
             }
         else:
             paths = self.detect_installation_paths()
             required_paths = {
                 '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], 'cn_dicts')
+                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir)
             }
 
         if first_download:
@@ -669,10 +689,11 @@ class UpdateHandler:
         """获取所有目录"""
         rime_user_dir = self.config_manager.detect_installation_paths().get('rime_user_dir', '')
         server = self.config_manager.detect_installation_paths().get('server_exe', '')
+        zh_dicts_dir = self.config_manager.zh_dicts_dir
         return (
             os.path.join(rime_user_dir, 'UpdateCache'), 
             rime_user_dir, 
-            os.path.join(rime_user_dir, 'cn_dicts'),
+            os.path.join(rime_user_dir, zh_dicts_dir),
             server
         )
         
@@ -929,8 +950,11 @@ class UpdateHandler:
                 deployer = os.path.join(os.path.dirname(self.weasel_server), "WeaselDeployer.exe")
                 result = subprocess.run(
                     [deployer, "/deploy"],
-                    capture_output=True,
-                    text=True,
+                    # capture_output=True,
+                    # text=True,
+                    # creationflags=subprocess.CREATE_NO_WINDOW
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
                 
@@ -1362,40 +1386,56 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
         scheme_update_info = scheme_updater.update_info
-        # 统一时间格式处理
         remote_time = datetime.strptime(scheme_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         scheme_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-                
-        print(f"\n{COLOR['WARNING']}[!] 方案有更新可用（版本：{scheme_update_info.get('tag', '未知版本')}）{COLOR['ENDC']}")
-        print(f"{INDENT}发布时间：{scheme_local}")
-        # 分割更新说明（取第一个段落）
+        
+        print(f"\n{COLOR['WARNING']}==== 方案更新可用 ===={COLOR['ENDC']}")
+        print(f"{COLOR['WARNING']}版本: {scheme_update_info.get('tag', '未知版本')}{COLOR['ENDC']}")
+        print(f"发布时间: {scheme_local}")
+        
+        # 简洁显示更新说明
         description = scheme_update_info.get('description', '无更新说明')
-        desc_parts = description.split('\r\n\r\n', 1)
-        if desc_parts:
-            print(f"{INDENT}更新说明：")
-            # 处理说明内容为多行
-            desc_lines = desc_parts[0].split('\n')
-            for line in desc_lines:
-                if line.strip():  # 跳过空行
-                    print(f"    {line.rstrip()}")
+        
+        # 清理Markdown标记
+        description = re.sub(r'#{1,6}\s*', '', description)  # 移除标题标记
+        description = re.sub(r'\*{2}(.*?)\*{2}', r'\1', description)  # 移除加粗
+        description = re.sub(r'-{3,}', '', description)  # 移除分隔线
+        
+        # 提取主要部分并限制行数
+        lines = description.split('\n')
+        clean_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith(('!', '####', '---', '[')):  # 跳过特殊行
+                clean_lines.append(stripped)
+                if len(clean_lines) >= 10:  # 最多显示10行
+                    clean_lines.append("... (完整说明请查看发布页面)")
+                    break
+        
+        # 打印清理后的说明
+        print(f"\n更新内容:")
+        for i, line in enumerate(clean_lines):
+            if i == 0:
+                print(f"    {line}")
+            else:
+                print(f"    {line}")
             
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
         dict_update_info = dict_updater.update_info
-        # 统一时间格式处理
         remote_time = datetime.strptime(dict_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         dict_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{COLOR['WARNING']}[!] 词库有更新可用（版本：{dict_update_info.get('tag', '未知版本')}）{COLOR['ENDC']}")
-        print(f"  发布时间：{dict_local}\n")
+        print(f"\n{COLOR['WARNING']}==== 词库更新可用 ===={COLOR['ENDC']}")
+        print(f"版本: {dict_update_info.get('tag', '未知版本')}")
+        print(f"发布时间: {dict_local}")
         
     # 模型更新提示(仅当有更新时显示)
     if has_model_update:
         model_update_info = model_updater.update_info
-        # 统一时间格式处理
         remote_time = datetime.strptime(model_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         model_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{COLOR['WARNING']}[!] 模型有更新可用{COLOR['ENDC']}")
-        print(f"  发布时间：{model_local}\n")
+        print(f"\n{COLOR['WARNING']}==== 模型更新可用 ===={COLOR['ENDC']}")
+        print(f"发布时间: {model_local}")
         
     # 如果没有更新显示提示
     if not (has_scheme_update or has_dict_update or has_model_update):
