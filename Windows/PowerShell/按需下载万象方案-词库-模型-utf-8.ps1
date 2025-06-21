@@ -28,7 +28,7 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 
 # 设置仓库所有者和名称
 $SchemaOwner = "amzxyz"
-$SchemaRepo = "rime_wanxiang_pro"
+$SchemaRepo = "rime_wanxiang"
 $GramRepo = "RIME-LMDG"
 $GramReleaseTag = "LTS"
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
@@ -46,23 +46,23 @@ $DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
 $Debug = $false;
 
 $KeyTable = @{
-    "0" = "cj";
+    "0" = "base";
     "1" = "flypy";
     "2" = "hanxin";
     "3" = "jdh";
     "4" = "moqi";
     "5" = "tiger";
     "6" = "wubi";
-    "7" = "zrm"
+    "7" = "zrm";
 }
+
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
-    "1" = "md5sum";
 }
 
 $GramFileTableIndex = 0;
-$GramMd5TableIndex = 1;
 
 # 设置安全协议为TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -328,7 +328,7 @@ Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
 
 $SchemaTag = $SelectedSchemaRelease.tag_name
 
-$promptSchemaType = "请选择你要下载的辅助码方案类型的编号: `n[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
+$promptSchemaType = "请选择你要下载的方案类型的编号: `n$SchemaDownloadTip"
 $promptAllUpdate = "是否更新所有内容（方案、词库、模型）:`n[0]-更新所有; [1]-不更新所有"
 $promptSchemaDown = "是否下载方案:`n[0]-下载; [1]-不下载"
 $promptGramModel = "是否下载模型:`n[0]-下载; [1]-不下载"
@@ -390,6 +390,7 @@ function Get-ExpectedAssetTypeInfo {
                 Write-Host "匹配成功，asset.name: $($asset.name)" -ForegroundColor Green
                 Write-Host "目标信息为：$($info)"
             }
+            break
         }
     }
 
@@ -399,22 +400,20 @@ function Get-ExpectedAssetTypeInfo {
 $ExpectedSchemaTypeInfo = Get-ExpectedAssetTypeInfo -index $InputSchemaType -keyTable $KeyTable -releaseObject $SelectedSchemaRelease
 $ExpectedDictTypeInfo = Get-ExpectedAssetTypeInfo -index $InputSchemaType -keyTable $KeyTable -releaseObject $SelectedDictRelease
 $ExpectedGramTypeInfo = Get-ExpectedAssetTypeInfo -index $GramFileTableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
-$ExpectedGramMd5TypeInfo = Get-ExpectedAssetTypeInfo -index $GramMd5TableIndex -keyTable $GramKeyTable -releaseObject $SelectedGramRelease
 
-if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo -or -not $ExpectedGramMd5TypeInfo) {
-    if (-not $ExpectedSchemaTypeInfo) {
+if (-not $ExpectedSchemaTypeInfo -or -not $ExpectedDictTypeInfo -or -not $ExpectedGramTypeInfo) {
+    if (($InputSchemaDown -eq 0) -and (-not $ExpectedSchemaTypeInfo)) {
         Write-Error "未找到符合条件的方案下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedDictTypeInfo) {
+    if (($InputDictDown -eq 0) -and (-not $ExpectedDictTypeInfo)) {
         Write-Error "未找到符合条件的词库下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedGramTypeInfo) {
+    if (($InputGramModel -eq 0) -and (-not $ExpectedGramTypeInfo)) {
         Write-Error "未找到符合条件的模型下载链接"
+        Exit-Tip 1
     }
-    if (-not $ExpectedGramMd5TypeInfo) {
-        Write-Error "未找到符合条件的模型md5下载链接"
-    }
-    Exit-Tip 1
 }
 
 # 打印
@@ -509,14 +508,14 @@ function Compare-UpdateTime {
         [datetime]$remoteTime
     )
 
-    if ($localTime -eq $null) {
+    if ($null -eq $localTime) {
         Write-Host "本地时间记录不存在，将创建新的时间记录" -ForegroundColor Yellow
         return $true
     }
 
     $localTime = [datetime]::Parse($localTime)
 
-    if ($remoteTime -eq $null) {
+    if ($null -eq $remoteTime) {
         Write-Host "远程时间记录不存在，无法比较" -ForegroundColor Red
         return $false
     }
@@ -530,7 +529,7 @@ function Compare-UpdateTime {
 }
 
 # 从JSON文件加载并解析UpdateTimeKey
-function Load-UpdateTimeKey {
+function Read-UpdateTimeKey {
     param(
         [string]$filePath
     )
@@ -557,7 +556,7 @@ function Load-UpdateTimeKey {
 }
 
 # 检查时间记录文件
-$hasTimeRecord = Load-UpdateTimeKey -filePath $TimeRecordFile
+$hasTimeRecord = Read-UpdateTimeKey -filePath $TimeRecordFile
 
 if (-not $hasTimeRecord) {
     Write-Host "时间记录文件不存在，将创建新的时间记录" -ForegroundColor Yellow
@@ -567,6 +566,31 @@ if (-not $hasTimeRecord) {
 if (-not (Test-Path $targetDir)) {
     Write-Host "创建目标目录: $targetDir" -ForegroundColor Green
     New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+}
+
+function Test-FileSHA256 {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+        [Parameter(Mandatory=$true)]
+        [string]$CompareSHA256
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        Write-Host "文件不存在：$FilePath" -ForegroundColor Red
+        return $false
+    }
+
+    $hash = Get-FileHash -Path $FilePath -Algorithm SHA256
+    if ($hash.Hash.ToLower() -eq $CompareSHA256.ToLower()) {
+        Write-Host "SHA256 匹配。" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "SHA256 不匹配。" -ForegroundColor Red
+        Write-Host "文件 SHA256: $($hash.Hash)"
+        Write-Host "期望 SHA256: $CompareSHA256"
+        return $false
+    }
 }
 
 # 下载函数
@@ -581,6 +605,12 @@ function Download-Files {
         Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
         Write-Host "下载完成" -ForegroundColor Green
+        $SHA256 = $assetInfo.digest.Split(":")[1]
+        if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
+            Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
+            Remove-Item -Path $outFilePath -Force
+            Exit-Tip 1
+        }
     }
     catch {
         Write-Host "下载失败: $_" -ForegroundColor Red
@@ -724,20 +754,8 @@ if ($InputDictDown -eq "0") {
 }
 
 function Update-GramModel {
-    $UpdateFlag = $true
     Write-Host "正在下载模型..." -ForegroundColor Green
     Download-Files -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
-    Write-Host "正在下载模型MD5..." -ForegroundColor Green
-    Download-Files -assetInfo $ExpectedGramMd5TypeInfo -outFilePath $tempGramMd5
-    Write-Host "正在验证模型MD5..." -ForegroundColor Green
-    $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
-    $localMd5 = (Get-FileHash $tempGram -Algorithm MD5).Hash.ToLower()
-    if ($remoteMd5 -ne $localMd5) {
-        Write-Host "模型MD5验证失败" -ForegroundColor Red
-        # Remove-Item -Path $tempGram -Force
-        Remove-Item -Path $tempGramMd5 -Force
-        Exit-Tip 1
-    }
     Write-Host "正在复制文件..." -ForegroundColor Green
 
     Stop-WeaselServer
@@ -765,15 +783,17 @@ if ($InputGramModel -eq "0") {
     Write-Host "远程时间: $GramRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
         Update-GramModel
+        $UpdateFlag = $true
     }elseif (Test-Path -Path $filePath) {
         # 计算目标文件的MD5
-        $localMd5 = (Get-FileHash $filePath -Algorithm MD5).Hash.ToLower()
+        $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
         # 计算远程文件的MD5
-        $remoteMd5 = (Get-Content -Raw $tempGramMd5).Split(' ')[0]
+        $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
         # 比较MD5
-        if ($localMd5 -ne $remoteMd5) {
+        if ($localSHA256 -ne $remoteSHA256) {
             Write-Host "模型MD5不匹配，需要更新" -ForegroundColor Red
             Update-GramModel
+            $UpdateFlag = $true
         }   
     } else {
         Write-Host "模型不存在，需要更新" -ForegroundColor Red
