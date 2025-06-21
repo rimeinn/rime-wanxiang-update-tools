@@ -515,14 +515,14 @@ function Compare-UpdateTime {
         [datetime]$remoteTime
     )
 
-    if ($localTime -eq $null) {
+    if ($null -eq $localTime) {
         Write-Host "本地时间记录不存在，将创建新的时间记录" -ForegroundColor Yellow
         return $true
     }
 
     $localTime = [datetime]::Parse($localTime)
 
-    if ($remoteTime -eq $null) {
+    if ($null -eq $remoteTime) {
         Write-Host "远程时间记录不存在，无法比较" -ForegroundColor Red
         return $false
     }
@@ -536,7 +536,7 @@ function Compare-UpdateTime {
 }
 
 # 从JSON文件加载并解析UpdateTimeKey
-function Load-UpdateTimeKey {
+function Read-UpdateTimeKey {
     param(
         [string]$filePath
     )
@@ -563,7 +563,7 @@ function Load-UpdateTimeKey {
 }
 
 # 检查时间记录文件
-$hasTimeRecord = Load-UpdateTimeKey -filePath $TimeRecordFile
+$hasTimeRecord = Read-UpdateTimeKey -filePath $TimeRecordFile
 
 if (-not $hasTimeRecord) {
     Write-Host "时间记录文件不存在，将创建新的时间记录" -ForegroundColor Yellow
@@ -730,7 +730,6 @@ if ($InputDictDown -eq "0") {
 }
 
 function Update-GramModel {
-    $UpdateFlag = $true
     Write-Host "正在下载模型..." -ForegroundColor Green
     Download-Files -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
     Write-Host "正在下载模型MD5..." -ForegroundColor Green
@@ -771,6 +770,7 @@ if ($InputGramModel -eq "0") {
     Write-Host "远程时间: $GramRemoteTime" -ForegroundColor Green
     if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
         Update-GramModel
+        $UpdateFlag = $true
     }elseif (Test-Path -Path $filePath) {
         # 计算目标文件的MD5
         $localMd5 = (Get-FileHash $filePath -Algorithm MD5).Hash.ToLower()
@@ -780,6 +780,7 @@ if ($InputGramModel -eq "0") {
         if ($localMd5 -ne $remoteMd5) {
             Write-Host "模型MD5不匹配，需要更新" -ForegroundColor Red
             Update-GramModel
+            $UpdateFlag = $true
         }   
     } else {
         Write-Host "模型不存在，需要更新" -ForegroundColor Red
