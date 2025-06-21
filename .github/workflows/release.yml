@@ -46,8 +46,6 @@ jobs:
           iconv -f utf-8 -t gbk Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1 > Windows/PowerShell/rime-wanxiang-update-windows.ps1
           mv Linux/Shell/wanxiang-update Linux/Shell/rime-wanxiang-update-linux
           mv Python-全平台版本/Python/万象下载更新.py Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
-          find basic/ -type f -name '*.ps1' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型-基础版/rime-wanxiang-update-windows-for-basic/")"' {} \;
-          iconv -f utf-8 -t gbk basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic-utf-8.ps1 > basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic.ps1
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -61,8 +59,5 @@ jobs:
           files: |
             Windows/PowerShell/rime-wanxiang-update-windows.ps1
             Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1
-            Windows/Python/rime-wanxiang-update-windows.py
             Linux/Shell/rime-wanxiang-update-linux
-            basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic.ps1
-            basic/Windows/PowerShell/rime-wanxiang-update-windows-for-basic-utf-8.ps1
             Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
