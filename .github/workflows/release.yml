@@ -37,6 +37,7 @@ jobs:
           # 使用井号(#)作为分隔符避免路径冲突
           find . -type f -name '*.ps1' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
           find . -type f -name '*.py' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
+          find . -type f -name '*.sh' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
           find Linux/ -type f -name 'wanxiang-update' -exec sed -i "s#DEFAULT_UPDATE_TOOLS_VERSION_TAG#$CURRENT_TAG#g" {} +
 
       - name: Rename files
@@ -45,6 +46,7 @@ jobs:
           find Windows/ -type f -name '*.py' -exec bash -c 'mv "$0" "$(dirname "$0")/$(basename "$0" | sed "s/按需下载万象方案-词库-模型/rime-wanxiang-update-windows/")"' {} \;
           iconv -f utf-8 -t gbk Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1 > Windows/PowerShell/rime-wanxiang-update-windows.ps1
           mv Linux/Shell/wanxiang-update Linux/Shell/rime-wanxiang-update-linux
+          mv Mac/Shell/wanxiang-update.sh Mac/Shell/rime-wanxiang-update-macos.sh
           mv Python-全平台版本/Python/万象下载更新.py Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
 
       - name: Create Release
@@ -60,4 +62,5 @@ jobs:
             Windows/PowerShell/rime-wanxiang-update-windows.ps1
             Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1
             Linux/Shell/rime-wanxiang-update-linux
+            Mac/Shell/rime-wanxiang-update-macos.sh
             Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
