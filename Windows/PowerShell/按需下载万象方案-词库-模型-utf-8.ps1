@@ -103,18 +103,24 @@ function Get-FileNameWithoutExtension {
     return $fileName -replace '\.[^.]+$', ''
 }
 
-function Get-ExtractedFolderPath {
+function Get-DictExtractedFolderPath {
     param(
         [string]$extractPath,
         [string]$assetName
     )
     $folders = Get-ChildItem -Path $extractPath -Directory
-    foreach ($folder in $folders) {
-        if ($folder.Name -match $assetName) {
-            return $folder.FullName
-        }
+    if ($folders.Count -eq 0) {
+        Write-Host "错误：解压后的目录中没有找到任何文件夹" -ForegroundColor Red
+        Exit-Tip 1
+    } elseif ($folders.Count -gt 1) {
+        Write-Host "警告：解压后的目录中有多个文件夹，将使用第一个文件夹" -ForegroundColor Yellow
+        Write-Host "文件夹名称: $($folders[0].Name)" -ForegroundColor Green
+        return $folders[0].FullName
+    } else {
+        Write-Host "解压后的目录中只有一个文件夹，将使用该文件夹" -ForegroundColor Green
+        Write-Host "文件夹名称: $($folders[0].Name)" -ForegroundColor Green
+        return $folders[0].FullName
     }
-    return Join-Path $extractPath $(Get-FileNameWithoutExtension -filePath $assetName)
 }
 
 function Get-WeaselUserDir {
@@ -664,7 +670,8 @@ if ($InputSchemaDown -eq "0") {
         Write-Host "正在解压方案..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempSchemaZip -destinationPath $SchemaExtractPath
         Write-Host "正在复制文件..." -ForegroundColor Green
-        $sourceDir = Get-ExtractedFolderPath -extractPath $SchemaExtractPath -assetName $KeyTable[$InputSchemaType]
+        # 方案里面没有子文件夹，直接复制到目标目录
+        $sourceDir = $SchemaExtractPath
         if (-not (Test-Path $sourceDir)) {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
             Remove-Item -Path $tempSchemaZip -Force
@@ -723,7 +730,7 @@ if ($InputDictDown -eq "0") {
         Write-Host "正在解压词库..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempDictZip -destinationPath $DictExtractPath
         Write-Host "正在复制文件..." -ForegroundColor Green
-        $sourceDir = Get-ExtractedFolderPath -extractPath $DictExtractPath -assetName $KeyTable[$InputSchemaType]
+        $sourceDir = Get-DictExtractedFolderPath -extractPath $DictExtractPath -assetName $KeyTable[$InputSchemaType]
         if (-not (Test-Path $sourceDir)) {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
             Remove-Item -Path $DictExtractPath -Force -Recurse
