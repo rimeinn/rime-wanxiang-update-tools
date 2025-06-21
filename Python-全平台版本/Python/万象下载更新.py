@@ -1457,9 +1457,9 @@ class ScriptUpdater(UpdateHandler):
             return False
         
     def compare_version(self, local_version: str, remote_version: str) -> bool:
-        if local_version == "DEFAULT_UPDATE_TOOLS_VERSION_TAG":
-            return False
-        return local_version != remote_version
+        if local_version != remote_version:
+            return True
+        return False
     
     def run(self):
         remote_info = self.check_update()
