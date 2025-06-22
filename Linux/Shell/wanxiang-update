@@ -84,7 +84,7 @@ get_github_response() {
 get_latest_version() {
   local type="$1" version
   version=$(jq -r '.[].tag_name' "$TEMP_DIR/${type}_response.json" |
-    grep -vE "rc|dict-nightly" | sort -Vr | head -n 1)
+    grep -vE "rc|beta|dict-nightly" | sort -Vr | head -n 1)
   echo "$version"
 }
 # 脚本自检
@@ -270,6 +270,7 @@ download_and_unzip() {
     if [[ "$filehash" != "$checkhash" ]]; then
       rm -r "$RAW_DIR/${filename:?}"
       curl -L --connect-timeout 5 -o "$RAW_DIR/$filename" "$fileurl"
+      checkhash=$(sha256sum "$RAW_DIR/$filename" | awk '{print $1}')
       [[ "$filehash" == "$checkhash" ]] || error_exit "文件下载出错，请重试！"
     else
       log INFO "文件已存在，跳过下载"
