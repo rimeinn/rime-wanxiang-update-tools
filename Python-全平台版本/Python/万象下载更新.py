@@ -1484,7 +1484,7 @@ class ScriptUpdater(UpdateHandler):
                     "description": update_info
                 }
             
-    def update_script(self, url: str) -> None:
+    def update_script(self, url: str) -> bool:
         """更新脚本"""
         res = self.github_api_request(url=url, output_json=False)
         if res.status_code == 200:

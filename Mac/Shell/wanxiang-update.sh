@@ -17,7 +17,7 @@ fi
 ######### 配置结束 #########
 
 # 缓存文件
-TEMP_DIR=$(mktemp -d)
+TEMP_DIR=$(mktemp -d /tmp/wanxiang-update.XXXXXX)
 readonly DEPLOY_DIR TEMP_DIR
 
 # 工具相关
@@ -104,7 +104,7 @@ get_latest_version() {
 
   # 安全提取 tag_name 字段并筛选
   version=$(jq -r '.[].tag_name' "$json_file" 2>/dev/null |
-    grep -vE "rc|dict-nightly" |
+    grep -vE "rc|beta|dict-nightly" |
     sort -Vr |
     head -n 1)
 
