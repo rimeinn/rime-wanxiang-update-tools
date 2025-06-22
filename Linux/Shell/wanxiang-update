@@ -64,7 +64,7 @@ cleanup() {
 }
 # 检查必要依赖
 check_deps() {
-  for _cmd in curl unzip jq; do
+  for _cmd in curl unzip jq sha256sum; do
     command -v "$_cmd" >/dev/null || error_exit "缺少必要依赖：$_cmd"
   done
 }
@@ -176,15 +176,15 @@ add_exclude_file() {
   log INFO "\"*.custom.yaml\" \"*.userdb\""
   log INFO "全部输入完成后，请输入 \"DONE\" 来结束 (区分大小写)"
   log WARN "请仔细阅读以上内容" && sleep 3
-  local newdata newjson
-  EXCLUDE_FILE=(
+  local newdata newjson exclude_file
+  exclude_file=(
     "update_tools_config"
     "installation.yaml"
     "user.yaml"
     ".custom.yaml"
     ".userdb"
   )
-  for _newdata in "${EXCLUDE_FILE[@]}"; do
+  for _newdata in "${exclude_file[@]}"; do
     newjson=$(jq --arg newdata "$_newdata" '.exclude_file += [$newdata]' "$CONFIG_FILE")
     echo "$newjson" >"$CONFIG_FILE"
   done
@@ -222,7 +222,7 @@ check_update() {
   # 方案文件
   local_data=$(date -d "$(jq -r '.schema.update' "$UPDATE_FILE")" +%s)
   remote_data=$(date -d "$(jq -r '.schema.update' "$newfile")" +%s)
-  if [[ ! $local_data < $remote_data ]]; then
+  if [[ ! "$local_data" < "$remote_data" ]]; then
     log INFO "方案文件 无需更新"
     schemacheck="NO"
   else
@@ -232,7 +232,7 @@ check_update() {
   # 词典文件
   local_data=$(date -d "$(jq -r '.dict.update' "$UPDATE_FILE")" +%s)
   remote_data=$(date -d "$(jq -r '.dict.update' "$newfile")" +%s)
-  if [[ ! $local_data < $remote_data ]]; then
+  if [[ ! "$local_data" < "$remote_data" ]]; then
     log INFO "词典文件 无需更新"
     dictcheck="NO"
   else
@@ -242,7 +242,7 @@ check_update() {
   # 语法模型
   local_data=$(date -d "$(jq -r '.gram.update' "$UPDATE_FILE")" +%s)
   remote_data=$(date -d "$(jq -r '.gram.update' "$newfile")" +%s)
-  if [[ ! $local_data < $remote_data ]]; then
+  if [[ ! "$local_data" < "$remote_data" ]]; then
     log INFO "语法模型 无需更新"
     gramcheck="NO"
   else
@@ -292,8 +292,11 @@ update_all_file() {
     log INFO "正在更新 方案文件"
     rm -rf "$TEMP_DIR/schema"/{简纯+.trime.yaml,custom_phrase.txt,squirrel.yaml,weasel.yaml}
     find "$TEMP_DIR/schema" -type f -exec chmod 644 {} +
-    readarray -t EXCLUDE_FILE <<<"$(jq -r '.exclude_file[]' "$CONFIG_FILE")"
-    for _file in "${EXCLUDE_FILE[@]}"; do
+    local exclude_file line
+    while IFS= read -r line; do
+      exclude_file+=("$line")
+    done < <(jq -r '.exclude_file[]' "$CONFIG_FILE")
+    for _file in "${exclude_file[@]}"; do
       cp -rf "$deploy_dir"/*"$_file" "$TEMP_DIR/schema"
     done
     rm -rf "$deploy_dir"
@@ -309,6 +312,10 @@ update_all_file() {
 # 主函数
 main() {
   trap cleanup EXIT
+  # 检查是否为root用户
+  if [[ "$EUID" -eq 0 ]]; then
+    error_exit "请不要使用 root 身份运行该工具！"
+  fi
   # 检查必要的依赖
   check_deps
   # 检查临时目录
@@ -320,7 +327,8 @@ main() {
   # 判断是否第一次使用
   [[ -d "$TOOLS_DIR" ]] || first_config
   # 获取用户设置
-  local helpcode deploy_dir
+  local input helpcode deploy_dir
+  input=$(jq -r '.input' "$CONFIG_FILE")
   helpcode=$(jq -r '.helpcode' "$CONFIG_FILE")
   deploy_dir=$(jq -r '.deploy_dir' "$CONFIG_FILE")
   # 缓存 GitHub API 响应
@@ -349,6 +357,13 @@ main() {
     update_all_file "$deploy_dir"
     mv "$newfile" "$UPDATE_FILE"
     log INFO "更新完成！"
+    log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
+    if [[ "$input" == "fcitx5" ]]; then
+      dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
+        org.fcitx.Fcitx.Controller1.ReloadAddonConfig string:rime
+    elif [[ "$input" == "ibus" ]]; then
+      ibus-daemon -drx
+    fi
   else
     log INFO "你正在使用最新版本，无需更新"
   fi
