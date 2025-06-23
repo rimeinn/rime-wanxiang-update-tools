@@ -1,7 +1,7 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 # $AutoUpdate = $true;
 $AutoUpdate = $false;
-####[0]-仓颉; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
+####[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
 ####注意必须包含双引号，例如：$InputSchemaType = "0";
 $InputSchemaType = "7";
 # $SkipFiles = @(
@@ -304,10 +304,10 @@ $SelectedSchemaRelease = $null
 $SelectedGramRelease = $null
 
 foreach ($release in $SchemaResponse) {
-    if (Test-DictSuffix -url $release.tag_name) {
+    if (($null -eq $SelectedDictRelease) -and (Test-DictSuffix -url $release.tag_name)) {
         $SelectedDictRelease = $release
     }
-    if (Test-VersionSuffix -url $release.tag_name) {
+    if ((Test-VersionSuffix -url $release.tag_name) -and (-not $SelectedSchemaRelease)) {
         $SelectedSchemaRelease = $release
     }
     if ($SelectedDictRelease -and $SelectedSchemaRelease) {
