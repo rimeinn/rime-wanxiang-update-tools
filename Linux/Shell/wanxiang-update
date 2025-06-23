@@ -354,6 +354,11 @@ main() {
   # 检查更新
   check_update "$helpcode" "$newfile" "$deploy_dir"
   if [[ -f "$TEMP_DIR/needed_update" ]]; then
+    log INFO "以下内容为更新日志"
+    local changelog
+    changelog=$(jq --arg version "$remote_data" '.[] |
+      select(.tag_name == $version ) | .body' "$TEMP_DIR/schema_response.json")
+    echo -e "$changelog" | awk '/📝 更新日志/,/---/'
     log INFO "开始更新文件"
     update_all_file "$deploy_dir"
     mv "$newfile" "$UPDATE_FILE"
