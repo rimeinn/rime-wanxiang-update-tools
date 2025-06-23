@@ -28,9 +28,9 @@ MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 # BASE_SCHEME_FILE = "rime-wanxiang-base.zip"
 # BASE_DICT_FILE = "9-base-zh-dicts.zip"
 
-# # Zh词库目录
-# ZH_DICTS = "zh_dicts"
-# ZH_DICTS_PRO = "zh_dicts_pro"
+# Zh词库目录
+ZH_DICTS = "zh_dicts"
+ZH_DICTS_PRO = "zh_dicts_pro"
 
 SCHEME_MAP = {
     '1': 'moqi',
@@ -140,6 +140,7 @@ class ConfigManager:
         self.scheme_type = ''
         self.zh_dicts_dir = ''
         self.reload_flag = False
+        self.auto_update = False
         self._ensure_config_exists()
 
     def detect_installation_paths(self, show=False):
@@ -283,7 +284,11 @@ class ConfigManager:
 
     def _confirm_config(self) -> None:
         """确认配置是否符合预期"""
-        # 让用户确认配置是否符合预期
+        # 如果启用了自动更新，跳过确认步骤
+        if self.config.getboolean('Settings', 'auto_update', fallback=False):
+            self.auto_update = True
+            print_warning("已启用自动更新，跳过配置确认")
+            return
         while True:
             choice = input(f"{INDENT}配置是否正确？【Y(es)/N(o)/M(odify)】: ").strip().lower()
             if choice == 'y':
@@ -330,7 +335,9 @@ class ConfigManager:
             'dict_file': '',
             'use_mirror': 'true',
             'github_token': '',
-            'exclude_files': ''
+            'exclude_files': '',
+            'auto_update': 'false',
+
         }
         
     def _write_config(self) -> None:
@@ -349,8 +356,8 @@ class ConfigManager:
             choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
             if choice == '1':
                 self.scheme_type = 'base'
-                self.zh_dicts_dir = 'zh_dicts'
-                scheme_file, dict_file = self._get_actual_filenames('base')
+                self.zh_dicts_dir = ZH_DICTS
+                scheme_file, dict_file = self.get_actual_filenames('base')
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 self.config.set('Settings', 'scheme_file', scheme_file)
                 self.config.set('Settings', 'dict_file', dict_file)
@@ -358,7 +365,7 @@ class ConfigManager:
                 return True
             elif choice == '2':
                 self.scheme_type = 'pro'
-                self.zh_dicts_dir = 'zh_dicts_pro'
+                self.zh_dicts_dir = ZH_DICTS_PRO
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象增强版")
                 return True
@@ -370,7 +377,6 @@ class ConfigManager:
         if self.scheme_type == 'pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
-            # 更新方案描述，移除仓颉选项
             print("[1]-墨奇 [2]-小鹤 [3]-自然码 [4]-简单鹤")
             print("[5]-虎码 [6]-五笔 [7]-汉心")
         
@@ -380,7 +386,7 @@ class ConfigManager:
                     scheme_key = SCHEME_MAP[choice]
                     
                     # 立即获取实际文件名
-                    scheme_file, dict_file = self._get_actual_filenames(scheme_key)
+                    scheme_file, dict_file = self.get_actual_filenames(scheme_key)
                     
                     self.config.set('Settings', 'scheme_file', scheme_file)
                     self.config.set('Settings', 'dict_file', dict_file)
@@ -395,7 +401,7 @@ class ConfigManager:
             return True
 
             
-    def _get_actual_filenames(self, scheme_key) -> Tuple[str, str]:
+    def get_actual_filenames(self, scheme_key) -> Tuple[str, str]:
         """
         获取实际文件名（带网络请求）
         Args:
@@ -478,7 +484,8 @@ class ConfigManager:
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
-            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt)", 'exclude_files')
+            ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
+            ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
         ]
         
         for item in path_display:
@@ -515,9 +522,9 @@ class ConfigManager:
 
         self.scheme_type = config.get('scheme_type', 'pro')
         if self.scheme_type == 'base':
-            self.zh_dicts_dir = 'zh_dicts'
+            self.zh_dicts_dir = ZH_DICTS
         else:
-            self.zh_dicts_dir = 'zh_dicts_pro'
+            self.zh_dicts_dir = ZH_DICTS_PRO
 
         # 验证关键路径
         if system == 'win32':
@@ -576,7 +583,7 @@ class ConfigManager:
             config['dict_file'],
             self.config.getboolean('Settings', 'use_mirror'),
             github_token,
-            exclude_files
+            exclude_files,
         )
     
     def ensure_directories(self, dirs: List) -> None:
@@ -614,18 +621,6 @@ class GithubFileChecker:
         response.raise_for_status()
         # 返回结果处理：指定标签时为单个Release，否则为列表
         return [response.json()] if self.tag else response.json()
-    
-def iso_to_china_str(iso_str):
-    """将ISO格式UTC时间转换为北京时间字符串"""
-    try:
-        utc_time = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ")
-        utc_time = utc_time.replace(tzinfo=timezone.utc)
-        china_tz = timezone(timedelta(hours=8))
-        return utc_time.astimezone(china_tz).strftime("%Y-%m-%d %H:%M:%S")
-    except:
-        return "未知时间"
-
-
 
 # ====================== 更新基类 ======================
 class UpdateHandler:
@@ -655,19 +650,6 @@ class UpdateHandler:
         ) = self.get_all_dir()
         os.makedirs(self.custom_dir, exist_ok=True)
         self.update_info = None
-
-    def format_update_info(self):
-        """
-        提取和格式化远程更新时间及标签(版本)
-        Returns:
-            Tuple: (更新时间str, 版本tag)
-        """
-        if not self.update_info:
-            return "未知时间", "未知版本"
-        return (
-            iso_to_china_str(self.update_info.get("update_time", "")),
-            self.update_info.get("tag", "未知版本")
-        )
 
     def has_update(self) -> bool:
         """检查是否有更新可用"""
@@ -713,7 +695,7 @@ class UpdateHandler:
         # if "api.github.com" in url:
         #     print(f"{COLOR['BLUE']}请求 api.github.com: {url}{COLOR['ENDC']}")
         
-        max_retries = 2  # 最大重试次数
+        max_retries = 2
         for attempt in range(max_retries + 1):
             try:
                 response = requests.get(url, headers=headers)
@@ -794,18 +776,13 @@ class UpdateHandler:
             is_dict (bool): 是否为词库文件(决定解压方式)
         """
         def get_common_base_dir(members):
-            """获取所有文件成员的共同基础目录"""
             if not members:
                 return ""
             try:
-                common_path = os.path.pathsep.join(members)
-                # 使用正确的方法计算共同基础目录
-                prefix = os.path.dirname(common_path)
-                for sep in ("/", "\\"):
-                    if sep in prefix:
-                        prefix = prefix.split(sep)[0] + sep
-                        break
-                return prefix
+                common_prefix = os.path.commonprefix(members)
+                if common_prefix:
+                    return os.path.dirname(common_prefix) + '/'
+                return ""
             except:
                 return ""
 
@@ -814,11 +791,10 @@ class UpdateHandler:
                 exclude_patterns = self.exclude_files  # 获取排除模式
                 if is_dict:
                     members = [m for m in zip_ref.namelist() if not m.endswith('/')]
-                    common_prefix = os.path.commonpath(members) if members else ''
+                    base_dir = get_common_base_dir(members) 
                     for member in members:
-                        # 计算相对于共同前缀的相对路径
-                        if common_prefix:
-                            relative_path = os.path.relpath(member, common_prefix)
+                        if base_dir and member.startswith(base_dir):
+                            relative_path = member[len(base_dir):]
                         else:
                             relative_path = member
                         # 标准化路径格式
@@ -961,7 +937,7 @@ class UpdateHandler:
                 if result.returncode != 0:
                     raise Exception(f"部署失败: {result.stderr.strip()}")
                     
-                print_success("部署成功完成")
+                # print_success("部署成功完成")
                 return True
             except Exception as e:
                 print_error(f"部署失败: {str(e)}")
@@ -979,23 +955,71 @@ class CombinedUpdater:
         self.model_updater = ModelUpdater(config_manager)
         # 存储共享的releases数据
         self.shared_releases = None
-    def fetch_all_updates(self):
+        # 文件名重试计数器
+        self.filename_retry_count: int = 0
+    def fetch_all_updates(self) -> None:
         """获取所有更新信息"""
-        # 获取方案和词库的releases数据
         self.shared_releases = self.scheme_updater.github_api_request(
             f"https://api.github.com/repos/{OWNER}/{REPO}/releases"
         )
         # 使用共享的releases数据检查方案和词库更新
         self.scheme_updater.update_info = self._extract_scheme_update()
         self.dict_updater.update_info = self._extract_dict_update()
+        # 如果方案或词库找不到更新，自动更新文件名
+        if not self.scheme_updater.update_info or not self.dict_updater.update_info:
+            self.refresh_filenames()
         # 模型更新独立检查
         self.model_updater.update_info = self.model_updater.check_update()
+
+    def refresh_filenames(self) -> None:
+        """自动更新文件名并刷新配置"""
+        if self.filename_retry_count >= 2:  # 最多重试2次
+            print_warning("文件名自动更新已达最大重试次数")
+            return
+        print_subheader("检测到文件名变更，自动更新配置...")
+        self.filename_retry_count += 1
+        # 获取当前方案类型和key
+        scheme_type = self.config_manager.scheme_type
+        scheme_key = self.extract_scheme_key()
+        # 获取新的实际文件名
+        try:
+            new_scheme_file, new_dict_file = self.config_manager.get_actual_filenames(scheme_key)
+            
+            # 更新配置
+            self.config_manager.config.set('Settings', 'scheme_file', new_scheme_file)
+            self.config_manager.config.set('Settings', 'dict_file', new_dict_file)
+            self.config_manager._write_config()
+            print_success(f"方案文件更新为: {new_scheme_file}")
+            print_success(f"词库文件更新为: {new_dict_file}")
+            # 刷新更新器实例
+            self.scheme_updater = SchemeUpdater(self.config_manager)
+            self.dict_updater = DictUpdater(self.config_manager)
+            # 重新获取更新信息
+            self.scheme_updater.update_info = self._extract_scheme_update()
+            self.dict_updater.update_info = self._extract_dict_update()
+        except Exception as e:
+            print_error(f"文件名自动更新失败: {str(e)}")
+
+    def extract_scheme_key(self) -> str:
+        """从当前方案文件名中提取方案key"""
+        try:
+            current_file = self.config_manager.config.get('Settings', 'scheme_file')
+        except configparser.NoOptionError:
+            current_file = ""
+        if self.config_manager.scheme_type == 'base':
+            return 'base'
+        # 增强版从文件名提取key
+        for key in SCHEME_MAP.values():
+            if key in current_file:
+                return key
+        return list(SCHEME_MAP.values())[0]
+
     def _extract_scheme_update(self) -> Optional[Dict]:
         """从仓库数据中提取方案更新"""
         if not self.shared_releases:
             return None
             
-        for release in self.shared_releases[:2]:
+        for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.scheme_updater.scheme_file:
                     update_description = release.get("body", "无更新说明")
@@ -1012,7 +1036,7 @@ class CombinedUpdater:
         if not self.shared_releases:
             return None
             
-        for release in self.shared_releases[:2]:
+        for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
                     return {
@@ -1054,17 +1078,14 @@ class SchemeUpdater(UpdateHandler):
             print_success("当前已是最新方案")
             return 0  # 没有更新
 
-
         # 下载更新
         temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
         if not self.download_file(remote_info["url"], temp_file):
             return -1
 
         # 校验文件
-        if self.scheme_file:
-            target_file = os.path.join(self.custom_dir, self.scheme_file)
-        else:
-            target_file = os.path.join(self.custom_dir, "rime_wanxiang.zip")
+        target_file = os.path.join(self.custom_dir, self.scheme_file)
+
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
             os.remove(temp_file)
@@ -1072,9 +1093,9 @@ class SchemeUpdater(UpdateHandler):
 
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
-        self.clean_build()
+        # self.clean_build()
         print_success("方案更新完成")
-        return 1  # 成功更新
+        return 1
 
     def get_local_time(self) -> Optional[datetime]:
         if not os.path.exists(self.record_file):
@@ -1115,8 +1136,9 @@ class SchemeUpdater(UpdateHandler):
         # 保存记录
         with open(self.record_file, 'w') as f:
             json.dump({
+                "scheme_file": self.scheme_file,
+                "update_time": info["update_time"],
                 "tag": info["tag"],
-                "update_time": info["update_time"],  # 使用asset的更新时间
                 "apply_time": datetime.now(timezone.utc).isoformat()
             }, f)
 
@@ -1263,8 +1285,6 @@ class ModelUpdater(UpdateHandler):
                 }
         return None
 
-
-
     def run(self) -> int:
         """
         执行模型更新主流程
@@ -1349,7 +1369,7 @@ class ModelUpdater(UpdateHandler):
         """保存更新记录"""
         record = {
             "model_name": self.model_file,
-            "update_time": update_time,  # 使用传入的更新时间
+            "update_time": update_time,
             "apply_time": datetime.now(timezone.utc).isoformat()
         }
         with open(self.record_file, "w") as f:
@@ -1463,6 +1483,128 @@ end tell
             print_error("发送部署命令失败，请手动部署或检查权限设置")
             return False
 
+def perform_auto_update(
+    config_manager: ConfigManager, 
+    combined_updater: Optional[CombinedUpdater] = None,
+    is_config_triggered: bool = False
+) -> Optional[List[int]]:
+    """执行自动更新流程"""
+    if not is_config_triggered:
+        print_header("智能更新检测中...")
+    
+    # 创建或使用已有的组合更新器
+    if combined_updater is None:
+        # 只有在配置触发模式下才显示更新检查信息
+        if is_config_triggered:
+            print_subheader("正在检查可用更新...")
+            print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
+        
+        combined_updater = CombinedUpdater(config_manager)
+        combined_updater.fetch_all_updates()
+    # 获取各个更新器的实例
+    scheme_updater = combined_updater.scheme_updater
+    dict_updater = combined_updater.dict_updater
+    model_updater = combined_updater.model_updater
+    # 在配置触发模式下显示更新状态
+    if is_config_triggered:
+        print_update_status(scheme_updater, dict_updater, model_updater)
+    # 初始化更新状态
+    scheme_updated = 0
+    dict_updated = 0
+    model_updated = 0
+    if scheme_updater.has_update():
+        scheme_updated = scheme_updater.run()
+    if dict_updater.has_update():
+        dict_updated = dict_updater.run()
+    if model_updater.has_update():
+        model_updated = model_updater.run()
+    updated = [scheme_updated, dict_updated, model_updated]
+    # 部署逻辑
+    deployer = scheme_updater
+    if sys.platform == 'win32':
+        if -1 in updated and deployer:
+            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+        elif updated == [0,0,0]  and deployer:
+            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+        else:
+            print_header("重新部署输入法")
+            if deployer.deploy_weasel():
+                print_success("部署成功")
+            else:
+                print_warning("部署失败，请检查日志")
+    elif sys.platform == 'darwin':
+        if -1 in updated and deployer:
+            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+        elif updated == [0,0,0]  and deployer:
+            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+        else:
+            print_header("重新部署输入法")
+            deploy_for_mac()
+    elif sys.platform == 'ios':
+        import webbrowser
+        if -1 in updated and deployer:
+            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+        elif updated == [0,0,0]  and deployer:
+            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+        else:
+            print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
+            if is_config_triggered:
+                # 配置触发的自动更新模式直接部署
+                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                print_success("已自动触发部署")
+            else:
+                is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
+                if is_deploy == 'y':
+                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+    # 脚本更新检查（仅当有实际更新时才提示）
+    script_updater = ScriptUpdater(config_manager)
+    script_remote_info = script_updater.check_update()
+    if script_remote_info:
+        script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
+        if script_update_flag:
+            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
+            script_updater.run()
+    # 如果是配置触发的自动更新，直接退出
+    if is_config_triggered:
+        print("\n✨ 自动更新完成！")
+        time.sleep(2)
+        sys.exit(0)
+    return updated
+
+def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
+    """创建并显示更新信息"""
+    if show:
+        print_subheader("正在检查可用更新...")
+        print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
+    
+    # 创建组合更新器并获取所有更新信息
+    combined_updater = CombinedUpdater(config_manager)
+    combined_updater.fetch_all_updates()
+    
+    # 获取各个更新器的实例
+    scheme_updater = combined_updater.scheme_updater
+    dict_updater = combined_updater.dict_updater
+    model_updater = combined_updater.model_updater
+    
+    # 使用函数打印更新状态
+    if show:
+        print_update_status(scheme_updater, dict_updater, model_updater)
+    return combined_updater
+
+def open_config_file(config_path) -> None:
+    """用默认编辑器打开配置文件"""
+    if os.name == 'nt':  # Windows
+        subprocess.run(['notepad.exe', config_path], shell=True)
+    else:  # macOS/Linux
+        try:
+            # 尝试使用默认编辑器打开
+            if sys.platform == 'darwin':
+                subprocess.run(['open', config_path])
+            else:
+                subprocess.run(['xdg-open', config_path])
+        except:
+            print_warning("无法打开配置文件，请手动编辑。")
+
 class ScriptUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
@@ -1519,49 +1661,36 @@ class ScriptUpdater(UpdateHandler):
         else:
             print(f"\n{COLOR['WARNING']}[!] 你当前使用的脚本无版本号或已是最新版本。{COLOR['ENDC']}")
         
-        
+
+
+
 
 # ====================== 主程序 ======================
 def main():
-    # 打印更新工具版本
-    if (UPDATE_TOOLS_VERSION.startswith("DEFAULT")):
+    if UPDATE_TOOLS_VERSION.startswith("DEFAULT"):
         print(f"\n{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
     else:
         print(f"\n{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
 
     try:
         config_manager = ConfigManager()
+        combined_updater = None  # 初始化组合更新器
         
-        print_subheader("正在检查可用更新...")
-        print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
-        # 创建组合更新器并获取所有更新信息
-        combined_updater = CombinedUpdater(config_manager)
-        combined_updater.fetch_all_updates()
-        
-        # 获取各个更新器的实例
-        scheme_updater = combined_updater.scheme_updater
-        dict_updater = combined_updater.dict_updater
-        model_updater = combined_updater.model_updater
-        # 检查哪些组件有更新
-        has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
-        has_dict_update = dict_updater.update_info and dict_updater.has_update()
-        has_model_update = model_updater.update_info and model_updater.has_update()
-        # 第一次自动更新检测后调用
-        print_update_status(scheme_updater, dict_updater, model_updater)
-
-
-
-        # ========== 版本更新检测（仅在程序启动时执行一次）==========
-        script_updater = ScriptUpdater(config_manager)
-        script_remote_info = script_updater.check_update()
-        if script_remote_info:
-            script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
-
-            if script_update_flag:  # 如果存在更新，显示提示
-                print(f"\n{COLOR['WARNING']}[!] 当前更新工具版本：{UPDATE_TOOLS_VERSION}，最新版本：{script_remote_info.get('tag', 'DEFAULT')}{COLOR['ENDC']}")
-        else:
-            script_update_flag = False
-
+        # 检查是否启用了自动更新
+        auto_update = config_manager.config.getboolean('Settings', 'auto_update', fallback=False)
+        if auto_update:
+            print_header("自动更新模式已启用")
+            combined_updater = create_and_show_updates(config_manager, show=False)
+            # 执行自动更新并退出
+            perform_auto_update(
+                config_manager, 
+                combined_updater=combined_updater, 
+                is_config_triggered=True
+            )
+        # 非自动更新模式下显示更新状态
+        if not auto_update:
+            # 创建并显示更新信息
+            combined_updater = create_and_show_updates(config_manager)
         # 主菜单循环
         while True:
             # 选择更新类型
@@ -1570,163 +1699,83 @@ def main():
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
             
             if choice == '6':
+                # 修改配置
                 config_manager.display_config_instructions()
                 print("保存后关闭配置文件以继续...")
-                # 用记事本打开配置文件
-                if os.name == 'nt':
-                    subprocess.run(['notepad.exe', config_manager.config_path], shell=True)
-                else:
-                    try:
-                        subprocess.run(['open', config_manager.config_path])
-                    except:
-                        print_warning("无法打开配置文件，请手动编辑。")
-                
+                open_config_file(config_manager.config_path)
                 # 返回主菜单或退出
                 user_choice = input("\n按回车键返回主菜单，或输入其他键退出: ").strip().lower()
                 if user_choice == '':
                     # 重新加载配置
                     config_manager = ConfigManager()
-                    
-                    # 重新检查更新
-                    print_subheader("正在重新检查可用更新...")
-                    print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
-                    
-                    # 使用组合更新器重新获取更新信息
-                    combined_updater = CombinedUpdater(config_manager)
-                    combined_updater.fetch_all_updates()
-                    
-                    # 获取各个更新器的实例
-                    scheme_updater = combined_updater.scheme_updater
-                    dict_updater = combined_updater.dict_updater
-                    model_updater = combined_updater.model_updater
-                    
-                    # 使用函数打印更新状态
-                    print_update_status(scheme_updater, dict_updater, model_updater)
-                    
-                    continue  # 继续主循环
+                    # 重置更新器
+                    combined_updater = None
+                    # 重新创建并显示更新信息
+                    combined_updater = create_and_show_updates(config_manager)
                 else:
                     break
             elif choice == '7':
                 break
+            elif choice == '5':
+                # 脚本更新
+                script_updater = ScriptUpdater(config_manager)
+                script_updater.run()
+                continue
+            elif choice == '4':  # 自动更新选项
+                # 确保有更新器实例
+                if not combined_updater:
+                    combined_updater = create_and_show_updates(config_manager)
+                # 执行自动更新
+                updated = perform_auto_update(
+                    config_manager, 
+                    combined_updater=combined_updater, 
+                    is_config_triggered=False
+                )
+                # 处理更新结果
+                if -1 in updated:
+                    print_warning("部分内容下载更新失败，请重试")
+                else:
+                    print_success("自动更新完成")
+                    print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
+                time.sleep(4)
+                sys.exit(0)
+            
             else:
-                # 执行更新操作
+                # 执行其他更新操作,确保有更新器实例
+                if not combined_updater:
+                    combined_updater = create_and_show_updates(config_manager)
+                # 获取各个更新器的实例
+                scheme_updater = combined_updater.scheme_updater
+                dict_updater = combined_updater.dict_updater
+                model_updater = combined_updater.model_updater
+                # 初始化更新状态
                 deployer = None
                 updated = -200
                 if choice == '1':
-                    updated = dict_updater.run()  # 使用已填充更新信息的更新器
+                    updated = dict_updater.run()
                     deployer = dict_updater
                 elif choice == '2':
-                    updated = scheme_updater.run()  # 使用已填充更新信息的更新器
+                    updated = scheme_updater.run()
                     deployer = scheme_updater
                 elif choice == '3':
-                    updated = model_updater.run()  # 使用已填充更新信息的更新器
+                    updated = model_updater.run()
                     deployer = model_updater
-                elif choice == '4':
-                    # 全部更新 - 复用已经存在的实例
-                    print_header("智能更新检测中...")
-                    
-                    # 使用已有的实例（在自动检测中已经初始化并缓存了更新信息）
-                    deployer = scheme_updater
-                    
-                    # 初始化更新状态
-                    scheme_updated = 0
-                    dict_updated = 0
-                    model_updated = 0
-                    
-                    # 方案更新
-                    if scheme_updater.has_update():
-                        scheme_updated = scheme_updater.run()
-                    
-                    # 词库更新
-                    if dict_updater.has_update():
-                        dict_updated = dict_updater.run()
-                    
-                    # 模型更新
-                    if model_updater.has_update():
-                        model_updated = model_updater.run()
-                    
-                    updated = [scheme_updated, dict_updated, model_updated]
-                    
-                    # win平台统一部署检查
-                    if sys.platform == 'win32':
-                        if -1 in updated and deployer:
-                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-                        elif updated == [0,0,0]  and deployer:
-                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-                        else:
-                            print_header("重新部署输入法")
-                            if deployer.deploy_weasel():
-                                print_success("部署成功")
-                            else:
-                                print_warning("部署失败，请检查日志")
-                    elif sys.platform == 'darwin':
-                        if -1 in updated and deployer:
-                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-                        elif updated == [0,0,0]  and deployer:
-                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-                        else:
-                            print_header("重新部署输入法")
-                            deploy_for_mac()
-
-                    elif sys.platform == 'ios':
-                        import webbrowser
-                        if -1 in updated and deployer:
-                            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-                        elif updated == [0,0,0]  and deployer:
-                            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-                        else:
-                            print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
-                            is_deploy = input("是否跳转到Hamster进行部署(y/n)?").strip().lower()
-                            if is_deploy == 'y':
-                                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
-                            else:
-                                pass
+                # 部署逻辑
+                if sys.platform == 'win32' and deployer and updated == 1:
+                    print_header("重新部署输入法")
+                    if deployer.deploy_weasel():
+                        print_success("部署成功")
                     else:
-                        pass
-
-                    if -1 in updated:
-                        print_warning("部分内容下载更新失败，请重试")
-                        continue
-                    else:
-                        if script_update_flag:
-                            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
-                            script_updater.run()
-                        else:
-                            print("\n" + COLOR['OKGREEN'] + "[√] 全部更新完成，4秒后自动退出..." + COLOR['ENDC'])
-                            time.sleep(4)
-                            sys.exit(0)
-                        
-                elif choice == '5':
-                    # 脚本更新
-                    script_updater.run()
-                    continue 
-
-                if sys.platform == 'win32':
-                    # win平台统一部署检查（安全判断）
-                    if updated == 1 and deployer:
-                        print_header("重新部署输入法")
-                        if deployer.deploy_weasel():
-                            print_success("部署成功")
-                        else:
-                            print_warning("部署失败，请检查日志")
-                    else:
-                        print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 未进行更新，跳过部署步骤")
-                elif sys.platform == 'darwin':
-                    if updated == 1 and deployer:
-                        print_header("重新部署输入法")
-                        deploy_for_mac()
-                elif sys.platform == 'ios':
+                        print_warning("部署失败，请检查日志")
+                elif sys.platform == 'darwin' and deployer and updated == 1:
+                    print_header("重新部署输入法")
+                    deploy_for_mac()
+                elif sys.platform == 'ios' and deployer and updated == 1:
                     import webbrowser
-                    if updated == 1 and deployer:
-                        print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
-                        is_deploy = input("是否进行部署(y/n)? ").strip().lower()
-                        if is_deploy == 'y':
-                            webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
-                        else:
-                            pass
-                else:
-                    pass
-
+                    print_header("尝试跳转到Hamster重新部署输入法")
+                    is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
+                    if is_deploy == 'y':
+                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
                 if user_input.strip().lower() == '':
@@ -1739,10 +1788,10 @@ def main():
         sys.exit(0)
     except KeyboardInterrupt:
         print(f"\n{COLOR['FAIL']}🚫 终止操作 {COLOR['ENDC']}")
-        
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
