@@ -265,9 +265,18 @@ class ConfigManager:
             self._show_config_guide()       # 配置引导
         else:
             print_warning("配置文件已存在，将加载配置。")
+            self._load_and_fix_config()
             self._try_load_config()
             self._print_config_info()  # 打印配置信息
             self._confirm_config()  # 确认配置是否符合预期
+
+    def _load_and_fix_config(self) -> None:
+        """加载配置文件并修复缺失的auto_update设置"""
+        self.config.read(self.config_path, encoding='utf-8')
+        # 添加缺失的auto_update选项
+        if not self.config.has_option('Settings', 'auto_update'):
+            self.config.set('Settings', 'auto_update', 'false')
+            self._write_config()
 
     def _print_config_info(self) -> None:
         """打印配置信息"""
