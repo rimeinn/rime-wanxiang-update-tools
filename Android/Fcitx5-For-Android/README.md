@@ -15,7 +15,7 @@ python 小企鹅导入包构建脚本.py
   添加模型: python package_rime.py -s <源目录> -m <模型目录> -o <输出ZIP路径>
 示例:
   python package_rime.py -s ./rime-data -o ./dist/rime-package.zip
-  python package_rime.py -s ./rime-data -m ./models -m ./dist/rime-with-models.zip
+  python package_rime.py -s ./rime-data -m ./models -o ./dist/rime-with-models.zip
 
 ```
 ## Fcitx5 for Android导入步骤
