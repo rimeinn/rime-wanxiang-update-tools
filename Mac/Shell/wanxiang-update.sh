@@ -8,6 +8,54 @@ set -euo pipefail
 # 例如 "squirrel"
 ENGINE=""
 
+
+# 日志彩色输出
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+NC="\033[0m"
+readonly RED GREEN YELLOW NC
+
+# 日志函数
+log() {
+  local level="$1" color="$NC"
+  case "$level" in
+  INFO) color="$GREEN" ;;
+  WARN) color="$YELLOW" ;;
+  ERROR) color="$RED" ;;
+  esac
+  shift
+  printf "${color}[%s] %s${NC}\n" "$level" "$*"
+}
+
+
+# 输入法引擎检测
+if [ -z "$ENGINE" ]; then
+  log ERROR "当前未配置输入法引擎"
+  log WARN "如果使用Fcitx5（小企鹅）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
+  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"fcitx5\"/g' $script_name"
+  log WARN  "如果使用Squirrel（鼠须管）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
+  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"squirrel\"/g' $script_name"
+  exit
+elif [ "$ENGINE" == "fcitx5" ]; then
+  log INFO "当前使用Fcitx5（小企鹅）输入法"
+  read -rp "是否需要更改？(Y/N) " if_modify
+  if [ "$if_modify" == "Y" ]; then
+  log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
+  echo "sed -i '' 's/ENGINE=\"fcitx5\"/ENGINE=\"squirrel\"/g' $script_name"
+  exit
+  fi
+elif [ "$ENGINE" == "squirrel" ]; then
+  log INFO "当前使用squirrel（鼠须管）输入法"
+  read -rp "是否需要更改？(Y/N) " if_modify
+  if [ "$if_modify" == "Y" ]; then
+  log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
+  echo "sed -i '' 's/ENGINE=\"squirrel\"/ENGINE=\"fcitx5\"/g' $script_name"
+  exit
+  fi
+fi
+
+
 # 获取输入法配置路径
 if [ "$ENGINE" = "fcitx5" ]; then
   DEPLOY_DIR="$HOME/.local/share/fcitx5/rime"
@@ -36,24 +84,7 @@ GH_API="https://api.github.com/repos"
 GH_DL="https://github.com"
 readonly SCHEMA_REPO GRAM_REPO GH_API GH_DL
 
-# 日志彩色输出
-RED="\033[0;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-NC="\033[0m"
-readonly RED GREEN YELLOW NC
 
-# 日志函数
-log() {
-  local level="$1" color="$NC"
-  case "$level" in
-  INFO) color="$GREEN" ;;
-  WARN) color="$YELLOW" ;;
-  ERROR) color="$RED" ;;
-  esac
-  shift
-  printf "${color}[%s] %s${NC}\n" "$level" "$*"
-}
 # 错误处理函数
 error_exit() {
   log ERROR "$*"
