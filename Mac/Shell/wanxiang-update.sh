@@ -292,6 +292,7 @@ download_and_unzip() {
     if [[ "$filehash" != "$checkhash" ]]; then
       rm -r "$RAW_DIR/${filename:?}"
       curl -L --connect-timeout 5 -o "$RAW_DIR/$filename" "$fileurl"
+      checkhash=$(sha256sum "$RAW_DIR/$filename" | awk '{print $1}')
       [[ "$filehash" == "$checkhash" ]] || error_exit "文件下载出错，请重试！"
     else
       log INFO "文件已存在，跳过下载"
