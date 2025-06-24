@@ -265,17 +265,24 @@ class ConfigManager:
             self._show_config_guide()       # 配置引导
         else:
             print_warning("配置文件已存在，将加载配置。")
-            self._load_and_fix_config()
+            new_config_items = {
+                'auto_update': 'false',
+            }
+            self._add_new_config_items(new_config_items)
             self._try_load_config()
             self._print_config_info()  # 打印配置信息
             self._confirm_config()  # 确认配置是否符合预期
 
-    def _load_and_fix_config(self) -> None:
-        """加载配置文件并修复缺失的auto_update设置"""
+    def _add_new_config_items(self, new_config_items: Dict[str, str]) -> None:
+        """添加或更新配置项"""
+        changed = False
         self.config.read(self.config_path, encoding='utf-8')
-        # 添加缺失的auto_update选项
-        if not self.config.has_option('Settings', 'auto_update'):
-            self.config.set('Settings', 'auto_update', 'false')
+        for key, value in new_config_items.items():
+            if not self.config.has_option('Settings', key):
+                print_warning(f"添加缺失的配置项: {key} = {value}")
+                self.config.set('Settings', key, value)
+                changed = True
+        if changed:
             self._write_config()
 
     def _print_config_info(self) -> None:
@@ -1422,32 +1429,27 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
         print(f"{COLOR['WARNING']}版本: {scheme_update_info.get('tag', '未知版本')}{COLOR['ENDC']}")
         print(f"发布时间: {scheme_local}")
         
-        # 简洁显示更新说明
-        description = scheme_update_info.get('description', '无更新说明')
-        
-        # 清理Markdown标记
-        description = re.sub(r'#{1,6}\s*', '', description)  # 移除标题标记
-        description = re.sub(r'\*{2}(.*?)\*{2}', r'\1', description)  # 移除加粗
-        description = re.sub(r'-{3,}', '', description)  # 移除分隔线
-        
-        # 提取主要部分并限制行数
-        lines = description.split('\n')
-        clean_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped and not stripped.startswith(('!', '####', '---', '[')):  # 跳过特殊行
-                clean_lines.append(stripped)
-                if len(clean_lines) >= 10:  # 最多显示10行
-                    clean_lines.append("... (完整说明请查看发布页面)")
-                    break
-        
-        # 打印清理后的说明
-        print(f"\n更新内容:")
-        for i, line in enumerate(clean_lines):
-            if i == 0:
-                print(f"    {line}")
-            else:
-                print(f"    {line}")
+        raw_description = scheme_update_info.get('description', '无更新说明')
+
+        try:
+            update_cache_dir = scheme_updater.custom_dir
+            os.makedirs(update_cache_dir, exist_ok=True)
+            # 创建文件名（包含版本和时间）
+            version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
+            date_str = remote_time.strftime("%Y%m%d")
+            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")            
+            # 写入 Markdown 文件
+            with open(filename, 'w', encoding='utf-8') as md_file:
+                md_file.write(f"# 方案更新说明 ({version_tag})\n\n")
+                md_file.write(f"**发布时间**: {scheme_local}\n\n")
+                md_file.write("## 更新内容\n\n")
+                md_file.write(raw_description)
+            
+            print_success(f"更新说明已保存到: {filename}")
+        except Exception as e:
+            print_error(f"保存更新说明失败: {str(e)}")
+
+
             
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
