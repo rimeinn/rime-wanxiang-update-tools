@@ -1745,12 +1745,12 @@ def main():
                 # 处理更新结果
                 if -1 in updated:
                     print_warning("部分内容下载更新失败，请重试")
+                    continue
                 else:
                     print_success("自动更新完成")
                     print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
-                time.sleep(4)
-                sys.exit(0)
-            
+                    time.sleep(4)
+                    sys.exit(0)
             else:
                 # 执行其他更新操作,确保有更新器实例
                 if not combined_updater:
