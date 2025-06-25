@@ -12,6 +12,7 @@ import shutil
 import fnmatch
 import re
 from typing import Tuple, Optional, List, Dict
+from tqdm import tqdm
 
 # ====================== 全局配置 ======================
 
@@ -85,13 +86,6 @@ def print_warning(text):
 
 def print_error(text):
     print(f"[×] 错误: {text}")
-
-def print_progress(percentage):
-    bar_length = 30
-    block = int(round(bar_length * percentage / 100))
-    progress = "▇" * block + "-" * (bar_length - block)
-    sys.stdout.write(f"\r{INDENT}[{progress}] {percentage:.1f}%")
-    sys.stdout.flush()
 
 
 # ====================== win注册表路径配置 ======================
@@ -771,13 +765,13 @@ class UpdateHandler:
             block_size = 8192
             downloaded = 0
             
+            # 使用 tqdm 包装响应内容的迭代器
             with open(save_path, 'wb') as f:
-                for data in response.iter_content(block_size):
-                    f.write(data)
-                    downloaded += len(data)
-                    progress = (downloaded / total_size) * 100 if total_size else 0
-                    print_progress(progress)
-            print()
+                # tqdm 的 total 参数设置为文件总大小，单位为字节
+                with tqdm(total=total_size, unit='B', unit_scale=True, desc="下载中") as pbar:
+                    for data in response.iter_content(block_size): 
+                        f.write(data)
+                        pbar.update(len(data))  # 更新进度条
             return True
         except Exception as e:
             print_error(f"下载失败: {str(e)}")
@@ -805,70 +799,52 @@ class UpdateHandler:
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 exclude_patterns = self.exclude_files  # 获取排除模式
-                if is_dict:
-                    members = [m for m in zip_ref.namelist() if not m.endswith('/')]
-                    base_dir = get_common_base_dir(members) 
-                    for member in members:
-                        if base_dir and member.startswith(base_dir):
-                            relative_path = member[len(base_dir):]
-                        else:
-                            relative_path = member
-                        # 标准化路径格式
-                        normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
-                        file_name = os.path.basename(normalized_path)
-                        # 检查排除规则
-                        exclude = any(
-                            fnmatch.fnmatch(normalized_path, pattern) or 
-                            fnmatch.fnmatch(file_name, pattern)
-                            for pattern in exclude_patterns
-                        )
-                        if exclude:
-                            print_warning(f"跳过排除文件: {normalized_path}")
-                            continue
-                        target_path = os.path.join(target_dir, normalized_path)
-                        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                        with open(target_path, 'wb') as f:
-                            f.write(zip_ref.read(member))
-                else:
-                    # 方案文件处理：智能检测并去除根目录
-                    # 获取所有非目录成员
-                    valid_members = [m for m in zip_ref.namelist() if not m.endswith('/')]
-                    
-                    # 智能检测最合理的根目录（优先压缩包内唯一目录，或通过通用算法计算）
-                    base_dir = ""
-                    dirs = {m.split('/', 1)[0] for m in valid_members if '/' in m}
-                    if len(dirs) == 1:
-                        base_dir = list(dirs)[0] + "/"
+                members = zip_ref.namelist()  # 获取所有成员
+                # 过滤出需要解压的文件
+                members = [m for m in members if not m.endswith('/')]
+    
+                # 计算实际需要解压的文件数量
+                valid_members = []
+                for member in members:
+                    # 标准化路径格式
+                    normalized_path = os.path.normpath(member.replace('/', os.sep))
+                    file_name = os.path.basename(normalized_path)
+                    # 检查排除规则
+                    exclude = any(
+                        fnmatch.fnmatch(normalized_path, pattern) or 
+                        fnmatch.fnmatch(file_name, pattern)
+                        for pattern in exclude_patterns
+                    )
+                    if not exclude:
+                        valid_members.append(member)
                     else:
-                        base_dir = get_common_base_dir(valid_members)
-                    exclude_patterns = self.exclude_files
-                    for member in zip_ref.namelist():
-                        # 跳过目录项
-                        if member.endswith('/'):
-                            continue
-                        # 计算相对路径（去除根目录）
-                        if base_dir and member.startswith(base_dir):
-                            relative_path = member[len(base_dir):]
+                        print_warning(f"跳过排除文件: {normalized_path}")
+    
+                # 使用有效文件数量作为进度条的总数
+                with tqdm(total=len(valid_members), desc="解压中") as pbar:
+                    for member in valid_members:
+                        # 计算相对路径
+                        if is_dict:
+                            base_dir = get_common_base_dir(valid_members)
+                            if base_dir and member.startswith(base_dir):
+                                relative_path = member[len(base_dir):]
+                            else:
+                                relative_path = member
                         else:
-                            relative_path = member
+                            base_dir = get_common_base_dir(valid_members)
+                            if base_dir and member.startswith(base_dir):
+                                relative_path = member[len(base_dir):]
+                            else:
+                                relative_path = member
+    
                         # 标准化路径
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
-                        if not normalized_path.strip():  # 跳过空路径
-                            continue
-                        file_name = os.path.basename(normalized_path)
-                        # 检查排除规则（支持路径模式和纯文件名）
-                        exclude = any(
-                            fnmatch.fnmatch(normalized_path, pattern) or 
-                            fnmatch.fnmatch(file_name, pattern)
-                            for pattern in exclude_patterns
-                        )
-                        if exclude:
-                            print_warning(f"跳过排除文件: {normalized_path}")
-                            continue
                         target_path = os.path.join(target_dir, normalized_path)
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
                         with open(target_path, 'wb') as f:
                             f.write(zip_ref.read(member))
+                        pbar.update(1)  # 更新进度条
+    
             return True
         except zipfile.BadZipFile:
             print_error("ZIP文件损坏")
@@ -1434,6 +1410,12 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
         try:
             update_cache_dir = scheme_updater.custom_dir
             os.makedirs(update_cache_dir, exist_ok=True)
+            
+            # 移除已有的md文件
+            for update_cache_file in os.listdir(update_cache_dir):
+                if re.match('^update.*md$', update_cache_file):
+                    os.remove(os.path.join(update_cache_dir, update_cache_file))
+                    
             # 创建文件名（包含版本和时间）
             version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
             date_str = remote_time.strftime("%Y%m%d")
