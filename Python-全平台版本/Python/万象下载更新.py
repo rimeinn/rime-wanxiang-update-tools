@@ -801,10 +801,7 @@ class UpdateHandler:
                 exclude_patterns = self.exclude_files  # 获取排除模式
                 members = zip_ref.namelist()  # 获取所有成员
                 # 过滤出需要解压的文件
-                if is_dict:
-                    members = [m for m in members if not m.endswith('/')]
-                else:
-                    members = [m for m in members if not m.endswith('/')]
+                members = [m for m in members if not m.endswith('/')]
     
                 # 计算实际需要解压的文件数量
                 valid_members = []
