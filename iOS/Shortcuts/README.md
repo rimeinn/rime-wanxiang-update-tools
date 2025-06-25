@@ -17,7 +17,7 @@
 ## 安装步骤
 
 1. 确保已安装上面的app
-2. 获取两个快捷指令（[万象Pro版本下载](https://www.icloud.com/shortcuts/bef52137feac488fa4d5df18ebad99b6)和[日常自动更新万象中文词库](https://www.icloud.com/shortcuts/35af7978f27e4118bb3dbe55feaa7b5f)
+2. 获取两个快捷指令（[万象Pro版本下载](https://www.icloud.com/shortcuts/bef52137feac488fa4d5df18ebad99b6)和[日常自动更新万象中文词库](https://www.icloud.com/shortcuts/848c22b3de9a4affa7756ba2f2e2a5ab)
 3. 打开并根据提示配置
 4. 执行一次获取权限
 5. `日常自动更新万象中文词库`可以添加到自动化设置时间进行执行，`万象Pro版本下载`可以根据需要手动执行
