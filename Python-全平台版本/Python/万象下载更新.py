@@ -688,6 +688,24 @@ class UpdateHandler:
             os.path.join(rime_user_dir, zh_dicts_dir),
             server
         )
+    
+    def save_record(self, record_file: str, property_type: str, property_name: str, info: dict) -> None:
+        """
+        保存更新记录
+        Args:
+            record_file: 保存路径
+            property_type: 类型：方案、词库、模型
+            property_name: 名称：写入文件的方案、词库、模型名称（来自GitHub）
+            info: 保存的信息
+        """
+        # 保存记录
+        with open(record_file, 'w') as f:
+            json.dump({
+                property_type: property_name,
+                "update_time": info["update_time"],
+                "tag": info.get("tag", ""),
+                "apply_time": datetime.now(timezone.utc).isoformat()
+            }, f)
         
 
     def github_api_request(self, url, output_json=True) -> Optional[Dict]:
@@ -1080,6 +1098,9 @@ class SchemeUpdater(UpdateHandler):
 
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
+            # 若记录不存在则重新保存
+            if not os.path.exists(self.record_file):
+                self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
             os.remove(temp_file)
             return 0
 
@@ -1126,13 +1147,7 @@ class SchemeUpdater(UpdateHandler):
             raise Exception("解压失败")
         
         # 保存记录
-        with open(self.record_file, 'w') as f:
-            json.dump({
-                "scheme_file": self.scheme_file,
-                "update_time": info["update_time"],
-                "tag": info["tag"],
-                "apply_time": datetime.now(timezone.utc).isoformat()
-            }, f)
+        self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
 
     def clean_build(self) -> None:
         """清理build目录"""
@@ -1187,13 +1202,8 @@ class DictUpdater(UpdateHandler):
                 raise Exception("解压失败")
         
             # 保存记录
-            with open(self.record_file, 'w') as f:
-                json.dump({
-                    "dict_file": self.dict_file,
-                    "update_time": info["update_time"],  # 使用asset的更新时间
-                    "tag": info["tag"],
-                    "apply_time": datetime.now(timezone.utc).isoformat()
-                }, f)
+            self.save_record(self.record_file, "dict_file", self.dict_file, info)
+
 
         except Exception as e:
             # 清理残留文件
@@ -1234,8 +1244,11 @@ class DictUpdater(UpdateHandler):
         # 哈希校验
         if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
             print_success("文件内容未变化")
+            # 若记录不存在则重新保存
+            if not os.path.exists(self.record_file):
+                self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
             os.remove(temp_file)
-
+            return 0
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
@@ -1307,16 +1320,14 @@ class ModelUpdater(UpdateHandler):
 
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match()
-        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = self.get_local_time()
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
             print_success("模型内容未变化")
+            # 若记录不存在则重新保存
+            if not os.path.exists(self.record_file):
+                self.save_record(self.record_file, "model_name", self.model_file, remote_info)
             os.remove(self.temp_file)
-            # 强制更新记录（解决记录文件丢失的问题）
-            if not local_time or remote_time > local_time:
-                self._save_update_record(remote_info["update_time"])  # 使用新字段
             return 0
 
 
@@ -1332,9 +1343,6 @@ class ModelUpdater(UpdateHandler):
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
             return -1
-
-        # 保存更新记录
-        self._save_update_record(remote_info["update_time"])
         
         # 返回更新成功状态
         print_success("模型更新完成")
@@ -1357,15 +1365,7 @@ class ModelUpdater(UpdateHandler):
         target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
         return temp_hash == target_hash
 
-    def _save_update_record(self, update_time) -> None:
-        """保存更新记录"""
-        record = {
-            "model_name": self.model_file,
-            "update_time": update_time,
-            "apply_time": datetime.now(timezone.utc).isoformat()
-        }
-        with open(self.record_file, "w") as f:
-            json.dump(record, f, indent=2)
+
 
 
 # ====================== 工具函数 ======================
@@ -1517,6 +1517,7 @@ def perform_auto_update(
     if sys.platform == 'win32':
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+            return updated # 直接返回updated，不进行后续操作
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
@@ -1528,6 +1529,7 @@ def perform_auto_update(
     elif sys.platform == 'darwin':
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+            return updated # 直接返回updated，不进行后续操作
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
@@ -1537,6 +1539,7 @@ def perform_auto_update(
         import webbrowser
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+            return updated # 直接返回updated，不进行后续操作
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
