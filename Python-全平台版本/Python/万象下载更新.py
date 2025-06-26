@@ -1553,6 +1553,8 @@ def perform_auto_update(
             else:
                 is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                 if is_deploy == 'y':
+                    print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
+                    time.sleep(3)
                     webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
     # 脚本更新检查（仅当有实际更新时才提示）
     script_updater = ScriptUpdater(config_manager)
