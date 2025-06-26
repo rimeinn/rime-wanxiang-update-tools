@@ -704,7 +704,8 @@ class UpdateHandler:
                 property_type: property_name,
                 "update_time": info["update_time"],
                 "tag": info.get("tag", ""),
-                "apply_time": datetime.now(timezone.utc).isoformat()
+                "apply_time": datetime.now(timezone.utc).isoformat(),
+                "sha256": info["sha256"]
             }, f)
         
 
@@ -1037,7 +1038,8 @@ class CombinedUpdater:
                         "url": self.scheme_updater.mirror_url(asset["browser_download_url"]),
                         "update_time": asset["updated_at"],
                         "tag": release["tag_name"],
-                        "description": update_description
+                        "description": update_description,
+                        "sha256": asset["digest"].split(':')[-1]
                     }
         return None
     
@@ -1053,6 +1055,7 @@ class CombinedUpdater:
                         "url": self.dict_updater.mirror_url(asset["browser_download_url"]),
                         "update_time": asset["updated_at"],
                         "tag": release["tag_name"],
+                        "sha256": asset["digest"].split(':')[-1]
                     }
         return None
 
@@ -1088,21 +1091,20 @@ class SchemeUpdater(UpdateHandler):
             print_success("当前已是最新方案")
             return 0  # 没有更新
 
-        # 下载更新
-        temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
-        if not self.download_file(remote_info["url"], temp_file):
-            return -1
 
-        # 校验文件
+        # 校验本地文件和远端文件sha256
         target_file = os.path.join(self.custom_dir, self.scheme_file)
-
-        if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
+        if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
             print_success("文件内容未变化")
             # 若记录不存在则重新保存
             if not os.path.exists(self.record_file):
                 self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
-            os.remove(temp_file)
             return 0
+            
+        # 下载更新
+        temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
+        if not self.download_file(remote_info["url"], temp_file):
+            return -1
 
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
@@ -1121,8 +1123,8 @@ class SchemeUpdater(UpdateHandler):
         except:
             return None
 
-    def file_compare(self, file1, file2) -> bool:
-        hash1 = calculate_sha256(file1)
+    def file_compare(self, remote_hash, file2) -> bool:
+        hash1 = remote_hash
         hash2 = calculate_sha256(file2)
         return hash1 == hash2
 
@@ -1179,9 +1181,9 @@ class DictUpdater(UpdateHandler):
         except:
             return None
 
-    def file_compare(self, file1, file2) -> bool:
-        """文件比对"""
-        return calculate_sha256(file1) == calculate_sha256(file2)
+    def file_compare(self, remote_hash, file2) -> bool:
+        """sha256对比"""
+        return remote_hash == calculate_sha256(file2)
 
     def apply_update(self, temp, target, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
@@ -1235,20 +1237,20 @@ class DictUpdater(UpdateHandler):
             print_success("当前已是最新词库")
             return 0
 
-        # 下载流程
-        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
         target_file = os.path.join(self.custom_dir, self.dict_file)
-        if not self.download_file(remote_info["url"], temp_file):
-            return -1
-
-        # 哈希校验
-        if os.path.exists(target_file) and self.file_compare(temp_file, target_file):
+        # 校验本地文件和远端文件sha256
+        if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
             print_success("文件内容未变化")
             # 若记录不存在则重新保存
             if not os.path.exists(self.record_file):
                 self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
-            os.remove(temp_file)
             return 0
+
+        # 下载流程
+        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
+        if not self.download_file(remote_info["url"], temp_file):
+            return -1
+
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
@@ -1286,7 +1288,8 @@ class ModelUpdater(UpdateHandler):
                     "url": self.mirror_url(asset["browser_download_url"]),
                     # 使用asset的更新时间
                     "update_time": asset["updated_at"],
-                    "size": asset["size"]
+                    "size": asset["size"],
+                    "sha256": asset["digest"].split(':')[-1]
                 }
         return None
 
@@ -1313,10 +1316,6 @@ class ModelUpdater(UpdateHandler):
             print_success("当前已是最新模型")
             return 0
 
-        # 下载到临时文件
-        if not self.download_file(remote_info["url"], self.temp_file):
-            print_error("模型下载失败")
-            return -1
 
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match()
@@ -1327,9 +1326,12 @@ class ModelUpdater(UpdateHandler):
             # 若记录不存在则重新保存
             if not os.path.exists(self.record_file):
                 self.save_record(self.record_file, "model_name", self.model_file, remote_info)
-            os.remove(self.temp_file)
             return 0
 
+        # 下载到临时文件
+        if not self.download_file(remote_info["url"], self.temp_file):
+            print_error("模型下载失败")
+            return -1
 
         # 停止服务再覆盖
         if hasattr(self, 'terminate_processes'):
@@ -1361,7 +1363,7 @@ class ModelUpdater(UpdateHandler):
 
     def _check_hash_match(self) -> bool:
         """检查临时文件与目标文件哈希是否一致"""
-        temp_hash = calculate_sha256(self.temp_file)
+        temp_hash = remote_info['sha256']
         target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
         return temp_hash == target_hash
 
@@ -1558,7 +1560,7 @@ def perform_auto_update(
     if script_remote_info:
         script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
         if script_update_flag:
-            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成，请确认是否更新此脚本..." + COLOR['ENDC'])
+            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
             script_updater.run()
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
@@ -1771,6 +1773,7 @@ def main():
                     print_header("尝试跳转到Hamster重新部署输入法")
                     is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                     if is_deploy == 'y':
+                        print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                         webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
