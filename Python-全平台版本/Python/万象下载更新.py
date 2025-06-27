@@ -44,8 +44,8 @@ SCHEME_MAP = {
 }
 # ====================== 界面函数 ======================
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-BORDER = "=" * 50 if sys.platform == 'ios' else "-" * 60
-SUB_BORDER = "-" * 45 if sys.platform == 'ios' else "-" * 55
+BORDER = "=" * 35 if sys.platform == 'ios' else "-" * 60
+SUB_BORDER = "-" * 30 if sys.platform == 'ios' else "-" * 55
 INDENT = " " * 2
 COLOR = {
     "HEADER": "\033[95m",
@@ -1790,6 +1790,8 @@ def main():
         sys.exit(0)
     except KeyboardInterrupt:
         print(f"\n{COLOR['FAIL']}🚫 终止操作 {COLOR['ENDC']}")
+    except SystemExit:
+        print(f"\n{COLOR['OKBLUE']}⏏️ 程序退出 {COLOR['ENDC']}")
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
         sys.exit(1)
