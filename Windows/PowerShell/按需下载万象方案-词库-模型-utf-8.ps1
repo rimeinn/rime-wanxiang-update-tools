@@ -1,11 +1,16 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 # $AutoUpdate = $true;
 $AutoUpdate = $false;
+# 设置自动更新时，是否更新方案、词库、模型，不想更新某项就改成false
+$IsUpdateSchemaDown = $true
+$IsUpdateDictDown = $true
+$IsUpdateModel = $true
 ####[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
 ####注意必须包含双引号，例如：$InputSchemaType = "0";
 $InputSchemaType = "7";
 # $SkipFiles = @(
 #     "wanxiang_en.dict.yaml",
+#     "seq_words.lua",
 #     "tone_fallback.lua",
 #     "custom_phrase.txt"
 # ); # 需要跳过的文件列表
@@ -23,7 +28,7 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 # [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($proxyAddress)
 # [System.Net.WebRequest]::DefaultWebProxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
 
-# 设置GitHub Token请求头，防止api请求频繁错误，配置好后删除注释符号
+# 设置GitHub Token请求头，防止api请求失败403错误，配置好后删除注释符号
 # $env:GITHUB_TOKEN = "填入这里你的token字符串"    #打开链接https://github.com/settings/tokens，注册一个token(Public repositories) 
 
 # 设置仓库所有者和名称
@@ -242,8 +247,8 @@ function Get-ReleaseInfo {
 
     # 构建API请求头
     $GitHubHeaders = @{
-    "User-Agent" = "PowerShell Release Downloader"
-    "Accept"     = "application/vnd.github.v3+json"
+        "User-Agent" = "PowerShell Release Downloader"
+        "Accept"     = "application/vnd.github.v3+json"
     }
     if ($env:GITHUB_TOKEN) {
         $GitHubHeaders["Authorization"] = "token $($env:GITHUB_TOKEN)"
@@ -357,9 +362,9 @@ if (-not $Debug) {
             Exit-Tip 1
         }
         $InputAllUpdate = "0"
-        $InputSchemaDown = "0"
-        $InputGramModel = "0"
-        $InputDictDown = "0"
+        $InputSchemaDown = if ($IsUpdateSchemaDown)  { "0" } else { "1" }
+        $InputGramModel = if ($IsUpdateModel)  { "0" } else { "1" }
+        $InputDictDown = if ($IsUpdateDictDown)  { "0" } else { "1" }
     } else {
         $InputSchemaType = Read-Host $promptSchemaType
         $InputAllUpdate = Read-Host $promptAllUpdate
