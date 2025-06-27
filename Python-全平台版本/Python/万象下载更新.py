@@ -1318,7 +1318,7 @@ class ModelUpdater(UpdateHandler):
 
 
         # 无论是否有记录，都检查哈希是否匹配
-        hash_matched = self._check_hash_match()
+        hash_matched = self._check_hash_match(remote_info)
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
@@ -1361,7 +1361,7 @@ class ModelUpdater(UpdateHandler):
         except:
             return None
 
-    def _check_hash_match(self) -> bool:
+    def _check_hash_match(self, remote_info) -> bool:
         """检查临时文件与目标文件哈希是否一致"""
         temp_hash = remote_info['sha256']
         target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None

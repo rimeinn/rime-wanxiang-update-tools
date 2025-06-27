@@ -28,6 +28,8 @@ log() {
   printf "${color}[%s] %s${NC}\n" "$level" "$*"
 }
 
+# 获取当前脚本名称
+script_name=$(basename $0)
 
 # 输入法引擎检测
 if [ -z "$ENGINE" ]; then
