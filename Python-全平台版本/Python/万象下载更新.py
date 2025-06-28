@@ -964,6 +964,7 @@ class CombinedUpdater:
         self.scheme_updater = SchemeUpdater(config_manager)
         self.dict_updater = DictUpdater(config_manager)
         self.model_updater = ModelUpdater(config_manager)
+        self.script_updater = ScriptUpdater(config_manager)
         # 存储共享的releases数据
         self.shared_releases = None
         # 文件名重试计数器
@@ -1390,12 +1391,14 @@ def calculate_sha256(file_path) -> Optional[str]:
         return None
 
     
-def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
+def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
+
+    has_script_update = script_updater.check_update()
     
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
@@ -1459,6 +1462,12 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
         # time.sleep(4)
         # sys.exit(0)
 
+    # 脚本更新提示
+    if has_script_update:
+        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
+        print(f"版本: {has_script_update['tag']}")
+        print(f"发布时间: {has_script_update['update_time']}")
+
 
 def deploy_for_mac(system=sys.platform) -> bool:
     """macOS自动部署"""
@@ -1500,9 +1509,10 @@ def perform_auto_update(
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    script_updater = combined_updater.script_updater
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
-        print_update_status(scheme_updater, dict_updater, model_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
     # 初始化更新状态
     scheme_updated = 0
     dict_updated = 0
@@ -1585,10 +1595,11 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    script_updater = combined_updater.script_updater
     
     # 使用函数打印更新状态
     if show:
-        print_update_status(scheme_updater, dict_updater, model_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
     return combined_updater
 
 def open_config_file(config_path) -> None:
@@ -1616,12 +1627,14 @@ class ScriptUpdater(UpdateHandler):
             return None
         
         remote_version = releases[0].get("tag_name", "DEFAULT")
+        if not self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
+            return None
         update_info = releases[0].get("body", "无更新说明")
         for asset in releases[0].get("assets", []):
             if asset["name"] == 'rime-wanxiang-update-win-mac-ios-android.py':
                 return {
                     "url": self.mirror_url(asset["browser_download_url"]),
-                    "update_time": asset["updated_at"],
+                    "update_time": datetime.strptime(asset["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                     "tag": remote_version,
                     "description": update_info
                 }
@@ -1639,6 +1652,8 @@ class ScriptUpdater(UpdateHandler):
             return False
         
     def compare_version(self, local_version: str, remote_version: str) -> bool:
+        if local_version == 'DEFAULT_UPDATE_TOOLS_VERSION_TAG':
+            return False
         if local_version != remote_version:
             return True
         return False
@@ -1650,17 +1665,13 @@ class ScriptUpdater(UpdateHandler):
             return False
         
         remote_version = remote_info.get("tag", "DEFAULT")
-        if self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
-            user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
-            if user_choose.lower() == 'y':
-                print_header("正在更新脚本，请勿进行其他操作...")
-                if self.update_script(remote_info["url"]):
-                    sys.exit(0)
-            else:
-                return False
+        user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
+        if user_choose.lower() == 'y':
+            print_header("正在更新脚本，请勿进行其他操作...")
+            if self.update_script(remote_info["url"]):
+                sys.exit(0)
         else:
-            print(f"\n{COLOR['WARNING']}[!] 你当前使用的脚本无版本号或已是最新版本。{COLOR['ENDC']}")
-        
+            return False
 
 
 
