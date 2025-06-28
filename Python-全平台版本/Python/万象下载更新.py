@@ -343,7 +343,7 @@ class ConfigManager:
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
-            'use_mirror': 'true',
+            'use_mirror': 'false',
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
