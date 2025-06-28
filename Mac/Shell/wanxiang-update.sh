@@ -41,16 +41,16 @@ if [ -z "$ENGINE" ]; then
   exit
 elif [ "$ENGINE" == "fcitx5" ]; then
   log INFO "当前使用Fcitx5（小企鹅）输入法"
-  read -rp "是否需要更改？(Y/N) " if_modify
-  if [ "$if_modify" == "Y" ]; then
+  read -rp "按回车继续，M 键更改: " if_modify
+  if [ "$if_modify" == "M" ]; then
   log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
   echo "sed -i '' 's/ENGINE=\"fcitx5\"/ENGINE=\"squirrel\"/g' $script_name"
   exit
   fi
 elif [ "$ENGINE" == "squirrel" ]; then
   log INFO "当前使用squirrel（鼠须管）输入法"
-  read -rp "是否需要更改？(Y/N) " if_modify
-  if [ "$if_modify" == "Y" ]; then
+  read -rp "按回车继续，M 键更改: " if_modify
+  if [ "$if_modify" == "M" ]; then
   log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
   echo "sed -i '' 's/ENGINE=\"squirrel\"/ENGINE=\"fcitx5\"/g' $script_name"
   exit

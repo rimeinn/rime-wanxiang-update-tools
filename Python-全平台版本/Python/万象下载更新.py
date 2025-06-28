@@ -44,8 +44,8 @@ SCHEME_MAP = {
 }
 # ====================== 界面函数 ======================
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-BORDER = "=" * 50 if sys.platform == 'ios' else "-" * 60
-SUB_BORDER = "-" * 45 if sys.platform == 'ios' else "-" * 55
+BORDER = "=" * 35 if sys.platform == 'ios' else "-" * 60
+SUB_BORDER = "-" * 30 if sys.platform == 'ios' else "-" * 55
 INDENT = " " * 2
 COLOR = {
     "HEADER": "\033[95m",
@@ -343,7 +343,7 @@ class ConfigManager:
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
-            'use_mirror': 'true',
+            'use_mirror': 'false',
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
@@ -964,6 +964,7 @@ class CombinedUpdater:
         self.scheme_updater = SchemeUpdater(config_manager)
         self.dict_updater = DictUpdater(config_manager)
         self.model_updater = ModelUpdater(config_manager)
+        self.script_updater = ScriptUpdater(config_manager)
         # 存储共享的releases数据
         self.shared_releases = None
         # 文件名重试计数器
@@ -981,6 +982,8 @@ class CombinedUpdater:
             self.refresh_filenames()
         # 模型更新独立检查
         self.model_updater.update_info = self.model_updater.check_update()
+        # 脚本更新独立检查
+        self.script_updater.update_info = self.script_updater.check_update()
 
     def refresh_filenames(self) -> None:
         """自动更新文件名并刷新配置"""
@@ -1368,7 +1371,62 @@ class ModelUpdater(UpdateHandler):
         return temp_hash == target_hash
 
 
+class ScriptUpdater(UpdateHandler):
+    def __init__(self, config_manager):
+        super().__init__(config_manager)
+        self.script_path = os.path.abspath(__file__)
 
+    def check_update(self) -> Optional[Dict]:
+        releases = self.github_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
+        if not releases:
+            return None
+        
+        remote_version = releases[0].get("tag_name", "DEFAULT")
+        if not self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
+            return None
+        update_info = releases[0].get("body", "无更新说明")
+        for asset in releases[0].get("assets", []):
+            if asset["name"] == 'rime-wanxiang-update-win-mac-ios-android.py':
+                return {
+                    "url": self.mirror_url(asset["browser_download_url"]),
+                    "update_time": datetime.strptime(asset["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                    "tag": remote_version,
+                    "description": update_info
+                }
+            
+    def update_script(self, url: str) -> bool:
+        """更新脚本"""
+        res = self.github_api_request(url=url, output_json=False)
+        if res.status_code == 200:
+            with open(self.script_path, 'wb') as f:
+                f.write(res.content)
+            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出Pythonista重新启动）")
+            return True
+        else:
+            print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
+            return False
+        
+    def compare_version(self, local_version: str, remote_version: str) -> bool:
+        if local_version == 'DEFAULT_UPDATE_TOOLS_VERSION_TAG':
+            return False
+        if local_version != remote_version:
+            return True
+        return False
+    
+    def run(self):
+        remote_info = self.check_update()
+        if not remote_info:
+            print_warning("未找到脚本更新信息")
+            return False
+        
+        remote_version = remote_info.get("tag", "DEFAULT")
+        user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
+        if user_choose.lower() == 'y':
+            print_header("正在更新脚本，请勿进行其他操作...")
+            if self.update_script(remote_info["url"]):
+                sys.exit(0)
+        else:
+            return False
 
 # ====================== 工具函数 ======================
 def calculate_sha256(file_path) -> Optional[str]:
@@ -1390,12 +1448,14 @@ def calculate_sha256(file_path) -> Optional[str]:
         return None
 
     
-def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
+def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
+
+    has_script_update = script_updater.update_info
     
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
@@ -1459,6 +1519,12 @@ def print_update_status(scheme_updater, dict_updater, model_updater) -> None:
         # time.sleep(4)
         # sys.exit(0)
 
+    # 脚本更新提示
+    if has_script_update:
+        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
+        print(f"版本: {has_script_update['tag']}")
+        print(f"发布时间: {has_script_update['update_time']}")
+
 
 def deploy_for_mac(system=sys.platform) -> bool:
     """macOS自动部署"""
@@ -1500,9 +1566,10 @@ def perform_auto_update(
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    script_updater = combined_updater.script_updater
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
-        print_update_status(scheme_updater, dict_updater, model_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
     # 初始化更新状态
     scheme_updated = 0
     dict_updated = 0
@@ -1556,17 +1623,14 @@ def perform_auto_update(
                     print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                     time.sleep(3)
                     webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+
+    print_success("输入法配置全部更新完成")
     # 脚本更新检查（仅当有实际更新时才提示）
-    script_updater = ScriptUpdater(config_manager)
-    script_remote_info = script_updater.check_update()
-    if script_remote_info:
-        script_update_flag = script_updater.compare_version(UPDATE_TOOLS_VERSION, script_remote_info.get("tag", "DEFAULT"))
-        if script_update_flag:
-            print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
-            script_updater.run()
+    if script_updater.update_info:
+        script_updater.run()
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
-        print("\n✨ 自动更新完成！")
+        print_success("自动更新完成！")
         time.sleep(2)
         sys.exit(0)
     return updated
@@ -1585,10 +1649,11 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    script_updater = combined_updater.script_updater
     
     # 使用函数打印更新状态
     if show:
-        print_update_status(scheme_updater, dict_updater, model_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
     return combined_updater
 
 def open_config_file(config_path) -> None:
@@ -1604,64 +1669,6 @@ def open_config_file(config_path) -> None:
                 subprocess.run(['xdg-open', config_path])
         except:
             print_warning("无法打开配置文件，请手动编辑。")
-
-class ScriptUpdater(UpdateHandler):
-    def __init__(self, config_manager):
-        super().__init__(config_manager)
-        self.script_path = os.path.abspath(__file__)
-
-    def check_update(self) -> Optional[Dict]:
-        releases = self.github_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
-        if not releases:
-            return None
-        
-        remote_version = releases[0].get("tag_name", "DEFAULT")
-        update_info = releases[0].get("body", "无更新说明")
-        for asset in releases[0].get("assets", []):
-            if asset["name"] == 'rime-wanxiang-update-win-mac-ios-android.py':
-                return {
-                    "url": self.mirror_url(asset["browser_download_url"]),
-                    "update_time": asset["updated_at"],
-                    "tag": remote_version,
-                    "description": update_info
-                }
-            
-    def update_script(self, url: str) -> bool:
-        """更新脚本"""
-        res = self.github_api_request(url=url, output_json=False)
-        if res.status_code == 200:
-            with open(self.script_path, 'wb') as f:
-                f.write(res.content)
-            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出Pythonista重新启动）")
-            return True
-        else:
-            print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
-            return False
-        
-    def compare_version(self, local_version: str, remote_version: str) -> bool:
-        if local_version != remote_version:
-            return True
-        return False
-    
-    def run(self):
-        remote_info = self.check_update()
-        if not remote_info:
-            print_warning("未找到脚本更新信息")
-            return False
-        
-        remote_version = remote_info.get("tag", "DEFAULT")
-        if self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
-            user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
-            if user_choose.lower() == 'y':
-                print_header("正在更新脚本，请勿进行其他操作...")
-                if self.update_script(remote_info["url"]):
-                    sys.exit(0)
-            else:
-                return False
-        else:
-            print(f"\n{COLOR['WARNING']}[!] 你当前使用的脚本无版本号或已是最新版本。{COLOR['ENDC']}")
-        
-
 
 
 
@@ -1790,6 +1797,8 @@ def main():
         sys.exit(0)
     except KeyboardInterrupt:
         print(f"\n{COLOR['FAIL']}🚫 终止操作 {COLOR['ENDC']}")
+    except SystemExit:
+        print(f"\n{COLOR['OKBLUE']}⏏️ 程序退出 {COLOR['ENDC']}")
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
         sys.exit(1)
