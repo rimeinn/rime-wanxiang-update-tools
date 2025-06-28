@@ -1624,13 +1624,13 @@ def perform_auto_update(
                     time.sleep(3)
                     webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
 
-    print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
+    print_success("输入法配置全部更新完成")
     # 脚本更新检查（仅当有实际更新时才提示）
     if script_updater.update_info:
         script_updater.run()
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
-        print("\n✨ 自动更新完成！")
+        print_success("自动更新完成！")
         time.sleep(2)
         sys.exit(0)
     return updated
