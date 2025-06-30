@@ -35,7 +35,7 @@ pip install requests tqdm
 python rime-wanxiang-update-win-mac-ios-android.py
 ```
 为方便使用，也可以进行如下操作：
-1. 打开`.vimrc`文件：
+1. 打开`.bashrc`文件：
 ```shell
 cd ~
 vim .bashrc
