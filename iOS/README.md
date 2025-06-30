@@ -25,7 +25,12 @@
 5. 更新完成后需手动打开Hamster输入法重新部署
 
 **注意：**
-若使用[a-shell](https://apps.apple.com/us/app/a-shell/id1473805438)，则打开a-shell后，输入`pickFolder`，选择Hamster输入法的文件夹（也是脚本所在的文件夹），运行：
+若使用[a-shell](https://apps.apple.com/us/app/a-shell/id1473805438)，则打开a-shell后，先下载所需包
+```shell
+pip install requests tqdm
+```
+
+然后输入`pickFolder`，选择Hamster输入法的文件夹（也是脚本所在的文件夹），运行：
 ```shell
 python rime-wanxiang-update-win-mac-ios-android.py
 ```
