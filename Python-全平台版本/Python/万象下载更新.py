@@ -812,7 +812,7 @@ class UpdateHandler:
             headers['Range'] = f'bytes={downloaded}-'
             
             response = requests.get(url, headers=headers, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get('content-length', 0)) + downloaded
             block_size = 8192
             
             # 使用 tqdm 包装响应内容的迭代器
@@ -1498,24 +1498,26 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         try:
             update_cache_dir = scheme_updater.custom_dir
             os.makedirs(update_cache_dir, exist_ok=True)
-            
-            # 移除已有的md文件
-            for update_cache_file in os.listdir(update_cache_dir):
-                if re.match('^update.*md$', update_cache_file):
-                    os.remove(os.path.join(update_cache_dir, update_cache_file))
                     
             # 创建文件名（包含版本和时间）
             version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
             date_str = remote_time.strftime("%Y%m%d")
-            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")            
-            # 写入 Markdown 文件
-            with open(filename, 'w', encoding='utf-8') as md_file:
-                md_file.write(f"# 方案更新说明 ({version_tag})\n\n")
-                md_file.write(f"**发布时间**: {scheme_local}\n\n")
-                md_file.write("## 更新内容\n\n")
-                md_file.write(raw_description)
+            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")   
+
+            # 移除已有的md文件
+            for update_cache_file in os.listdir(update_cache_dir):
+                if re.match('^update.*md$', update_cache_file) and update_cache_file != f"update_{version_tag}_{date_str}.md":
+                    os.remove(os.path.join(update_cache_dir, update_cache_file))
+
+            if not os.path.exists(filename):
+                # 写入 Markdown 文件
+                with open(filename, 'w', encoding='utf-8') as md_file:
+                    md_file.write(f"# 方案更新说明 ({version_tag})\n\n")
+                    md_file.write(f"**发布时间**: {scheme_local}\n\n")
+                    md_file.write("## 更新内容\n\n")
+                    md_file.write(raw_description)
             
-            print_success(f"更新说明已保存到: {filename}")
+                print_success(f"更新说明已保存到: {filename}")
         except Exception as e:
             print_error(f"保存更新说明失败: {str(e)}")
 
