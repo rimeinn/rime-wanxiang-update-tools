@@ -38,7 +38,7 @@ python rime-wanxiang-update-win-mac-ios-android.py
 1. 打开`.vimrc`文件：
 ```shell
 cd ~
-vim .vimrc
+vim .bashrc
 ```
 2. 插入如下内容（按`i`进入插入模式）
 ```shell
