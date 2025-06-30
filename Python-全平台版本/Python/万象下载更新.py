@@ -802,15 +802,23 @@ class UpdateHandler:
                 # print(f"{COLOR['WARNING']}注意: 如果使用代理，请确保关闭后再尝试下载{COLOR['ENDC']}")
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
-            response = requests.get(url, stream=True)
+
+            headers = {}
+            # 获取已下载进度
+            if os.path.exists(save_path):
+                downloaded = os.path.getsize(save_path)
+            else:
+                downloaded = 0
+            headers['Range'] = f'bytes={downloaded}-'
+            
+            response = requests.get(url, headers=headers, stream=True)
             total_size = int(response.headers.get('content-length', 0))
             block_size = 8192
-            downloaded = 0
             
             # 使用 tqdm 包装响应内容的迭代器
-            with open(save_path, 'wb') as f:
+            with open(save_path, 'ab') as f:
                 # tqdm 的 total 参数设置为文件总大小，单位为字节
-                with tqdm(total=total_size, unit='B', unit_scale=True, desc="下载中") as pbar:
+                with tqdm(total=total_size, initial=downloaded, unit='B', unit_scale=True, desc="下载中") as pbar:
                     for data in response.iter_content(block_size): 
                         f.write(data)
                         pbar.update(len(data))  # 更新进度条
