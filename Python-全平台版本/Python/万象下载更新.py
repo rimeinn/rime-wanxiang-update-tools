@@ -42,10 +42,30 @@ SCHEME_MAP = {
     '6': 'wubi',
     '7': 'hanxin'
 }
+
+# ====================== 系统检测函数 ===========================
+def system_check():
+    """检查系统类型"""
+    if sys.platform == 'win32':
+        return 'windows'
+    # iOS上a-shell、code app的Python环境sys.pltform也为'darwin'，因此取当前解释器路径进行判断
+    elif sys.platform == 'darwin' and sys.executable.find('Code.app') >= 0:
+        return 'ios'
+    elif sys.platform == 'darwin' and sys.executable == 'python3':
+        return 'ios'
+    elif sys.platform == 'darwin':
+        return 'macos'
+    elif sys.platform == 'ios':
+        return 'ios'
+    else:
+        return 'android/linux'
+
+SYSTEM_TYPE = system_check()
+
 # ====================== 界面函数 ======================
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-BORDER = "=" * 35 if sys.platform == 'ios' else "-" * 60
-SUB_BORDER = "-" * 30 if sys.platform == 'ios' else "-" * 55
+BORDER = "=" * 35 if SYSTEM_TYPE == 'ios' else "-" * 60
+SUB_BORDER = "-" * 30 if SYSTEM_TYPE == 'ios' else "-" * 55
 INDENT = " " * 2
 COLOR = {
     "HEADER": "\033[95m",
@@ -89,7 +109,7 @@ def print_error(text):
 
 
 # ====================== win注册表路径配置 ======================
-if sys.platform == 'win32':
+if SYSTEM_TYPE == 'windows':
     import winreg
 
     REG_PATHS = {
@@ -140,7 +160,7 @@ class ConfigManager:
     def detect_installation_paths(self, show=False):
         """自动检测安装路径"""
         detected = {}
-        if sys.platform == 'win32':
+        if SYSTEM_TYPE == 'windows':
             for key in REG_PATHS:
                 path, name, hive = REG_PATHS[key]
                 detected[key] = get_registry_value(path, name, hive)
@@ -165,7 +185,7 @@ class ConfigManager:
             else:
                 if not self.reload_flag and show:
                     print_success("检测到小狼毫自定义 RimeUserDir：" + detected["rime_user_dir"])
-        elif sys.platform == 'darwin':
+        elif SYSTEM_TYPE == 'macos':
             # 处理macOS
             if self.config.get('Settings', 'engine') == '鼠须管':
                 detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
@@ -173,7 +193,7 @@ class ConfigManager:
                 detected['rime_user_dir'] = os.path.expanduser('~/.local/share/fcitx5/rime')
             else:
                 detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
-        elif sys.platform == 'ios':
+        elif SYSTEM_TYPE == 'ios':
             detected['rime_user_dir'] = self.rime_dir
         else:
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -240,13 +260,13 @@ class ConfigManager:
 
     def _ensure_config_exists(self) -> None:
         """确保配置文件存在，如果不存在则创建一个新的配置文件"""
-        if sys.platform == 'ios':
+        if SYSTEM_TYPE == 'ios':
             if not self._check_hamster_path():
                 return
         if not os.path.exists(self.config_path):
             print_warning("正在创建一个新的配置文件。")
             self._init_empty_config()
-            if sys.platform == 'darwin':
+            if SYSTEM_TYPE == 'macos':
                 self._select_rime_engine()  # mac首次运行选择引擎
             # self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
             # self._guide_scheme_selection()  # 首次运行引导选择方案
@@ -258,7 +278,7 @@ class ConfigManager:
                 exit(1)  # 终止程序执行
             self._show_config_guide()       # 配置引导
         else:
-            print_warning("配置文件已存在，将加载配置。")
+            print_warning(COLOR['YELLOW'] + "配置文件已存在，将加载配置。" + COLOR['ENDC'])
             new_config_items = {
                 'auto_update': 'false',
             }
@@ -287,7 +307,7 @@ class ConfigManager:
         print(f"{INDENT}▪ 方案版本：{self.config['Settings']['scheme_type']}")
         print(f"{INDENT}▪ 方案文件：{self.config['Settings']['scheme_file']}")
         print(f"{INDENT}▪ 词库文件：{self.config['Settings']['dict_file']}")
-        if sys.platform == 'darwin':
+        if SYSTEM_TYPE == 'macos':
             print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
         print(f"{BORDER}")
@@ -311,7 +331,7 @@ class ConfigManager:
                 self._ensure_config_exists()  # 重新创建配置文件
                 break
             elif choice == 'm':
-                if sys.platform == 'ios':
+                if SYSTEM_TYPE == 'ios':
                     print_warning("iOS平台不支持修改配置文件，请手动编辑 settings.ini 文件。")
                 else:
                     if os.name == 'nt':
@@ -343,7 +363,7 @@ class ConfigManager:
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
-            'use_mirror': 'false',
+            'use_mirror': 'true',
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
@@ -475,7 +495,7 @@ class ConfigManager:
 
         if os.name == 'nt':
             os.startfile(self.config_path)
-        elif os.name == 'posix' and sys.platform == 'darwin':
+        elif os.name == 'posix' and SYSTEM_TYPE == 'macos':
             subprocess.Popen(['open', self.config_path])
         else:
             None
@@ -506,7 +526,7 @@ class ConfigManager:
         
 
     def load_config(self, 
-                    system=sys.platform, 
+                    system=SYSTEM_TYPE, 
                     show=False, 
                     first_download=False
                 ) -> Tuple[str, str, str, str, bool, str, list]:
@@ -537,14 +557,14 @@ class ConfigManager:
             self.zh_dicts_dir = ZH_DICTS_PRO
 
         # 验证关键路径
-        if system == 'win32':
+        if system == 'windows':
             paths = self.detect_installation_paths(show=show)
             required_paths = {
                 '小狼毫服务程序': paths['server_exe'],
                 '方案解压目录': paths['rime_user_dir'],
                 '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir)
             }
-        elif system == 'darwin':
+        elif system == 'macos':
             paths = self.detect_installation_paths()
             required_paths = {
                 '方案解压目录': paths['rime_user_dir'],
@@ -570,16 +590,19 @@ class ConfigManager:
                 for name in missing:
                     print(f"{INDENT}{name}: {required_paths[name]}")
                 print(f"\n{INDENT}可能原因：")
-                if system == 'win32':
+                if system == 'windows':
                     print(f"{INDENT}1. 小狼毫输入法未正确安装")
                     print(f"{INDENT}2. 注册表信息被修改")
                     print(f"{INDENT}3. 自定义路径配置错误")
-                elif system == 'darwin':
+                elif system == 'macos':
                     print(f"{INDENT}1. 鼠须管或小企鹅输入法未正确安装")
                     print(f"{INDENT}2. 自定义路径配置错误")
-                else:
+                elif system == 'ios':
                     print(f"{INDENT}1. 该路径不存在")
                     print(f"{INDENT}2. 没有将该脚本放置在Hamster路径下")
+                else:
+                    print(f"{INDENT}1. 该路径不存在")
+                    print(f"{INDENT}2. 没有将该脚本放置在正确路径下")
                 sys.exit(1)
             missing = [path for name, path in required_paths.items() if not os.path.exists(path)]
         if missing:
@@ -873,7 +896,7 @@ class UpdateHandler:
             return False
 
 
-    if sys.platform == 'win32':
+    if SYSTEM_TYPE == 'windows':
         def terminate_processes(self):
             """组合式进程终止策略"""
             if not self.graceful_stop():  # 先尝试优雅停止
@@ -1098,10 +1121,8 @@ class SchemeUpdater(UpdateHandler):
         # 校验本地文件和远端文件sha256
         target_file = os.path.join(self.custom_dir, self.scheme_file)
         if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
             return 0
             
         # 下载更新
@@ -1243,10 +1264,8 @@ class DictUpdater(UpdateHandler):
         target_file = os.path.join(self.custom_dir, self.dict_file)
         # 校验本地文件和远端文件sha256
         if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
             return 0
 
         # 下载流程
@@ -1325,10 +1344,8 @@ class ModelUpdater(UpdateHandler):
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
-            print_success("模型内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "model_name", self.model_file, remote_info)
+            print_success("模型内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
             return 0
 
         # 下载到临时文件
@@ -1345,6 +1362,7 @@ class ModelUpdater(UpdateHandler):
             if os.path.exists(self.target_path):
                 os.remove(self.target_path)
             os.replace(self.temp_file, self.target_path)  # 原子操作更安全
+            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
             return -1
@@ -1526,9 +1544,9 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         print(f"发布时间: {has_script_update['update_time']}")
 
 
-def deploy_for_mac(system=sys.platform) -> bool:
+def deploy_for_mac() -> bool:
     """macOS自动部署"""
-    if system == 'darwin':
+    if SYSTEM_TYPE == 'macos':
         cmd = """
 tell application "System Events"
 	keystroke "`" using {control down, option down}
@@ -1583,7 +1601,7 @@ def perform_auto_update(
     updated = [scheme_updated, dict_updated, model_updated]
     # 部署逻辑
     deployer = scheme_updater
-    if sys.platform == 'win32':
+    if SYSTEM_TYPE == 'windows':
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
             return updated # 直接返回updated，不进行后续操作
@@ -1595,7 +1613,7 @@ def perform_auto_update(
                 print_success("部署成功")
             else:
                 print_warning("部署失败，请检查日志")
-    elif sys.platform == 'darwin':
+    elif SYSTEM_TYPE == 'macos':
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
             return updated # 直接返回updated，不进行后续操作
@@ -1604,7 +1622,7 @@ def perform_auto_update(
         else:
             print_header("重新部署输入法")
             deploy_for_mac()
-    elif sys.platform == 'ios':
+    elif SYSTEM_TYPE == 'ios':
         import webbrowser
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
@@ -1623,14 +1641,22 @@ def perform_auto_update(
                     print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                     time.sleep(3)
                     webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+    else:
+        if -1 in updated and deployer:
+            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+            return updated # 直接返回updated，不进行后续操作
+        elif updated == [0,0,0]  and deployer:
+            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+        else:
+            print_warning("请手动部署输入法")
 
-    print_success("输入法配置全部更新完成")
+    print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
     # 脚本更新检查（仅当有实际更新时才提示）
     if script_updater.update_info:
         script_updater.run()
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
-        print_success("自动更新完成！")
+        print("\n" + COLOR['OKGREEN'] +  "✨ 自动更新完成！" + COLOR['ENDC'])
         time.sleep(2)
         sys.exit(0)
     return updated
@@ -1663,7 +1689,7 @@ def open_config_file(config_path) -> None:
     else:  # macOS/Linux
         try:
             # 尝试使用默认编辑器打开
-            if sys.platform == 'darwin':
+            if SYSTEM_TYPE == 'macos':
                 subprocess.run(['open', config_path])
             else:
                 subprocess.run(['xdg-open', config_path])
@@ -1674,10 +1700,11 @@ def open_config_file(config_path) -> None:
 
 # ====================== 主程序 ======================
 def main():
+    print(f"\n{COLOR['OKCYAN']}[i] 当前系统为：{SYSTEM_TYPE} {COLOR['ENDC']}")
     if UPDATE_TOOLS_VERSION.startswith("DEFAULT"):
-        print(f"\n{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
+        print(f"{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
     else:
-        print(f"\n{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
+        print(f"{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
 
     try:
         config_manager = ConfigManager()
@@ -1743,7 +1770,7 @@ def main():
                     print_warning("部分内容下载更新失败，请重试")
                     continue
                 else:
-                    print_success("自动更新完成")
+                    print_success(COLOR['OKGREEN'] + "自动更新完成" + COLOR['ENDC'])
                     print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
                     time.sleep(4)
                     sys.exit(0)
@@ -1768,16 +1795,16 @@ def main():
                     updated = model_updater.run()
                     deployer = model_updater
                 # 部署逻辑
-                if sys.platform == 'win32' and deployer and updated == 1:
+                if SYSTEM_TYPE == 'windows' and deployer and updated == 1:
                     print_header("重新部署输入法")
                     if deployer.deploy_weasel():
                         print_success("部署成功")
                     else:
                         print_warning("部署失败，请检查日志")
-                elif sys.platform == 'darwin' and deployer and updated == 1:
+                elif SYSTEM_TYPE == 'macos' and deployer and updated == 1:
                     print_header("重新部署输入法")
                     deploy_for_mac()
-                elif sys.platform == 'ios' and deployer and updated == 1:
+                elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
                     import webbrowser
                     print_header("尝试跳转到Hamster重新部署输入法")
                     is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
@@ -1785,6 +1812,11 @@ def main():
                         print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                         time.sleep(3)
                         webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                else:
+                    if deployer and updated == 1:
+                        print_warning("请手动部署输入法")
+
+
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
                 if user_input.strip().lower() == '':
