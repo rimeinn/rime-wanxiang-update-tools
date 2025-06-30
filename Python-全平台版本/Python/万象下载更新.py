@@ -1121,10 +1121,8 @@ class SchemeUpdater(UpdateHandler):
         # 校验本地文件和远端文件sha256
         target_file = os.path.join(self.custom_dir, self.scheme_file)
         if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
             return 0
             
         # 下载更新
@@ -1266,10 +1264,8 @@ class DictUpdater(UpdateHandler):
         target_file = os.path.join(self.custom_dir, self.dict_file)
         # 校验本地文件和远端文件sha256
         if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
             return 0
 
         # 下载流程
@@ -1348,10 +1344,8 @@ class ModelUpdater(UpdateHandler):
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
-            print_success("模型内容未变化")
-            # 若记录不存在则重新保存
-            if not os.path.exists(self.record_file):
-                self.save_record(self.record_file, "model_name", self.model_file, remote_info)
+            print_success("模型内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
             return 0
 
         # 下载到临时文件
@@ -1368,6 +1362,7 @@ class ModelUpdater(UpdateHandler):
             if os.path.exists(self.target_path):
                 os.remove(self.target_path)
             os.replace(self.temp_file, self.target_path)  # 原子操作更安全
+            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
             return -1
