@@ -366,6 +366,26 @@ update_all_file() {
   log INFO "正在更新 语法模型"
   cp -rf "$RAW_DIR"/*.gram "$deploy_dir"
 }
+
+# 部属函数
+deploy() {
+  local deploy_executable="$1"
+  local cmd="$2"
+  if [ -x "$deploy_executable" ]; then
+  log INFO "正在触发重新部署配置"
+    if output_and_error=$("$deploy_executable" "$cmd"); then
+      log INFO "重新部署成功"
+      [[ -n "$output_and_error" ]] && log INFO "输出: $output_and_error"
+    else
+      log ERROR "重新部署失败"
+      [[ -n "$output_and_error" ]] && log ERROR "错误信息: $output_and_error"
+    fi
+  else
+    log WARN "找不到可执行文件: $deploy_executable"
+    log WARN "请手动部署"
+  fi
+}
+
 # 主函数
 main() {
   trap cleanup EXIT
@@ -409,13 +429,15 @@ main() {
     update_all_file "$deploy_dir"
     mv "$newfile" "$UPDATE_FILE"
     log INFO "更新完成！"
-    # 鼠须管自动部署
+    # 自动部署
     if [ "$ENGINE" = "squirrel" ]; then
-      osascript -e 'tell application "System Events" to keystroke "`" using {control down, option down}'
-      log INFO "已向鼠须管发送自动部署命令，请在通知中心查看结果"
+      DEPLOY_EXECUTABLE="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
+      CMD=" --reload 2>&1"
     else
-      log WARN "小企鹅请手动部署"
+      DEPLOY_EXECUTABLE="/Library/Input\ Methods/Fcitx5.app/Contents/bin/fcitx5-curl /config/addon/rime/deploy"
+      CMD=" -X POST -d '{}'"
     fi
+    deploy "$DEPLOY_EXECUTABLE" "$CMD"
   else
     log INFO "你正在使用最新版本，无需更新"
   fi

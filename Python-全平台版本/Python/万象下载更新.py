@@ -984,6 +984,30 @@ class UpdateHandler:
             except Exception as e:
                 print_error(f"部署失败: {str(e)}")
                 return False
+    
+    if SYSTEM_TYPE == 'macos':
+        def deploy_for_mac(self) -> bool:
+            """macOS自动部署"""
+            if self.engine == 'squirrel':
+                executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
+                cmd = r" --reload 2>&1"
+            else:
+                executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl /config/addon/rime/deploy"
+                cmd = r" -X POST -d '{}'"
+
+            if os.path.exists(executable):
+                print_warning("即将进行自动部署")
+                time.sleep(2)
+                try:
+                    subprocess.run([executable, cmd], capture_output=True, text=True)
+                    print_success("部署命令已发送，请查看通知中心确认部署")
+                    return True
+                except subprocess.CalledProcessError as e:
+                    print_error("自动部署失败：{e}，请手动部署")
+                    return False
+            else:
+                print_error("找不到可执行文件：{executable}")
+                return False
 
 
 # ====================== 组合更新器 ======================
@@ -1554,24 +1578,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         print(f"发布时间: {has_script_update['update_time']}")
 
 
-def deploy_for_mac() -> bool:
-    """macOS自动部署"""
-    if SYSTEM_TYPE == 'macos':
-        cmd = """
-tell application "System Events"
-	keystroke "`" using {control down, option down}
-end tell
-"""
-        print_warning("即将通过快捷键自动部署，如果使用小企鹅，请在3秒内切换到rime以进行自动部署")
-        time.sleep(3)
-        try:
-            subprocess.run(["osascript", "-e", cmd], capture_output=True, text=True)
-            print_success("部署命令已发送，请查看通知中心确认部署")
-            return True
-        except:
-            print_error("发送部署命令失败，请手动部署或检查权限设置")
-            return False
-
 def perform_auto_update(
     config_manager: ConfigManager, 
     combined_updater: Optional[CombinedUpdater] = None,
@@ -1631,7 +1637,7 @@ def perform_auto_update(
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
             print_header("重新部署输入法")
-            deploy_for_mac()
+            deployer.deploy_for_mac()
     elif SYSTEM_TYPE == 'ios':
         import webbrowser
         if -1 in updated and deployer:
@@ -1813,7 +1819,7 @@ def main():
                         print_warning("部署失败，请检查日志")
                 elif SYSTEM_TYPE == 'macos' and deployer and updated == 1:
                     print_header("重新部署输入法")
-                    deploy_for_mac()
+                    deployer.deploy_for_mac()
                 elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
                     import webbrowser
                     print_header("尝试跳转到Hamster重新部署输入法")
