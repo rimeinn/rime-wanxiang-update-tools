@@ -988,7 +988,7 @@ class UpdateHandler:
     if SYSTEM_TYPE == 'macos':
         def deploy_for_mac(self) -> bool:
             """macOS自动部署"""
-            if self.engine == 'squirrel':
+            if self.engine == '鼠须管':
                 executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
                 cmd = r" --reload 2>&1"
             else:
