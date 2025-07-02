@@ -370,19 +370,19 @@ update_all_file() {
 # 部属函数
 deploy() {
   local deploy_executable="$1"
-  local cmd="$2"
+  shift # 移除第一个参数，后续所有参数都是要传给可执行文件的
   if [ -x "$deploy_executable" ]; then
-  log INFO "正在触发重新部署配置"
-    if output_and_error=$("$deploy_executable" "$cmd"); then
-      log INFO "重新部署成功"
-      [[ -n "$output_and_error" ]] && log INFO "输出: $output_and_error"
+  echo "正在触发重新部署配置"
+    if output_and_error=$("$deploy_executable" "$@" 2>&1); then
+      [[ -n "$output_and_error" ]] && echo "输出: $output_and_error"
+      echo "重新部署成功"
     else
-      log ERROR "重新部署失败"
-      [[ -n "$output_and_error" ]] && log ERROR "错误信息: $output_and_error"
+      echo "重新部署失败"
+      [[ -n "$output_and_error" ]] && echo "错误信息: $output_and_error"
     fi
   else
-    log WARN "找不到可执行文件: $deploy_executable"
-    log WARN "请手动部署"
+    echo "找不到可执行文件: $deploy_executable"
+    echo "请手动部署"
   fi
 }
 
@@ -432,12 +432,11 @@ main() {
     # 自动部署
     if [ "$ENGINE" = "squirrel" ]; then
       DEPLOY_EXECUTABLE="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
-      CMD=" --reload 2>&1"
+      deploy "$DEPLOY_EXECUTABLE" --reload
     else
-      DEPLOY_EXECUTABLE="/Library/Input\ Methods/Fcitx5.app/Contents/bin/fcitx5-curl /config/addon/rime/deploy"
-      CMD=" -X POST -d '{}'"
+      DEPLOY_EXECUTABLE="/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
+      deploy "$DEPLOY_EXECUTABLE" /config/addon/rime/deploy -X POST -d '{}'
     fi
-    deploy "$DEPLOY_EXECUTABLE" "$CMD"
   else
     log INFO "你正在使用最新版本，无需更新"
   fi

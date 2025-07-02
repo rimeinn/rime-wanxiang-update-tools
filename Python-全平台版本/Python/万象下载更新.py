@@ -990,17 +990,17 @@ class UpdateHandler:
             """macOS自动部署"""
             if self.engine == '鼠须管':
                 executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
-                cmd = r" --reload 2>&1"
+                cmd = ["--reload"]
             else:
-                executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl /config/addon/rime/deploy"
-                cmd = r" -X POST -d '{}'"
+                executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
+                cmd = ["/config/addon/rime/deploy", "-X", "POST", "-d", "{}"]
 
             if os.path.exists(executable):
-                print_warning("即将进行自动部署")
+                print_warning("即将进行自动部署，请查看通知中心确认部署")
                 time.sleep(2)
                 try:
-                    subprocess.run([executable, cmd], capture_output=True, text=True)
-                    print_success("部署命令已发送，请查看通知中心确认部署")
+                    subprocess.run([executable] + cmd, check=True, capture_output=True, text=True)
+                    print_success("已执行自动部署")
                     return True
                 except subprocess.CalledProcessError as e:
                     print_error("自动部署失败：{e}，请手动部署")
