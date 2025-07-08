@@ -1450,7 +1450,7 @@ class ScriptUpdater(UpdateHandler):
         if res.status_code == 200:
             with open(self.script_path, 'wb') as f:
                 f.write(res.content)
-            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出Pythonista重新启动）")
+            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出当前软件重新启动）")
             return True
         else:
             print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
@@ -1646,7 +1646,7 @@ def perform_auto_update(
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
-            print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
+            print_header("尝试跳转到Hamster重新部署输入法")
             if is_config_triggered:
                 # 配置触发的自动更新模式直接部署
                 webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
