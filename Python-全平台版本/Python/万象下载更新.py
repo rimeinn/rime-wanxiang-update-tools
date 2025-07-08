@@ -1649,14 +1649,14 @@ def perform_auto_update(
             print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
             if is_config_triggered:
                 # 配置触发的自动更新模式直接部署
-                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
                 print_success("已自动触发部署")
             else:
                 is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                 if is_deploy == 'y':
                     print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                     time.sleep(3)
-                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
     else:
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
