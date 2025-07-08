@@ -1827,7 +1827,7 @@ def main():
                     if is_deploy == 'y':
                         print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                         time.sleep(3)
-                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
                 else:
                     if deployer and updated == 1:
                         print_warning("请手动部署输入法")
