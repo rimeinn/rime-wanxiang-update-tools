@@ -26,3 +26,5 @@ chmod +x wanxiang-update
 ./wanxiang-update
 ```
 
+> 可以在系统环境变量中添加GitHub Token以避免请求限制，应设置变量名为`GITHUB_TOKEN`
+

@@ -114,8 +114,18 @@ get_github_response() {
   dict) url="$GH_API/$SCHEMA_REPO/releases" ;;
   gram) url="$GH_API/$GRAM_REPO/releases" ;;
   esac
-  curl -sL --connect-timeout 5 "$url" >"$TEMP_DIR/${type}_response.json" ||
+  # 如果设置了 GITHUB_TOKEN 环境变量，使用认证头
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    auth_header="Authorization: token $GITHUB_TOKEN"
+    curl -sL --connect-timeout 5 -H "$auth_header" "$url" >"$TEMP_DIR/${type}_response.json"
+  else
+    curl -sL --connect-timeout 5 "$url" >"$TEMP_DIR/${type}_response.json"
+  fi
+  
+  # 检查 curl 是否成功
+  if [[ $? -ne 0 ]]; then
     error_exit "GitHub API 响应错误"
+  fi
 }
 
 get_latest_version() {
