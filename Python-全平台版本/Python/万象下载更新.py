@@ -11,7 +11,6 @@ import zipfile
 import shutil
 import fnmatch
 import re
-import functools
 from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
@@ -140,31 +139,6 @@ if SYSTEM_TYPE == 'windows':
                 return value
         except (FileNotFoundError, PermissionError, OSError):
             return None
-
-def retry_on_exception(retries=3, delay=2, exceptions=(Exception,)):
-    """
-    装饰器：失败时自动重试
-    参数:
-        retries: 最大重试次数
-        delay: 每次重试之间的等待时间（秒）
-        exceptions: 捕捉哪些异常
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            for attempt in range(1, retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as e:
-                    last_exception = e
-                    print_error(f"[第{attempt}次尝试] 函数 `{func.__name__}` 执行失败：{e}")
-                    if attempt < retries:
-                        print_warning(f"等待 {delay} 秒后重试...")
-                        time.sleep(delay)
-            raise last_exception
-        return wrapper
-    return decorator
 
 
 # ====================== 配置管理器 ======================
@@ -851,7 +825,6 @@ class UpdateHandler:
             print_error(f"下载失败: {str(e)}")
             return False
 
-    @retry_on_exception()
     def extract_zip(self, zip_path, target_dir, is_dict=False) -> bool:
         """
         智能解压系统(支持排除文件)
