@@ -920,6 +920,7 @@ class UpdateHandler:
                     stderr=subprocess.DEVNULL,
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
+                time.sleep(0.5)
                 print_success("服务已优雅退出")
                 return True
             except subprocess.CalledProcessError as e:
