@@ -11,6 +11,7 @@ import zipfile
 import shutil
 import fnmatch
 import re
+import functools
 from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
@@ -140,7 +141,30 @@ if SYSTEM_TYPE == 'windows':
         except (FileNotFoundError, PermissionError, OSError):
             return None
 
-
+def retry_on_exception(retries=3, delay=2, exceptions=(Exception,)):
+    """
+    装饰器：失败时自动重试
+    参数:
+        retries: 最大重试次数
+        delay: 每次重试之间的等待时间（秒）
+        exceptions: 捕捉哪些异常
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(1, retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    print(f"[第{attempt}次尝试] 函数 `{func.__name__}` 执行失败：{e}")
+                    if attempt < retries:
+                        print(f"等待 {delay} 秒后重试...")
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 # ====================== 配置管理器 ======================
@@ -827,6 +851,7 @@ class UpdateHandler:
             print_error(f"下载失败: {str(e)}")
             return False
 
+    @retry_on_exception()
     def extract_zip(self, zip_path, target_dir, is_dict=False) -> bool:
         """
         智能解压系统(支持排除文件)
@@ -1241,16 +1266,16 @@ class DictUpdater(UpdateHandler):
         """sha256对比"""
         return remote_hash == calculate_sha256(file2)
 
-    def apply_update(self, temp, target, info) -> None:
+    def apply_update(self, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
-            if os.path.exists(target):
+            if os.path.exists(self.target_file):
                 os.remove(target)
-            os.rename(temp, target)
+            os.rename(self.temp_file, self.target_file)
             # 解压到配置目录
             if not self.extract_zip(
                 self.target_file,
@@ -1301,20 +1326,19 @@ class DictUpdater(UpdateHandler):
             return 0
 
         # 下载流程
-        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        if not self.download_file(remote_info["url"], self.temp_file):
             return -1
 
 
         try:
-            self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
+            self.apply_update(remote_info)  # 传递三个参数
             print_success("词库更新完成")
             return 1
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
             # 回滚临时文件
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            if os.path.exists(self.temp_file):
+                os.remove(self.temp_file)
             return -1
 
 # ====================== 模型更新 ======================
