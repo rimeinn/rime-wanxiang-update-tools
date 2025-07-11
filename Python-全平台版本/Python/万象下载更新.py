@@ -1274,7 +1274,7 @@ class DictUpdater(UpdateHandler):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
             if os.path.exists(self.target_file):
-                os.remove(target)
+                os.remove(self.target_file)
             os.rename(self.temp_file, self.target_file)
             # 解压到配置目录
             if not self.extract_zip(
