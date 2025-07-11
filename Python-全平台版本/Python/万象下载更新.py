@@ -158,9 +158,9 @@ def retry_on_exception(retries=3, delay=2, exceptions=(Exception,)):
                     return func(*args, **kwargs)
                 except exceptions as e:
                     last_exception = e
-                    print(f"[第{attempt}次尝试] 函数 `{func.__name__}` 执行失败：{e}")
+                    print_error(f"[第{attempt}次尝试] 函数 `{func.__name__}` 执行失败：{e}")
                     if attempt < retries:
-                        print(f"等待 {delay} 秒后重试...")
+                        print_warning(f"等待 {delay} 秒后重试...")
                         time.sleep(delay)
             raise last_exception
         return wrapper
