@@ -141,8 +141,6 @@ if SYSTEM_TYPE == 'windows':
             return None
 
 
-
-
 # ====================== 配置管理器 ======================
 class ConfigManager:
     """配置管理类"""
@@ -1242,16 +1240,16 @@ class DictUpdater(UpdateHandler):
         """sha256对比"""
         return remote_hash == calculate_sha256(file2)
 
-    def apply_update(self, temp, target, info) -> None:
+    def apply_update(self, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
-            if os.path.exists(target):
-                os.remove(target)
-            os.rename(temp, target)
+            if os.path.exists(self.target_file):
+                os.remove(self.target_file)
+            os.rename(self.temp_file, self.target_file)
             # 解压到配置目录
             if not self.extract_zip(
                 self.target_file,
@@ -1302,20 +1300,19 @@ class DictUpdater(UpdateHandler):
             return 0
 
         # 下载流程
-        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        if not self.download_file(remote_info["url"], self.temp_file):
             return -1
 
 
         try:
-            self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
+            self.apply_update(remote_info)  # 传递三个参数
             print_success("词库更新完成")
             return 1
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
             # 回滚临时文件
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            if os.path.exists(self.temp_file):
+                os.remove(self.temp_file)
             return -1
 
 # ====================== 模型更新 ======================
