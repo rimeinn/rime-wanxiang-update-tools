@@ -907,6 +907,7 @@ class UpdateHandler:
             """组合式进程终止策略"""
             if not self.graceful_stop():  # 先尝试优雅停止
                 self.hard_stop()          # 失败则强制终止
+            time.sleep(0.5) # 等待0.5秒防止服务没有停止
 
         def graceful_stop(self):
             """优雅停止服务"""
