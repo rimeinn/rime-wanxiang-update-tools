@@ -1846,6 +1846,7 @@ def main():
         print(f"\n{COLOR['OKBLUE']}⏏️ 程序退出 {COLOR['ENDC']}")
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
