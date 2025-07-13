@@ -1,7 +1,7 @@
 import time
 import subprocess
 import configparser
-import requests
+# import requests # 第三方包使用函数检查安装
 import os
 import hashlib
 import json
@@ -12,7 +12,9 @@ import shutil
 import fnmatch
 import re
 from typing import Tuple, Optional, List, Dict
-from tqdm import tqdm
+# from tqdm import tqdm # 第三方包使用函数检查安装
+from types import ModuleType
+import importlib
 
 # ====================== 全局配置 ======================
 
@@ -107,6 +109,42 @@ def print_warning(text):
 def print_error(text):
     print(f"[×] 错误: {text}")
 
+
+# ====================== 包检测函数 ======================
+
+def package_check(package_name: str, import_name: Optional[str]=None) -> Optional[ModuleType]:
+    """
+    确保指定的包已安装并返回对应的模块对象。
+    
+    Args:
+        package_name (str): pip 包名，用于安装（如 'tqdm'）
+        import_name (Optional[str]): 导入用的模块名（有时和包名不同，例如 'Pillow' -> 'PIL'）
+    Returns:
+        ModuleType: 导入的模块对象
+    Raises:
+        ImportError: 如果模块无法导入或安装失败
+    """
+    import_name = import_name or package_name
+
+    try:
+        return importlib.import_module(import_name)
+    except ImportError:
+        print_error(f"模块 '{import_name}' 未安装")
+        print_warning(f"正在尝试自动安装 '{package_name}'...")
+        try:
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', package_name])
+            return importlib.import_module(import_name)
+        except Exception as e:
+            raise ImportError(f"[×] 自动安装模块 '{package_name}' 失败: {e}")
+
+
+try:
+    tqdm = package_check('tqdm').tqdm
+    requests = package_check('requests')
+except Exception as e:
+    print_error(f"包检查失败，iOS或Android请手动检查安装：{e}")
+    sys.exit(1)
+    
 
 # ====================== win注册表路径配置 ======================
 if SYSTEM_TYPE == 'windows':
