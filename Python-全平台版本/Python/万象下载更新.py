@@ -1123,6 +1123,7 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
+        self.clean_old_schema()
 
     def run(self) -> int:
         """
@@ -1213,6 +1214,13 @@ class SchemeUpdater(UpdateHandler):
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
             
+    def clean_old_schema(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'rime-wanxiang' in file and file != self.scheme_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧方案文件")
+            
 
 # ====================== 词库更新 ======================
 class DictUpdater(UpdateHandler):
@@ -1223,6 +1231,7 @@ class DictUpdater(UpdateHandler):
         self.target_file = os.path.join(self.custom_dir, self.dict_file)  
         self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
+        self.clean_old_dict()
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
@@ -1314,6 +1323,13 @@ class DictUpdater(UpdateHandler):
             if os.path.exists(self.temp_file):
                 os.remove(self.temp_file)
             return -1
+            
+    def clean_old_dict(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'dicts.zip' in file and file != self.dict_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧词库文件")
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
