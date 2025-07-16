@@ -1205,13 +1205,16 @@ class SchemeUpdater(UpdateHandler):
         if os.path.exists(target):
             os.remove(target)
         os.rename(temp, target)
-        
-        # 解压文件
-        if not self.extract_zip(target, self.extract_path):
-            raise Exception("解压失败")
-        
-        # 保存记录
-        self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
+        try:
+            # 解压文件
+            if not self.extract_zip(target, self.extract_path):
+                # 解压失败时回滚：删除目标文件
+                os.remove(target)
+                raise Exception("解压失败")
+            # 保存记录
+            self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
+        except Exception:
+            raise
 
     def clean_build(self) -> None:
         """清理build目录"""
