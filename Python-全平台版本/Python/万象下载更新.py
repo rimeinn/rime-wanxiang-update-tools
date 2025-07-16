@@ -1199,22 +1199,17 @@ class SchemeUpdater(UpdateHandler):
             info (dict): 更新信息
         """
         if hasattr(self, 'terminate_processes'):
-            # 新增终止进程步骤
+            # 终止进程
             self.terminate_processes()
-        # 替换文件
+        # 解压文件
+        if not self.extract_zip(temp, self.extract_path):
+            raise Exception("解压失败")
+        # 解压成功重命名文件
         if os.path.exists(target):
             os.remove(target)
         os.rename(temp, target)
-        try:
-            # 解压文件
-            if not self.extract_zip(target, self.extract_path):
-                # 解压失败时回滚：删除目标文件
-                os.remove(target)
-                raise Exception("解压失败")
-            # 保存记录
-            self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
-        except Exception:
-            raise
+        # 保存记录
+        self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
 
     def clean_build(self) -> None:
         """清理build目录"""
