@@ -141,8 +141,6 @@ if SYSTEM_TYPE == 'windows':
             return None
 
 
-
-
 # ====================== 配置管理器 ======================
 class ConfigManager:
     """配置管理类"""
@@ -363,7 +361,7 @@ class ConfigManager:
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
-            'use_mirror': 'true',
+            'use_mirror': 'false',
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
@@ -512,7 +510,7 @@ class ConfigManager:
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
-            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
+            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认false)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
             ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
@@ -1125,6 +1123,7 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
+        self.clean_old_schema()
 
     def run(self) -> int:
         """
@@ -1215,6 +1214,13 @@ class SchemeUpdater(UpdateHandler):
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
             
+    def clean_old_schema(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'rime-wanxiang' in file and file != self.scheme_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧方案文件")
+            
 
 # ====================== 词库更新 ======================
 class DictUpdater(UpdateHandler):
@@ -1225,6 +1231,7 @@ class DictUpdater(UpdateHandler):
         self.target_file = os.path.join(self.custom_dir, self.dict_file)  
         self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
+        self.clean_old_dict()
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
@@ -1242,16 +1249,16 @@ class DictUpdater(UpdateHandler):
         """sha256对比"""
         return remote_hash == calculate_sha256(file2)
 
-    def apply_update(self, temp, target, info) -> None:
+    def apply_update(self, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
-            if os.path.exists(target):
-                os.remove(target)
-            os.rename(temp, target)
+            if os.path.exists(self.target_file):
+                os.remove(self.target_file)
+            os.rename(self.temp_file, self.target_file)
             # 解压到配置目录
             if not self.extract_zip(
                 self.target_file,
@@ -1302,21 +1309,27 @@ class DictUpdater(UpdateHandler):
             return 0
 
         # 下载流程
-        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        if not self.download_file(remote_info["url"], self.temp_file):
             return -1
 
 
         try:
-            self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
+            self.apply_update(remote_info)  # 传递三个参数
             print_success("词库更新完成")
             return 1
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
             # 回滚临时文件
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            if os.path.exists(self.temp_file):
+                os.remove(self.temp_file)
             return -1
+            
+    def clean_old_dict(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'dicts.zip' in file and file != self.dict_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧词库文件")
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
