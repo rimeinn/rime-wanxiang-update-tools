@@ -321,8 +321,8 @@ class ConfigManager:
             print_warning("已启用自动更新，跳过配置确认")
             return
         while True:
-            choice = input(f"{INDENT}配置是否正确？【Y(es)/N(o)/M(odify)】: ").strip().lower()
-            if choice == 'y':
+            choice = input(f"{INDENT}配置是否正确？【Y(y)或回车确认／N(n)重新生成／M(m)修改】: ").strip().lower()
+            if choice == 'y' or not choice:
                 print_success("配置正确。")
                 break
             elif choice == 'n':
@@ -792,12 +792,13 @@ class UpdateHandler:
             return url
         return f"https://{MIRROR_DOMAIN}/{url}"
 
-    def download_file(self, url, save_path) -> bool:
+    def download_file(self, url, save_path, is_continue) -> bool:
         """
         带进度显示的稳健下载
         Args:
             url (str): 下载链接
             save_path (str): 保存路径
+            is_continue (bool): 是否断点续传
         """
         try:
             # 统一提示镜像状态
@@ -809,7 +810,7 @@ class UpdateHandler:
 
             headers = {}
             # 获取已下载进度
-            if os.path.exists(save_path):
+            if is_continue:
                 downloaded = os.path.getsize(save_path)
             else:
                 downloaded = 0
@@ -1164,8 +1165,14 @@ class SchemeUpdater(UpdateHandler):
             return 0
             
         # 下载更新
-        temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        temp_file = os.path.join(self.custom_dir, f"temp_scheme_{remote_info['sha256']}.zip")
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_scheme*.zip"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
 
         # 应用更新
@@ -1232,8 +1239,6 @@ class DictUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.target_tag = DICT_TAG
-        self.target_file = os.path.join(self.custom_dir, self.dict_file)  
-        self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
         self.clean_old_dict()
 
@@ -1253,19 +1258,19 @@ class DictUpdater(UpdateHandler):
         """sha256对比"""
         return remote_hash == calculate_sha256(file2)
 
-    def apply_update(self, info) -> None:
+    def apply_update(self, temp, target, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
-            if os.path.exists(self.target_file):
-                os.remove(self.target_file)
-            os.rename(self.temp_file, self.target_file)
+            if os.path.exists(target):
+                os.remove(target)
+            os.rename(temp, target)
             # 解压到配置目录
             if not self.extract_zip(
-                self.target_file,
+                target,
                 self.dict_extract_path,
                 is_dict=True
             ):
@@ -1277,8 +1282,8 @@ class DictUpdater(UpdateHandler):
 
         except Exception as e:
             # 清理残留文件
-            if os.path.exists(self.temp_file):
-                os.remove(self.temp_file)
+            if os.path.exists(temp):
+                os.remove(temp)
             raise
 
     def run(self) -> int:
@@ -1313,19 +1318,26 @@ class DictUpdater(UpdateHandler):
             return 0
 
         # 下载流程
-        if not self.download_file(remote_info["url"], self.temp_file):
+        temp_file = os.path.join(self.custom_dir, f"temp_dict_{remote_info['sha256']}.zip")
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_dict*.zip"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
 
 
         try:
-            self.apply_update(remote_info)  # 传递三个参数
+            self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
             print_success("词库更新完成")
             return 1
         except Exception as e:
             print_error(f"更新失败: {str(e)}")
             # 回滚临时文件
-            if os.path.exists(self.temp_file):
-                os.remove(self.temp_file)
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
             return -1
             
     def clean_old_dict(self) -> None:
@@ -1343,7 +1355,6 @@ class ModelUpdater(UpdateHandler):
         self.record_file = os.path.join(self.custom_dir, "model_record.json")
         # 模型固定配置
         self.model_file = "wanxiang-lts-zh-hans.gram"
-        self.temp_file = os.path.join(self.custom_dir, f"{self.model_file}.tmp") 
         self.target_path = os.path.join(self.extract_path, self.model_file) 
 
     def check_update(self) -> Optional[Dict]:
@@ -1399,7 +1410,14 @@ class ModelUpdater(UpdateHandler):
             return 0
 
         # 下载到临时文件
-        if not self.download_file(remote_info["url"], self.temp_file):
+        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{remote_info['sha256']}.tmp") 
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), f"{self.model_file}*.tmp"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             print_error("模型下载失败")
             return -1
 
@@ -1411,7 +1429,7 @@ class ModelUpdater(UpdateHandler):
         try:
             if os.path.exists(self.target_path):
                 os.remove(self.target_path)
-            os.replace(self.temp_file, self.target_path)  # 原子操作更安全
+            os.replace(temp_file, self.target_path)  # 原子操作更安全
             self.save_record(self.record_file, "model_name", self.model_file, remote_info)
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
