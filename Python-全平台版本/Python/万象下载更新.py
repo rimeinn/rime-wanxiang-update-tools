@@ -16,6 +16,9 @@ from tqdm import tqdm
 
 # ====================== 全局配置 ======================
 
+# 镜像域名变量，用于加速GitHub访问（当前值：gh-proxy.com）
+# 配置方式：访问 https://github.akams.cn/ 可测速手动选取低延迟节点，然后将其域名复制给 MIRROR_DOMAN
+MIRROR_DOMAIN = "gh-proxy.com"  # 可选项示例：github.sagolu.top, gh-proxy.com, github.chenc.dev
 # GitHub 仓库信息
 OWNER = "amzxyz"
 REPO = "rime_wanxiang"
@@ -784,7 +787,10 @@ class UpdateHandler:
         Returns:
             str: 处理后的URL
         """
-        return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url
+        # return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url         # 备用
+        if not self.use_mirror:
+            return url
+        return f"https://{MIRROR_DOMAIN}/{url}"
 
     def download_file(self, url, save_path) -> bool:
         """
@@ -796,7 +802,7 @@ class UpdateHandler:
         try:
             # 统一提示镜像状态
             if self.use_mirror:
-                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://bgithub.xyz 下载{COLOR['ENDC']}")
+                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://{MIRROR_DOMAIN} 下载{COLOR['ENDC']}")
                 # print(f"{COLOR['WARNING']}注意: 如果使用代理，请确保关闭后再尝试下载{COLOR['ENDC']}")
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
@@ -1193,17 +1199,15 @@ class SchemeUpdater(UpdateHandler):
             info (dict): 更新信息
         """
         if hasattr(self, 'terminate_processes'):
-            # 新增终止进程步骤
+            # 终止进程
             self.terminate_processes()
-        # 替换文件
+        # 解压文件
+        if not self.extract_zip(temp, self.extract_path):
+            raise Exception("解压失败")
+        # 解压成功重命名文件
         if os.path.exists(target):
             os.remove(target)
         os.rename(temp, target)
-        
-        # 解压文件
-        if not self.extract_zip(target, self.extract_path):
-            raise Exception("解压失败")
-        
         # 保存记录
         self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
 
