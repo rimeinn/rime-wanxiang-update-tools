@@ -16,6 +16,9 @@ from tqdm import tqdm
 
 # ====================== 全局配置 ======================
 
+# 镜像域名变量，用于加速GitHub访问（当前值：gh-proxy.com）
+# 配置方式：访问 https://github.akams.cn/ 可测速手动选取低延迟节点，然后将其域名复制给 MIRROR_DOMAN
+MIRROR_DOMAIN = "gh-proxy.com"  # 可选项示例：github.sagolu.top, gh-proxy.com, github.chenc.dev
 # GitHub 仓库信息
 OWNER = "amzxyz"
 REPO = "rime_wanxiang"
@@ -139,8 +142,6 @@ if SYSTEM_TYPE == 'windows':
                 return value
         except (FileNotFoundError, PermissionError, OSError):
             return None
-
-
 
 
 # ====================== 配置管理器 ======================
@@ -320,8 +321,8 @@ class ConfigManager:
             print_warning("已启用自动更新，跳过配置确认")
             return
         while True:
-            choice = input(f"{INDENT}配置是否正确？【Y(es)/N(o)/M(odify)】: ").strip().lower()
-            if choice == 'y':
+            choice = input(f"{INDENT}配置是否正确？【Y(y)或回车确认／N(n)重新生成／M(m)修改】: ").strip().lower()
+            if choice == 'y' or not choice:
                 print_success("配置正确。")
                 break
             elif choice == 'n':
@@ -512,7 +513,7 @@ class ConfigManager:
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
-            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认true)", 'use_mirror'),
+            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认false)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
             ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
@@ -786,33 +787,37 @@ class UpdateHandler:
         Returns:
             str: 处理后的URL
         """
-        return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url
+        # return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url         # 备用
+        if not self.use_mirror:
+            return url
+        return f"https://{MIRROR_DOMAIN}/{url}"
 
-    def download_file(self, url, save_path) -> bool:
+    def download_file(self, url, save_path, is_continue) -> bool:
         """
         带进度显示的稳健下载
         Args:
             url (str): 下载链接
             save_path (str): 保存路径
+            is_continue (bool): 是否断点续传
         """
         try:
             # 统一提示镜像状态
             if self.use_mirror:
-                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://bgithub.xyz 下载{COLOR['ENDC']}")
+                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://{MIRROR_DOMAIN} 下载{COLOR['ENDC']}")
                 # print(f"{COLOR['WARNING']}注意: 如果使用代理，请确保关闭后再尝试下载{COLOR['ENDC']}")
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
 
             headers = {}
             # 获取已下载进度
-            if os.path.exists(save_path):
+            if is_continue:
                 downloaded = os.path.getsize(save_path)
             else:
                 downloaded = 0
             headers['Range'] = f'bytes={downloaded}-'
             
             response = requests.get(url, headers=headers, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get('content-length', 0)) + downloaded
             block_size = 8192
             
             # 使用 tqdm 包装响应内容的迭代器
@@ -920,6 +925,7 @@ class UpdateHandler:
                     stderr=subprocess.DEVNULL,
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
+                time.sleep(0.5)
                 print_success("服务已优雅退出")
                 return True
             except subprocess.CalledProcessError as e:
@@ -983,6 +989,30 @@ class UpdateHandler:
                 return True
             except Exception as e:
                 print_error(f"部署失败: {str(e)}")
+                return False
+    
+    if SYSTEM_TYPE == 'macos':
+        def deploy_for_mac(self) -> bool:
+            """macOS自动部署"""
+            if self.engine == '鼠须管':
+                executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
+                cmd = ["--reload"]
+            else:
+                executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
+                cmd = ["/config/addon/rime/deploy", "-X", "POST", "-d", "{}"]
+
+            if os.path.exists(executable):
+                print_warning("即将进行自动部署，请查看通知中心确认部署")
+                time.sleep(2)
+                try:
+                    subprocess.run([executable] + cmd, check=True, capture_output=True, text=True)
+                    print_success("已执行自动部署")
+                    return True
+                except subprocess.CalledProcessError as e:
+                    print_error("自动部署失败：{e}，请手动部署")
+                    return False
+            else:
+                print_error("找不到可执行文件：{executable}")
                 return False
 
 
@@ -1100,6 +1130,7 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
+        self.clean_old_schema()
 
     def run(self) -> int:
         """
@@ -1134,8 +1165,14 @@ class SchemeUpdater(UpdateHandler):
             return 0
             
         # 下载更新
-        temp_file = os.path.join(self.custom_dir, "temp_scheme.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        temp_file = os.path.join(self.custom_dir, f"temp_scheme_{remote_info['sha256']}.zip")
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_scheme*.zip"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
 
         # 应用更新
@@ -1169,17 +1206,15 @@ class SchemeUpdater(UpdateHandler):
             info (dict): 更新信息
         """
         if hasattr(self, 'terminate_processes'):
-            # 新增终止进程步骤
+            # 终止进程
             self.terminate_processes()
-        # 替换文件
+        # 解压文件
+        if not self.extract_zip(temp, self.extract_path):
+            raise Exception("解压失败")
+        # 解压成功重命名文件
         if os.path.exists(target):
             os.remove(target)
         os.rename(temp, target)
-        
-        # 解压文件
-        if not self.extract_zip(target, self.extract_path):
-            raise Exception("解压失败")
-        
         # 保存记录
         self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
 
@@ -1190,6 +1225,13 @@ class SchemeUpdater(UpdateHandler):
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
             
+    def clean_old_schema(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'rime-wanxiang' in file and file != self.scheme_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧方案文件")
+            
 
 # ====================== 词库更新 ======================
 class DictUpdater(UpdateHandler):
@@ -1197,9 +1239,8 @@ class DictUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.target_tag = DICT_TAG
-        self.target_file = os.path.join(self.custom_dir, self.dict_file)  
-        self.temp_file = os.path.join(self.custom_dir, "temp_dict.zip")   
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
+        self.clean_old_dict()
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
@@ -1229,7 +1270,7 @@ class DictUpdater(UpdateHandler):
             os.rename(temp, target)
             # 解压到配置目录
             if not self.extract_zip(
-                self.target_file,
+                target,
                 self.dict_extract_path,
                 is_dict=True
             ):
@@ -1241,8 +1282,8 @@ class DictUpdater(UpdateHandler):
 
         except Exception as e:
             # 清理残留文件
-            if os.path.exists(self.temp_file):
-                os.remove(self.temp_file)
+            if os.path.exists(temp):
+                os.remove(temp)
             raise
 
     def run(self) -> int:
@@ -1277,8 +1318,14 @@ class DictUpdater(UpdateHandler):
             return 0
 
         # 下载流程
-        temp_file = os.path.join(self.custom_dir, "temp_dict.zip")
-        if not self.download_file(remote_info["url"], temp_file):
+        temp_file = os.path.join(self.custom_dir, f"temp_dict_{remote_info['sha256']}.zip")
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_dict*.zip"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
 
 
@@ -1292,6 +1339,13 @@ class DictUpdater(UpdateHandler):
             if os.path.exists(temp_file):
                 os.remove(temp_file)
             return -1
+            
+    def clean_old_dict(self) -> None:
+        """当变更所使用的方案时，删除旧文件"""
+        for file in os.listdir(self.custom_dir):
+            if 'dicts.zip' in file and file != self.dict_file:
+                os.remove(os.path.join(self.custom_dir, file))
+                print_warning("移除旧词库文件")
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
@@ -1301,7 +1355,6 @@ class ModelUpdater(UpdateHandler):
         self.record_file = os.path.join(self.custom_dir, "model_record.json")
         # 模型固定配置
         self.model_file = "wanxiang-lts-zh-hans.gram"
-        self.temp_file = os.path.join(self.custom_dir, f"{self.model_file}.tmp") 
         self.target_path = os.path.join(self.extract_path, self.model_file) 
 
     def check_update(self) -> Optional[Dict]:
@@ -1357,7 +1410,14 @@ class ModelUpdater(UpdateHandler):
             return 0
 
         # 下载到临时文件
-        if not self.download_file(remote_info["url"], self.temp_file):
+        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{remote_info['sha256']}.tmp") 
+        if os.path.exists(temp_file):
+            is_continue = True
+        else:
+            is_continue = False
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), f"{self.model_file}*.tmp"):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        if not self.download_file(remote_info["url"], temp_file, is_continue):
             print_error("模型下载失败")
             return -1
 
@@ -1369,7 +1429,7 @@ class ModelUpdater(UpdateHandler):
         try:
             if os.path.exists(self.target_path):
                 os.remove(self.target_path)
-            os.replace(self.temp_file, self.target_path)  # 原子操作更安全
+            os.replace(temp_file, self.target_path)  # 原子操作更安全
             self.save_record(self.record_file, "model_name", self.model_file, remote_info)
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
@@ -1426,14 +1486,14 @@ class ScriptUpdater(UpdateHandler):
         if res.status_code == 200:
             with open(self.script_path, 'wb') as f:
                 f.write(res.content)
-            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出Pythonista重新启动）")
+            print_success("脚本更新成功，请重新运行脚本（iOS用户请退出当前软件重新启动）")
             return True
         else:
             print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
             return False
         
     def compare_version(self, local_version: str, remote_version: str) -> bool:
-        if local_version == 'DEFAULT_UPDATE_TOOLS_VERSION_TAG':
+        if not local_version.startswith('v'):
             return False
         if local_version != remote_version:
             return True
@@ -1498,24 +1558,26 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         try:
             update_cache_dir = scheme_updater.custom_dir
             os.makedirs(update_cache_dir, exist_ok=True)
-            
-            # 移除已有的md文件
-            for update_cache_file in os.listdir(update_cache_dir):
-                if re.match('^update.*md$', update_cache_file):
-                    os.remove(os.path.join(update_cache_dir, update_cache_file))
                     
             # 创建文件名（包含版本和时间）
             version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
             date_str = remote_time.strftime("%Y%m%d")
-            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")            
-            # 写入 Markdown 文件
-            with open(filename, 'w', encoding='utf-8') as md_file:
-                md_file.write(f"# 方案更新说明 ({version_tag})\n\n")
-                md_file.write(f"**发布时间**: {scheme_local}\n\n")
-                md_file.write("## 更新内容\n\n")
-                md_file.write(raw_description)
+            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")   
+
+            # 移除已有的md文件
+            for update_cache_file in os.listdir(update_cache_dir):
+                if re.match('^update.*md$', update_cache_file) and update_cache_file != f"update_{version_tag}_{date_str}.md":
+                    os.remove(os.path.join(update_cache_dir, update_cache_file))
+
+            if not os.path.exists(filename):
+                # 写入 Markdown 文件
+                with open(filename, 'w', encoding='utf-8') as md_file:
+                    md_file.write(f"# 方案更新说明 ({version_tag})\n\n")
+                    md_file.write(f"**发布时间**: {scheme_local}\n\n")
+                    md_file.write("## 更新内容\n\n")
+                    md_file.write(raw_description)
             
-            print_success(f"更新说明已保存到: {filename}")
+                print_success(f"更新说明已保存到: {filename}")
         except Exception as e:
             print_error(f"保存更新说明失败: {str(e)}")
 
@@ -1551,24 +1613,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         print(f"版本: {has_script_update['tag']}")
         print(f"发布时间: {has_script_update['update_time']}")
 
-
-def deploy_for_mac() -> bool:
-    """macOS自动部署"""
-    if SYSTEM_TYPE == 'macos':
-        cmd = """
-tell application "System Events"
-	keystroke "`" using {control down, option down}
-end tell
-"""
-        print_warning("即将通过快捷键自动部署，如果使用小企鹅，请在3秒内切换到rime以进行自动部署")
-        time.sleep(3)
-        try:
-            subprocess.run(["osascript", "-e", cmd], capture_output=True, text=True)
-            print_success("部署命令已发送，请查看通知中心确认部署")
-            return True
-        except:
-            print_error("发送部署命令失败，请手动部署或检查权限设置")
-            return False
 
 def perform_auto_update(
     config_manager: ConfigManager, 
@@ -1629,7 +1673,7 @@ def perform_auto_update(
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
             print_header("重新部署输入法")
-            deploy_for_mac()
+            deployer.deploy_for_mac()
     elif SYSTEM_TYPE == 'ios':
         import webbrowser
         if -1 in updated and deployer:
@@ -1638,17 +1682,17 @@ def perform_auto_update(
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
-            print_header("尝试跳转到Hamster重新部署输入法，完成后请返回Pythonista App")
+            print_header("尝试跳转到Hamster重新部署输入法")
             if is_config_triggered:
                 # 配置触发的自动更新模式直接部署
-                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
                 print_success("已自动触发部署")
             else:
                 is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                 if is_deploy == 'y':
                     print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                     time.sleep(3)
-                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
     else:
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
@@ -1811,7 +1855,7 @@ def main():
                         print_warning("部署失败，请检查日志")
                 elif SYSTEM_TYPE == 'macos' and deployer and updated == 1:
                     print_header("重新部署输入法")
-                    deploy_for_mac()
+                    deployer.deploy_for_mac()
                 elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
                     import webbrowser
                     print_header("尝试跳转到Hamster重新部署输入法")
@@ -1819,7 +1863,7 @@ def main():
                     if is_deploy == 'y':
                         print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
                         time.sleep(3)
-                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy")
+                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
                 else:
                     if deployer and updated == 1:
                         print_warning("请手动部署输入法")

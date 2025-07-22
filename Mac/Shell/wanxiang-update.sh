@@ -114,8 +114,18 @@ get_github_response() {
   dict) url="$GH_API/$SCHEMA_REPO/releases" ;;
   gram) url="$GH_API/$GRAM_REPO/releases" ;;
   esac
-  curl -sL --connect-timeout 5 "$url" >"$TEMP_DIR/${type}_response.json" ||
+  # 如果设置了 GITHUB_TOKEN 环境变量，使用认证头
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    auth_header="Authorization: token $GITHUB_TOKEN"
+    curl -sL --connect-timeout 5 -H "$auth_header" "$url" >"$TEMP_DIR/${type}_response.json"
+  else
+    curl -sL --connect-timeout 5 "$url" >"$TEMP_DIR/${type}_response.json"
+  fi
+  
+  # 检查 curl 是否成功
+  if [[ $? -ne 0 ]]; then
     error_exit "GitHub API 响应错误"
+  fi
 }
 
 get_latest_version() {
@@ -366,6 +376,26 @@ update_all_file() {
   log INFO "正在更新 语法模型"
   cp -rf "$RAW_DIR"/*.gram "$deploy_dir"
 }
+
+# 部属函数
+deploy() {
+  local deploy_executable="$1"
+  shift # 移除第一个参数，后续所有参数都是要传给可执行文件的
+  if [ -x "$deploy_executable" ]; then
+  echo "正在触发重新部署配置"
+    if output_and_error=$("$deploy_executable" "$@" 2>&1); then
+      [[ -n "$output_and_error" ]] && echo "输出: $output_and_error"
+      echo "重新部署成功"
+    else
+      echo "重新部署失败"
+      [[ -n "$output_and_error" ]] && echo "错误信息: $output_and_error"
+    fi
+  else
+    echo "找不到可执行文件: $deploy_executable"
+    echo "请手动部署"
+  fi
+}
+
 # 主函数
 main() {
   trap cleanup EXIT
@@ -409,12 +439,13 @@ main() {
     update_all_file "$deploy_dir"
     mv "$newfile" "$UPDATE_FILE"
     log INFO "更新完成！"
-    # 鼠须管自动部署
+    # 自动部署
     if [ "$ENGINE" = "squirrel" ]; then
-      osascript -e 'tell application "System Events" to keystroke "`" using {control down, option down}'
-      log INFO "已向鼠须管发送自动部署命令，请在通知中心查看结果"
+      DEPLOY_EXECUTABLE="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
+      deploy "$DEPLOY_EXECUTABLE" --reload
     else
-      log WARN "小企鹅请手动部署"
+      DEPLOY_EXECUTABLE="/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
+      deploy "$DEPLOY_EXECUTABLE" /config/addon/rime/deploy -X POST -d '{}'
     fi
   else
     log INFO "你正在使用最新版本，无需更新"

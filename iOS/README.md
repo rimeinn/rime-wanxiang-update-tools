@@ -44,7 +44,7 @@ vim .bashrc
 ```shell
 alias rime='python rime-wanxiang-update-win-mac-ios-android.py'
 ```
-3. 按`esc`，然后输入`:wq`，回车保存，执行`source .vimrc`
+3. 按`esc`，然后输入`:wq`，回车保存，执行`source .bashrc`
 4. 使用`pickFolder`重新打开Hamster文件夹
 5. 执行`rime`命令即可运行脚本
 
