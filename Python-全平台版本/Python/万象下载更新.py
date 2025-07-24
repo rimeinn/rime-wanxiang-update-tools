@@ -713,6 +713,60 @@ class UpdateHandler:
             server
         )
     
+    def get_old_file_list(self, old_exists_temp_zip: str, is_dict=False) -> List:
+        """
+        获取旧的压缩包文件
+        Args:
+            old_exists_temp_zip: UpdateCache路径下已经下载的zip压缩包
+            is_dict: 是否是词库（词库压缩包内容需要单独处理）
+        """
+        # 检查是否是文件
+        check_file = lambda file: file if os.path.isfile(file) else None
+        
+        try:
+            with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip_file:
+                old_members = old_zip_file.namelist()  # 获取所有成员
+            
+            if is_dict:
+                members = [member.split('/')[-1] for member in old_members]
+                extract_path = self.dict_extract_path
+            else:
+                members = old_members
+                extract_path = self.extract_path
+
+            whole_old_file_name = list(filter(None, map(check_file, [os.path.join(extract_path, old_file) for old_file in members])))
+            
+            exclude_files_list = []
+            res_str = ''
+            if self.exclude_files:
+                for exclude_file in self.exclude_files:
+                    for old_file_name in whole_old_file_name:
+                        if exclude_file in old_file_name:
+                            exclude_files_list.append(old_file_name)
+                            res_str += f"{old_file_name}, "
+                print("以下为排除文件不删除：", res_str.rstrip(', '))
+            
+            for whole_exclude_file in exclude_files_list:
+                try:
+                    # 移除排除文件
+                    whole_old_file_name.remove(whole_exclude_file)
+                except:
+                    pass
+
+            return whole_old_file_name
+        except:
+            return []
+            
+    def _delete_old_files(self, old_file_list):
+        if hasattr(self, 'terminate_processes'):
+            # 终止进程
+            self.terminate_processes()
+        for file in old_file_list:
+            if os.path.exists(file):
+                os.remove(file)
+
+        
+    
     def save_record(self, record_file: str, property_type: str, property_name: str, info: dict) -> None:
         """
         保存更新记录
@@ -1130,7 +1184,7 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
-        self.clean_old_schema()
+        
 
     def run(self) -> int:
         """
@@ -1163,6 +1217,7 @@ class SchemeUpdater(UpdateHandler):
             print_success("文件内容未变化，将更新本地保存的记录")
             self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
             return 0
+        
             
         # 下载更新
         temp_file = os.path.join(self.custom_dir, f"temp_scheme_{remote_info['sha256']}.zip")
@@ -1174,6 +1229,15 @@ class SchemeUpdater(UpdateHandler):
                 os.remove(os.path.join(self.custom_dir, old_should_drop))
         if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
+            
+        # 方案变更时清除旧文件
+        self.clean_old_schema()
+        # 获取上次下载的压缩包的内容
+        old_files = self.get_old_file_list(target_file)
+        if old_files:
+            self._delete_old_files(old_files)
+            print_warning("已移除上个版本的方案文件")
+
 
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
@@ -1229,8 +1293,10 @@ class SchemeUpdater(UpdateHandler):
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'rime-wanxiang' in file and file != self.scheme_file:
+                old_schema_files = self.get_old_file_list(file)
+                self._delete_old_files(old_schema_files)
                 os.remove(os.path.join(self.custom_dir, file))
-                print_warning("移除旧方案文件")
+                print_warning("已移除旧方案zip文件")
             
 
 # ====================== 词库更新 ======================
@@ -1240,7 +1306,6 @@ class DictUpdater(UpdateHandler):
         super().__init__(config_manager)
         self.target_tag = DICT_TAG
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
-        self.clean_old_dict()
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
@@ -1327,7 +1392,15 @@ class DictUpdater(UpdateHandler):
                 os.remove(os.path.join(self.custom_dir, old_should_drop))
         if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
-
+        
+        # 方案变更时清除旧文件
+        self.clean_old_dict()
+        # 获取上次下载的压缩包的内容
+        old_files = self.get_old_file_list(target_file, is_dict=True)
+        if old_files:
+            self._delete_old_files(old_files)
+            print_warning("已移除上个版本的词库文件")
+        
 
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
@@ -1344,8 +1417,10 @@ class DictUpdater(UpdateHandler):
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'dicts.zip' in file and file != self.dict_file:
+                old_dict_files = self.get_old_file_list(file)
+                self._delete_old_files(old_dict_files)
                 os.remove(os.path.join(self.custom_dir, file))
-                print_warning("移除旧词库文件")
+                print_warning("已移除旧词库zip文件")
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
