@@ -33,8 +33,7 @@ MODEL_FILE = "wanxiang-lts-zh-hans.gram"
 # BASE_DICT_FILE = "9-base-zh-dicts.zip"
 
 # Zh词库目录
-ZH_DICTS = "zh_dicts"
-ZH_DICTS_PRO = "zh_dicts_pro"
+ZH_DICTS = ZH_DICTS_PRO = "dicts"
 
 SCHEME_MAP = {
     '1': 'moqi',
@@ -713,26 +712,46 @@ class UpdateHandler:
             server
         )
     
-    def get_old_file_list(self, old_exists_temp_zip: str, is_dict=False) -> List:
+    def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict=False) -> Tuple:
         """
         获取旧的压缩包文件
         Args:
             old_exists_temp_zip: UpdateCache路径下已经下载的zip压缩包
+            new_temp_zip: UpdateCache路径本次更新下载的zip压缩包
             is_dict: 是否是词库（词库压缩包内容需要单独处理）
         """
         # 检查是否是文件
         check_file = lambda file: file if os.path.isfile(file) else None
+        # 检查是否是文件夹
+        check_dir = lambda file: file if os.path.isdir(file) else None
+        
+        whole_old_file_name = should_delete_dir = []
         
         try:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip_file:
-                old_members = old_zip_file.namelist()  # 获取所有成员
+                old_members = old_zip_file.namelist()
+
+            if new_temp_zip:
+                with zipfile.ZipFile(new_temp_zip, 'r') as new_zip_file:
+                    new_members = new_zip_file.namelist()    
+                
+                    # 获取新版本不再使用的内容
+                    should_delete_list = []
+                    for old_member in old_members:
+                        if old_member not in new_members:
+                            should_delete_list.append(old_member)                    
             
             if is_dict:
                 members = [member.split('/')[-1] for member in old_members]
                 extract_path = self.dict_extract_path
+                if should_delete_list:
+                    _ = [member.split('/')[-1] for member in should_delete_list]
+                    should_delete_dir = list(filter(None, map(check_file, [os.path.join(extract_path, old_file) for old_file in _]))) 
             else:
                 members = old_members
                 extract_path = self.extract_path
+                if should_delete_list:
+                    should_delete_dir = list(filter(None, map(check_dir, [os.path.join(extract_path, old_file) for old_file in should_delete_list])))
 
             whole_old_file_name = list(filter(None, map(check_file, [os.path.join(extract_path, old_file) for old_file in members])))
             
@@ -753,14 +772,26 @@ class UpdateHandler:
                 except:
                     pass
 
-            return whole_old_file_name
-        except:
-            return []
+        except Exception as e:
+            print_warning("无法正常获取需要清理的旧版本文件或文件夹：", e)
             
-    def _delete_old_files(self, old_file_list):
+        return whole_old_file_name, should_delete_dir
+
+            
+    def _delete_old_files(self, old_file_list: List, old_dir_list: List) -> None:
+        """
+        获取旧的压缩包文件
+        Args:
+            old_file_list: 获取到的需要删除的文件列表
+        """
         if hasattr(self, 'terminate_processes'):
             # 终止进程
             self.terminate_processes()
+        # 移除不再使用的文件夹
+        for file_dir in old_dir_list:
+            if os.path.exists(file_dir):
+                shutil.rmtree(file_dir)
+        # 移除旧版本文件
         for file in old_file_list:
             if os.path.exists(file):
                 os.remove(file)
@@ -1233,10 +1264,10 @@ class SchemeUpdater(UpdateHandler):
         # 方案变更时清除旧文件
         self.clean_old_schema()
         # 获取上次下载的压缩包的内容
-        old_files = self.get_old_file_list(target_file)
-        if old_files:
-            self._delete_old_files(old_files)
-            print_warning("已移除上个版本的方案文件")
+        old_files, old_dirs = self.get_old_file_list(target_file, temp_file)
+        if old_files or old_dirs:
+            self._delete_old_files(old_files, old_dirs)
+            print_warning("已移除上个版本的方案文件及残余文件夹")
 
 
         # 应用更新
@@ -1293,8 +1324,8 @@ class SchemeUpdater(UpdateHandler):
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'rime-wanxiang' in file and file != self.scheme_file:
-                old_schema_files = self.get_old_file_list(file)
-                self._delete_old_files(old_schema_files)
+                old_schema_files, old_schema_dirs = self.get_old_file_list(file, None)
+                self._delete_old_files(old_schema_files, old_schema_dirs)
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧方案zip文件")
             
@@ -1396,9 +1427,9 @@ class DictUpdater(UpdateHandler):
         # 方案变更时清除旧文件
         self.clean_old_dict()
         # 获取上次下载的压缩包的内容
-        old_files = self.get_old_file_list(target_file, is_dict=True)
+        old_files, _ = self.get_old_file_list(target_file, temp_file, is_dict=True)
         if old_files:
-            self._delete_old_files(old_files)
+            self._delete_old_files(old_files, _)
             print_warning("已移除上个版本的词库文件")
         
 
@@ -1417,8 +1448,8 @@ class DictUpdater(UpdateHandler):
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'dicts.zip' in file and file != self.dict_file:
-                old_dict_files = self.get_old_file_list(file)
-                self._delete_old_files(old_dict_files)
+                old_dict_files, _ = self.get_old_file_list(file, None, is_dict=True)
+                self._delete_old_files(old_dict_files, _)
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧词库zip文件")
 
