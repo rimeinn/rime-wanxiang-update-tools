@@ -371,7 +371,7 @@ update_all_file() {
   fi
   if [[ -d "$TEMP_DIR/dict" ]]; then
     log INFO "正在更新 词典文件"
-    cp -rf "$TEMP_DIR/dict"/* "$deploy_dir/zh_dicts"*/
+    cp -rf "$TEMP_DIR/dict"/* "$deploy_dir/dicts"*/
   fi
   log INFO "正在更新 语法模型"
   cp -rf "$RAW_DIR"/*.gram "$deploy_dir"
