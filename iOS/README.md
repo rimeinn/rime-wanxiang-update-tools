@@ -42,16 +42,16 @@ python rime-wanxiang-update-win-mac-ios-android.py
 
 1. 打开`.bashrc`文件：
 
-```shell
-cd ~
-vim .bashrc
-```
+    ```shell
+    cd ~
+    vim .bashrc
+    ```
 
 2. 插入如下内容（按`i`进入插入模式）
 
-```shell
-alias rime='python rime-wanxiang-update-win-mac-ios-android.py'
-```
+    ```shell
+    alias rime='python rime-wanxiang-update-win-mac-ios-android.py'
+    ```
 
 3. 按`esc`，然后输入`:wq`，回车保存，执行`source .bashrc`
 4. 使用`pickFolder`重新打开Hamster文件夹

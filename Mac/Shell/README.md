@@ -13,9 +13,9 @@
 
 1. 为脚本添加可执行权限
 
-```bash
-chmod +x wanxiang-update
-```
+    ```bash
+    chmod +x wanxiang-update
+    ```
 
 2. 在脚本中 `ENGINE=""`的双引号中填入你所使用的引擎：小企鹅为 `fcitx5`，鼠须管为 `squirrel`
 
