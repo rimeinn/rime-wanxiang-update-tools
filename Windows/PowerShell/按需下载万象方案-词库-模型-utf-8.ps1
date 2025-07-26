@@ -73,8 +73,8 @@ $GramKeyTable = @{
 $GramFileTableIndex = 0;
 
 $DictFileSaveDirTable = @{
-    "base" = "zh_dicts";
-    "pro" = "zh_dicts_pro";
+    "base" = "dicts";
+    "pro" = "dicts";
 }
 
 $DictFileSaveDirTableIndex = "base";
