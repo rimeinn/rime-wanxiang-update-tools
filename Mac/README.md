@@ -1,4 +1,5 @@
 # Rime 万象更新工具 - Mac端 Shell 版本
+
 **移植自[Linux](../Linux/Shell/wanxiang-update)脚本**
 
 ## 前端支持
