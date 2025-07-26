@@ -585,6 +585,7 @@ class ConfigManager:
         if first_download:
             missing = [] if os.path.exists(required_paths['方案解压目录']) else [required_paths['方案解压目录']]
         else:
+            missing = [path for name, path in required_paths.items() if not os.path.exists(path)]
             if not os.path.exists(required_paths['方案解压目录']):
                 print(f"\n{COLOR['FAIL']}关键路径配置错误：{COLOR['ENDC']}")
                 for name in missing:
@@ -604,7 +605,7 @@ class ConfigManager:
                     print(f"{INDENT}1. 该路径不存在")
                     print(f"{INDENT}2. 没有将该脚本放置在正确路径下")
                 sys.exit(1)
-            missing = [path for name, path in required_paths.items() if not os.path.exists(path)]
+            
         if missing:
             self.ensure_directories(missing)
             
