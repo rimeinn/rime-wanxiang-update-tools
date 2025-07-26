@@ -773,7 +773,7 @@ class UpdateHandler:
                     pass
 
         except Exception as e:
-            print_warning("无法正常获取需要清理的旧版本文件或文件夹：", e)
+            print_warning(f"无法正常获取需要清理的旧版本文件或文件夹：{str(e)}")
             
         return whole_old_file_name, should_delete_dir
 
