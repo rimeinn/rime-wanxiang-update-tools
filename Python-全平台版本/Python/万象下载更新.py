@@ -713,70 +713,73 @@ class UpdateHandler:
             server
         )
     
-    def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict=False) -> Tuple:
+    def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict: bool = False) -> Tuple[List[str], List[str]]:
         """
-        获取旧的压缩包文件
+        获取旧版本压缩包中的文件路径（用于清理）
+        
         Args:
-            old_exists_temp_zip: UpdateCache路径下已经下载的zip压缩包
-            new_temp_zip: UpdateCache路径本次更新下载的zip压缩包
-            is_dict: 是否是词库（词库压缩包内容需要单独处理）
+            old_exists_temp_zip: 旧版本 zip 压缩包路径
+            new_temp_zip: 新版本 zip 压缩包路径
+            is_dict: 是否是词库（词库路径不同，处理略有区别）
+    
+        Returns:
+            Tuple:
+                - 所有应删除的旧文件（非排除项）
+                - 新版本中不再使用的文件或目录路径
         """
-        # 检查是否是文件
-        check_file = lambda file: file if os.path.isfile(file) else None
-        # 检查是否是文件夹
-        check_dir = lambda file: file if os.path.isdir(file) else None
-        
-        whole_old_file_name = should_delete_dir = []
-        
+        def is_file(path): return os.path.isfile(path)
+        def is_dir(path): return os.path.isdir(path)
+    
+        whole_old_file_paths: List[str] = []
+        should_delete_paths: List[str] = []
+    
         try:
-            with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip_file:
-                old_members = old_zip_file.namelist()
-
-            if new_temp_zip:
-                with zipfile.ZipFile(new_temp_zip, 'r') as new_zip_file:
-                    new_members = new_zip_file.namelist()    
-                
-                    # 获取新版本不再使用的内容
-                    should_delete_list = []
-                    for old_member in old_members:
-                        if old_member not in new_members:
-                            should_delete_list.append(old_member)                    
+            with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
+                old_members = old_zip.namelist()
+    
+            new_members = []
+            if new_temp_zip and os.path.isfile(new_temp_zip):
+                with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
+                    new_members = new_zip.namelist()
+    
+            # 计算新版本中不再包含的旧文件
+            should_delete_members = [m for m in old_members if m not in new_members]
+    
+            extract_path = self.dict_extract_path if is_dict else self.extract_path
+    
+            # 获取压缩包中的实际文件名
+            members = [m.split('/')[-1] for m in old_members] if is_dict else old_members
+            delete_members = [m.split('/')[-1] for m in should_delete_members] if is_dict else should_delete_members
+    
+            # 所有旧文件路径
+            whole_old_file_paths = [
+                path for path in (os.path.join(extract_path, name) for name in members)
+                if is_file(path)
+            ]
             
-            if is_dict:
-                members = [member.split('/')[-1] for member in old_members]
-                extract_path = self.dict_extract_path
-                if should_delete_list:
-                    _ = [member.split('/')[-1] for member in should_delete_list]
-                    should_delete_dir = list(filter(None, map(check_file, [os.path.join(extract_path, old_file) for old_file in _]))) 
-            else:
-                members = old_members
-                extract_path = self.extract_path
-                if should_delete_list:
-                    should_delete_dir = list(filter(None, map(check_dir, [os.path.join(extract_path, old_file) for old_file in should_delete_list])))
-
-            whole_old_file_name = list(filter(None, map(check_file, [os.path.join(extract_path, old_file) for old_file in members])))
+            # 判断函数根据 is_dict 选择
+            check_func = is_file if is_dict else is_dir
             
-            exclude_files_list = []
-            res_str = ''
-            if self.exclude_files:
-                for exclude_file in self.exclude_files:
-                    for old_file_name in whole_old_file_name:
-                        if exclude_file in old_file_name:
-                            exclude_files_list.append(old_file_name)
-                            res_str += f"{old_file_name}, "
-                print("以下为排除文件不删除：", res_str.rstrip(', '))
-            
-            for whole_exclude_file in exclude_files_list:
-                try:
-                    # 移除排除文件
-                    whole_old_file_name.remove(whole_exclude_file)
-                except:
-                    pass
-
+            # 新版本中不再使用的文件/目录路径
+            should_delete_paths = [
+                path for path in (os.path.join(extract_path, name) for name in delete_members)
+                if check_func(path)
+            ]
+    
+            # 排除指定不删除文件
+            if getattr(self, "exclude_files", []):
+                excluded = []
+                for ex in self.exclude_files:
+                    excluded.extend([f for f in whole_old_file_paths if ex in f])
+    
+                if excluded:
+                    print("以下为排除文件不删除：", ", ".join(excluded))
+                    whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
+    
         except Exception as e:
-            print_warning(f"无法正常获取需要清理的旧版本文件或文件夹：{str(e)}")
-            
-        return whole_old_file_name, should_delete_dir
+            print_warning(f"无法获取需要清理的旧文件或目录：{e}")
+    
+        return whole_old_file_paths, should_delete_paths
 
             
     def _delete_old_files(self, old_file_list: List, old_dir_list: List) -> None:
@@ -1650,6 +1653,12 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
 
     has_script_update = script_updater.update_info
     
+    # 脚本更新提示
+    if has_script_update:
+        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
+        print(f"版本: {has_script_update['tag']}")
+        print(f"发布时间: {has_script_update['update_time']}")
+
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
         scheme_update_info = scheme_updater.update_info
@@ -1687,8 +1696,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
                 print_success(f"更新说明已保存到: {filename}")
         except Exception as e:
             print_error(f"保存更新说明失败: {str(e)}")
-
-
             
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
@@ -1714,11 +1721,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         # time.sleep(4)
         # sys.exit(0)
 
-    # 脚本更新提示
-    if has_script_update:
-        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
-        print(f"版本: {has_script_update['tag']}")
-        print(f"发布时间: {has_script_update['update_time']}")
 
 
 def perform_auto_update(
@@ -1747,6 +1749,11 @@ def perform_auto_update(
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
         print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
+
+    # 脚本更新检查（仅当有实际更新时才提示）
+    if script_updater.update_info:
+        script_updater.run()
+        
     # 初始化更新状态
     scheme_updated = 0
     dict_updated = 0
@@ -1810,9 +1817,7 @@ def perform_auto_update(
             print_warning("请手动部署输入法")
 
     print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
-    # 脚本更新检查（仅当有实际更新时才提示）
-    if script_updater.update_info:
-        script_updater.run()
+
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
         print("\n" + COLOR['OKGREEN'] +  "✨ 自动更新完成！" + COLOR['ENDC'])
