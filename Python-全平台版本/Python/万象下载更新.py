@@ -1653,6 +1653,12 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
 
     has_script_update = script_updater.update_info
     
+    # 脚本更新提示
+    if has_script_update:
+        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
+        print(f"版本: {has_script_update['tag']}")
+        print(f"发布时间: {has_script_update['update_time']}")
+
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
         scheme_update_info = scheme_updater.update_info
@@ -1690,8 +1696,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
                 print_success(f"更新说明已保存到: {filename}")
         except Exception as e:
             print_error(f"保存更新说明失败: {str(e)}")
-
-
             
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
@@ -1717,11 +1721,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         # time.sleep(4)
         # sys.exit(0)
 
-    # 脚本更新提示
-    if has_script_update:
-        print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
-        print(f"版本: {has_script_update['tag']}")
-        print(f"发布时间: {has_script_update['update_time']}")
 
 
 def perform_auto_update(
@@ -1750,6 +1749,11 @@ def perform_auto_update(
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
         print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
+
+    # 脚本更新检查（仅当有实际更新时才提示）
+    if script_updater.update_info:
+        script_updater.run()
+        
     # 初始化更新状态
     scheme_updated = 0
     dict_updated = 0
@@ -1813,9 +1817,7 @@ def perform_auto_update(
             print_warning("请手动部署输入法")
 
     print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
-    # 脚本更新检查（仅当有实际更新时才提示）
-    if script_updater.update_info:
-        script_updater.run()
+
     # 如果是配置触发的自动更新，直接退出
     if is_config_triggered:
         print("\n" + COLOR['OKGREEN'] +  "✨ 自动更新完成！" + COLOR['ENDC'])
