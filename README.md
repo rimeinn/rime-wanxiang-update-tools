@@ -13,6 +13,7 @@
 - [x] [Android版本(同文、小企鹅导入包通用构建脚本)](./Android/README.MD)
 
 ### Python-全平台版本
+
 - [x] [Python版本](./Python-全平台版本/README.md)
   - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
@@ -30,8 +31,6 @@
 - [x] [Python版本](./Python-全平台版本/README.md)
   - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
-
-
 ### Linux版本
 
 - [x] [Shell版本](./Linux/Shell/README.md)
@@ -43,6 +42,7 @@
 - [x] [Shell版本](./Mac/Shell/README.md)
 
 ### iOS版本
+
 - [x] [Python版本](./Python-全平台版本/README.md)
 - [x] [Shortcuts版本](./iOS/Shortcuts/README.md)
 
@@ -63,7 +63,7 @@ n_Policies。
     + FullyQualifiedErrorId : UnauthorizedAccess
 ```
 
-请在终端中运行以下命令，然后再运行脚本即可。 
+请在终端中运行以下命令，然后再运行脚本即可。
 
 ```PowerShell
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser

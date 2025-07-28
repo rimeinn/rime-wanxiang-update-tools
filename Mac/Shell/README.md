@@ -13,9 +13,10 @@
 
 1. 为脚本添加可执行权限
 
-```bash
-chmod +x wanxiang-update
-```
+    ```bash
+    chmod +x wanxiang-update
+    ```
+
 2. 在脚本中 `ENGINE=""`的双引号中填入你所使用的引擎：小企鹅为 `fcitx5`，鼠须管为 `squirrel`
 
 3. 在 `EXCLUDE_FILE=()` 数组中加入你需要排除的文件，不建议修改预设。
@@ -27,4 +28,3 @@ chmod +x wanxiang-update
 ```
 
 > 可以在系统环境变量中添加GitHub Token以避免请求限制，应设置变量名为`GITHUB_TOKEN`
-
