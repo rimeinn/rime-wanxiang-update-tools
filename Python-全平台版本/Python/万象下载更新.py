@@ -955,7 +955,7 @@ class UpdateHandler:
                     file_name = os.path.basename(normalized_path)
                     # 检查排除规则
                     exclude = any(
-                        fnmatch.fnmatch(normalized_path, pattern) or 
+                        fnmatch.fnmatch(normalized_path, pattern) or
                         fnmatch.fnmatch(file_name, pattern)
                         for pattern in exclude_patterns
                     )
@@ -966,21 +966,28 @@ class UpdateHandler:
     
                 # 使用有效文件数量作为进度条的总数
                 with tqdm(total=len(valid_members), desc="解压中") as pbar:
+                    base_dir_to_strip = ""
+                    if is_dict:
+                        # 针对词库，采用更稳健的单根目录检测
+                        if valid_members:
+                            first_member_parts = valid_members[0].split('/')
+                            if len(first_member_parts) > 1:
+                                potential_base = first_member_parts[0] + '/'
+                                if all(m.startswith(potential_base) for m in valid_members):
+                                    base_dir_to_strip = potential_base
+                    else:
+                        # 保留原有的方案文件处理逻辑
+                        base_dir_to_strip = get_common_base_dir(valid_members)
+
                     for member in valid_members:
-                        # 计算相对路径
-                        if is_dict:
-                            base_dir = get_common_base_dir(valid_members)
-                            if base_dir and member.startswith(base_dir):
-                                relative_path = member[len(base_dir):]
-                            else:
-                                relative_path = member
-                        else:
-                            base_dir = get_common_base_dir(valid_members)
-                            if base_dir and member.startswith(base_dir):
-                                relative_path = member[len(base_dir):]
-                            else:
-                                relative_path = member
-    
+                        relative_path = member
+                        if base_dir_to_strip and member.startswith(base_dir_to_strip):
+                            relative_path = member[len(base_dir_to_strip):]
+
+                        if not relative_path:
+                            pbar.update(1)
+                            continue
+
                         # 标准化路径
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
                         target_path = os.path.join(target_dir, normalized_path)
