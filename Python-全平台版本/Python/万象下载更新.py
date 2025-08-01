@@ -715,25 +715,26 @@ class UpdateHandler:
     
     def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict: bool = False) -> Tuple[List[str], List[str]]:
         """
-        获取旧版本压缩包中的文件路径（用于清理）
+        获取旧版本压缩包中的文件和目录路径（用于清理）
         
         Args:
             old_exists_temp_zip: 旧版本 zip 压缩包路径
             new_temp_zip: 新版本 zip 压缩包路径
-            is_dict: 是否是词库（词库路径不同，处理略有区别）
+            is_dict: 是否是词库
     
         Returns:
             Tuple:
                 - 所有应删除的旧文件（非排除项）
-                - 新版本中不再使用的文件或目录路径
+                - 新版本中不再使用的目录路径
         """
-        def is_file(path): return os.path.isfile(path)
-        def is_dir(path): return os.path.isdir(path)
-    
-        whole_old_file_paths: List[str] = []
-        should_delete_paths: List[str] = []
+        files_to_delete: List[str] = []
+        dirs_to_delete: List[str] = []
     
         try:
+            # 确保旧的zip文件存在
+            if not os.path.exists(old_exists_temp_zip):
+                return [], []
+                
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
                 old_members = old_zip.namelist()
     
@@ -742,44 +743,46 @@ class UpdateHandler:
                 with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
                     new_members = new_zip.namelist()
     
-            # 计算新版本中不再包含的旧文件
-            should_delete_members = [m for m in old_members if m not in new_members]
-    
             extract_path = self.dict_extract_path if is_dict else self.extract_path
     
-            # 获取压缩包中的实际文件名
-            members = [m.split('/')[-1] for m in old_members] if is_dict else old_members
-            delete_members = [m.split('/')[-1] for m in should_delete_members] if is_dict else should_delete_members
-    
-            # 所有旧文件路径
-            whole_old_file_paths = [
-                path for path in (os.path.join(extract_path, name) for name in members)
-                if is_file(path)
+            # 1. 获取旧版本解压后所有文件的完整路径
+            all_old_files = [
+                os.path.join(extract_path, m) for m in old_members
+                if not m.endswith('/') and os.path.isfile(os.path.join(extract_path, m))
             ]
+
+            # 2. 识别新版本中不再存在的目录
+            old_dirs_set = {m for m in old_members if m.endswith('/')}
+            new_dirs_set = {m for m in new_members if m.endswith('/')}
+            deleted_dirs_members = old_dirs_set - new_dirs_set
             
-            # 判断函数根据 is_dict 选择
-            check_func = is_file if is_dict else is_dir
-            
-            # 新版本中不再使用的文件/目录路径
-            should_delete_paths = [
-                path for path in (os.path.join(extract_path, name) for name in delete_members)
-                if check_func(path)
+            dirs_to_delete = [
+                os.path.join(extract_path, m) for m in deleted_dirs_members
+                if os.path.isdir(os.path.join(extract_path, m))
             ]
-    
-            # 排除指定不删除文件
+
+            # 3. 默认情况下，所有旧文件都应该被删除
+            files_to_delete = list(all_old_files)
+
+            # 4. 排除指定不删除的文件
             if getattr(self, "exclude_files", []):
-                excluded = []
-                for ex in self.exclude_files:
-                    excluded.extend([f for f in whole_old_file_paths if ex in f])
-    
-                if excluded:
-                    print("以下为排除文件不删除：", ", ".join(excluded))
-                    whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
-    
+                excluded_files = set()
+                for pattern in self.exclude_files:
+                    # 使用 fnmatch 进行模式匹配
+                    for f in all_old_files:
+                        # 匹配完整路径或仅文件名
+                        if fnmatch.fnmatch(f, pattern) or fnmatch.fnmatch(os.path.basename(f), pattern):
+                            excluded_files.add(f)
+                
+                if excluded_files:
+                    print("以下为排除文件不删除：", ", ".join([os.path.basename(f) for f in excluded_files]))
+                    # 从待删除列表中移除被排除的文件
+                    files_to_delete = [f for f in files_to_delete if f not in excluded_files]
+
         except Exception as e:
             print_warning(f"无法获取需要清理的旧文件或目录：{e}")
     
-        return whole_old_file_paths, should_delete_paths
+        return files_to_delete, dirs_to_delete
 
             
     def _delete_old_files(self, old_file_list: List, old_dir_list: List) -> None:
@@ -1431,10 +1434,10 @@ class DictUpdater(UpdateHandler):
         # 方案变更时清除旧文件
         self.clean_old_dict()
         # 获取上次下载的压缩包的内容
-        old_files, _ = self.get_old_file_list(target_file, temp_file, is_dict=True)
-        if old_files:
-            self._delete_old_files(old_files, _)
-            print_warning("已移除上个版本的词库文件")
+        old_files, old_dirs = self.get_old_file_list(target_file, temp_file, is_dict=True)
+        if old_files or old_dirs:
+            self._delete_old_files(old_files, old_dirs)
+            print_warning("已移除上个版本的词库文件及残余文件夹")
         
 
         try:
