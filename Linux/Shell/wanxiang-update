@@ -283,8 +283,8 @@ download_and_unzip() {
   if [[ "$type" == "schema" ]]; then
     unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR/$type"
   elif [[ "$type" == "dict" ]]; then
-    unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR"
-    mv "$TEMP_DIR"/*dicts "$TEMP_DIR/$type"
+    unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR/$type"
+    mv "$TEMP_DIR/$type"/*dicts "$TEMP_DIR/dict"
   fi
 }
 update_all_file() {
@@ -305,7 +305,7 @@ update_all_file() {
   fi
   if [[ -d "$TEMP_DIR/dict" ]]; then
     log INFO "正在更新 词典文件"
-    cp -rf "$TEMP_DIR/dict"/* "$deploy_dir/dicts"*/
+    cp -rf "$TEMP_DIR/dict"/* "$deploy_dir/dicts"
   fi
   log INFO "正在更新 语法模型"
   cp -rf "$RAW_DIR"/*.gram "$deploy_dir"
@@ -363,13 +363,13 @@ main() {
     update_all_file "$deploy_dir"
     mv "$newfile" "$UPDATE_FILE"
     log INFO "更新完成！"
-    log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
-    if [[ "$input" == "fcitx5" ]]; then
-      dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
-        org.fcitx.Fcitx.Controller1.ReloadAddonConfig string:rime
-    elif [[ "$input" == "ibus" ]]; then
-      ibus-daemon -drx
-    fi
+    # log INFO "已调用相关指令重部署方案, 请耐心等待部署完成"
+    # if [[ "$input" == "fcitx5" ]]; then
+    #   dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
+    #     org.fcitx.Fcitx.Controller1.ReloadAddonConfig string:rime
+    # elif [[ "$input" == "ibus" ]]; then
+    #   ibus-daemon -drx
+    # fi
   else
     log INFO "你正在使用最新版本，无需更新"
   fi
