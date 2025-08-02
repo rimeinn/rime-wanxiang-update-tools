@@ -737,23 +737,24 @@ class UpdateHandler:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
                 old_members = old_zip.namelist()
     
-            new_members = []
             if new_temp_zip and os.path.isfile(new_temp_zip):
                 with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
                     new_members = new_zip.namelist()
     
-            # 计算新版本中不再包含的旧文件
+            # 处理词库情况下的路径差异
+            if is_dict:
+                # 去除可能有的目录前缀
+                new_members = [m.split('/')[-1] for m in new_members if m.split('/')[-1]]
+                old_members = [m.split('/')[-1] for m in old_members if m.split('/')[-1]]
+    
+            # 新版本中不再包含的旧文件
             should_delete_members = [m for m in old_members if m not in new_members]
     
             extract_path = self.dict_extract_path if is_dict else self.extract_path
     
-            # 获取压缩包中的实际文件名
-            members = [m.split('/')[-1] for m in old_members] if is_dict else old_members
-            delete_members = [m.split('/')[-1] for m in should_delete_members] if is_dict else should_delete_members
-    
             # 所有旧文件路径
             whole_old_file_paths = [
-                path for path in (os.path.join(extract_path, name) for name in members)
+                path for path in (os.path.join(extract_path, name) for name in old_members)
                 if is_file(path)
             ]
             
@@ -762,7 +763,7 @@ class UpdateHandler:
             
             # 新版本中不再使用的文件/目录路径
             should_delete_paths = [
-                path for path in (os.path.join(extract_path, name) for name in delete_members)
+                path for path in (os.path.join(extract_path, name) for name in should_delete_members)
                 if check_func(path)
             ]
     
