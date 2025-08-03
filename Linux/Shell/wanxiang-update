@@ -95,6 +95,10 @@ update_tools_check() {
     error_exit "操作终止"
   fi
   log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
+  log INFO "正在检查是否完成 Rime 部署目录变量: $DEPLOY_DIR 的配置"
+  if [[ "$DEPLOY_DIR" -eq ""  ]]; then
+    error_exit "未配置 Rime 部署目录变量，操作终止"
+  fi
   log INFO "正在检查本工具是否有更新"
   local local_version remote_version
   get_github_response "tools"
@@ -284,7 +288,7 @@ download_and_unzip() {
     unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR/$type"
   elif [[ "$type" == "dict" ]]; then
     unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR/$type"
-    mv "$TEMP_DIR/$type"/*dicts "$TEMP_DIR/dict"
+    mv "$TEMP_DIR/$type"/*dicts "$TEMP_DIR/$type"/dict
   fi
 }
 update_all_file() {
