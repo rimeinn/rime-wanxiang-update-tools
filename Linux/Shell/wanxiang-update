@@ -22,6 +22,7 @@ TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools"
 FUZHU_LIST=("all" "base" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
+# UPDATE_TOOLS_VERSION="v999" # 测试用
 declare -A SCHEMA_MAP=(
   ["moqi"]="rime-wanxiang-moqi-fuzhu.zip"
   ["flypy"]="rime-wanxiang-flypy-fuzhu.zip"
@@ -83,7 +84,7 @@ fuzhu_check() {
 }
 script_check() {
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
-    log WARN "你似乎正在使用源文件！"
+    log WARN "您似乎正在使用源文件！"
     log WARN "请从 $TOOLS_REPO/releases/latest 页面下载正式版！"
     error_exit "终止操作"
   fi
@@ -97,7 +98,7 @@ script_check() {
   )
   if [[ "$remote_version" > "$local_version" ]]; then
     log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-    log WARN "你可从该链接下载: $GH_DL/$UPDATE_TOOLS_REPO/releases/tag/$remote_version"
+    log WARN "您可从该链接下载: $GH_DL/$UPDATE_TOOLS_REPO/releases/tag/$remote_version"
   else
     log INFO "工具已是最新版本"
   fi
@@ -108,17 +109,17 @@ update_schema() {
   # 获取本地版本号
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
-    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+    local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
   else
-    local_version="0"
+    local_version="v0"
   fi
-  log INFO "当前方案文件版本号为 v$local_version"
+  log INFO "当前方案文件版本号为 $local_version"
   # 获取远程版本号
   remote_version=$(
     curl -sL --connect-timeout 10 $SCHEMA_API/releases |
       jq -r '.[].tag_name' | grep -vE "dict-nightly" | sort -rV | head -n 1
   )
-  if [[ "$remote_version" > "v$local_version" ]]; then
+  if [[ "$remote_version" > "$local_version" ]]; then
     log INFO "方案文件最新版本号为 $remote_version, 以下内容为更新日志"
     local changelog
     changelog=$(
@@ -127,7 +128,7 @@ update_schema() {
         select(.tag_name == $version ) | .body'
     )
     echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
-    sleep 5
+    sleep 3
     log INFO "开始更新方案文件，正在下载文件"
     curl -L --connect-timeout 10 -o "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]}" \
       "$SCHEMA_REPO/releases/download/$remote_version/${SCHEMA_MAP[$fuzhu]}"
@@ -136,9 +137,9 @@ update_schema() {
     local_sha256sum=$(sha256sum "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]}" | awk '{print $1}')
     remote_sha256sum=$(
       curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-        jq -r --arg version "$remote_version" --arg fuzhu "$fuzhu" '.[] |
+        jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
         select(.tag_name == $version) | .assets.[] |
-        select(.name | test($fuzhu)) | .digest' | awk -F ':' '{print $2}'
+        select(.name | test($name)) | .digest' | awk -F ':' '{print $2}'
     )
     [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "方案文件下载出错，请重试！"
     log INFO "验证成功，开始更新方案文件"
@@ -165,44 +166,80 @@ update_schema() {
 }
 update_dict() {
   local fuzhu="$1"
-  log INFO "正在下载最新词典文件"
-  curl -L --connect-timeout 10 -o "$TEMP_DIR/${DICT_MAP[$fuzhu]}" \
-    "$SCHEMA_REPO/releases/download/dict-nightly/${DICT_MAP[$fuzhu]}"
-  log INFO "正在验证文件完整性"
-  local local_sha256sum remote_sha256sum
-  local_sha256sum=$(sha256sum "$TEMP_DIR/${DICT_MAP[$fuzhu]}" | awk '{print $1}')
-  remote_sha256sum=$(
+  local local_date remote_date
+  if [[ -f "${DEPLOY_DIR}/dicts/chengyu.txt" ]]; then
+    local_date=$(stat -c %Z "${DEPLOY_DIR}/dicts/chengyu.txt")
+  else
+    local_date=0
+  fi
+  remote_date=$(
     curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-      jq -r --arg version "dict-nightly" --arg fuzhu "$fuzhu" '.[] |
+      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
       select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($fuzhu)) | .digest' | awk -F ':' '{print $2}'
+      select(.name | test($name)) | .updated_at'
   )
-  [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "词典文件下载出错，请重试！"
-  log INFO "验证成功，开始更新词典文件"
-  unzip -q "$TEMP_DIR/${DICT_MAP[$fuzhu]}" -d "$TEMP_DIR"
-  local dict_dir
-  dict_dir="${DICT_MAP[$fuzhu]:2}"
-  dict_dir="${dict_dir%.zip}"
-  cp -rf "$TEMP_DIR/$dict_dir"/* "${DEPLOY_DIR}/dicts"
-  log INFO "词典文件更新成功"
+  remote_date=$(date -d "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新词典文件"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/${DICT_MAP[$fuzhu]}" \
+      "$SCHEMA_REPO/releases/download/dict-nightly/${DICT_MAP[$fuzhu]}"
+    log INFO "正在验证文件完整性"
+    local local_sha256sum remote_sha256sum
+    local_sha256sum=$(sha256sum "$TEMP_DIR/${DICT_MAP[$fuzhu]}" | awk '{print $1}')
+    remote_sha256sum=$(
+      curl -sL --connect-timeout 10 $SCHEMA_API/releases |
+        jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($name)) | .digest' | awk -F ':' '{print $2}'
+    )
+    [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "词典文件下载出错，请重试！"
+    log INFO "验证成功，开始更新词典文件"
+    unzip -q "$TEMP_DIR/${DICT_MAP[$fuzhu]}" -d "$TEMP_DIR"
+    local dict_dir
+    dict_dir="${DICT_MAP[$fuzhu]:2}"
+    dict_dir="${dict_dir%.zip}"
+    cp -rf "$TEMP_DIR/$dict_dir"/* "${DEPLOY_DIR}/dicts"
+    log INFO "词典文件更新成功"
+  else
+    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "词典文件最后更新于 $local_date, 您目前无需更新它"
+  fi
 }
 update_gram() {
-  log INFO "正在下载最新语法模型"
-  curl -L --connect-timeout 10 -o "$TEMP_DIR/wanxiang-lts-zh-hans.gram" \
-    "$GRAM_REPO/releases/download/LTS/wanxiang-lts-zh-hans.gram"
-  log INFO "正在验证文件完整性"
-  local local_sha256sum remote_sha256sum
-  local_sha256sum=$(sha256sum "$TEMP_DIR/wanxiang-lts-zh-hans.gram" | awk '{print $1}')
-  remote_sha256sum=$(
+  local local_date remote_date
+  if [[ -f "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram" ]]; then
+    local_date=$(stat -c %Z "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram")
+  else
+    local_date=0
+  fi
+  remote_date=$(
     curl -sL --connect-timeout 10 $GRAM_API/releases |
-      jq -r --arg version "LTS" --arg gramname "wanxiang-lts-zh-hans.gram" '.[] |
-      select(.tag_name == $version) | .assets.[] |
-      select(.name == $gramname) | .digest' | awk -F ':' '{print $2}'
+      jq -r --arg version "LTS" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($name)) | .updated_at'
   )
-  [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "语法模型下载出错，请重试！"
-  log INFO "验证成功，开始语法模型文件"
-  cp -rf "$TEMP_DIR/wanxiang-lts-zh-hans.gram" "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram"
-  log INFO "语法模型更新成功"
+  remote_date=$(date -d "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新语法模型"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/wanxiang-lts-zh-hans.gram" \
+      "$GRAM_REPO/releases/download/LTS/wanxiang-lts-zh-hans.gram"
+    log INFO "正在验证文件完整性"
+    local local_sha256sum remote_sha256sum
+    local_sha256sum=$(sha256sum "$TEMP_DIR/wanxiang-lts-zh-hans.gram" | awk '{print $1}')
+    remote_sha256sum=$(
+      curl -sL --connect-timeout 10 $GRAM_API/releases |
+        jq -r --arg version "LTS" --arg name "wanxiang-lts-zh-hans.gram" '.[] |
+      select(.tag_name == $version) | .assets.[] |
+      select(.name == $name) | .digest' | awk -F ':' '{print $2}'
+    )
+    [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "语法模型下载出错，请重试！"
+    log INFO "验证成功，开始语法模型文件"
+    cp -rf "$TEMP_DIR/wanxiang-lts-zh-hans.gram" "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram"
+    log INFO "语法模型更新成功"
+  else
+    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "语法模型最后更新于 $local_date, 您目前无需更新它"
+  fi
 }
 
 main() {
@@ -252,7 +289,7 @@ main() {
       gram="true"
       ;;
     *)
-      log WARN "你可能错误的使用了该脚本"
+      log WARN "您可能错误的使用了该脚本"
       log WARN "请前往 GitHub 页面阅读 Readme"
       log WARN "直达链接：$TOOLS_REPO/blob/main/Linux/Shell/README.md"
       error_exit "参数输入错误: $1"
@@ -263,10 +300,10 @@ main() {
   # 判断是否设置了部署目录
   if [[ -n "$DEPLOY_DIR" ]]; then
     if [[ ! -d "$DEPLOY_DIR" ]]; then
-      log WARN "部署目录 $DEPLOY_DIR 不存在，你要创建它吗？"
+      log WARN "部署目录 $DEPLOY_DIR 不存在，您要创建它吗？"
       read -rp "请输入 YES 或 NO (区分大小写) " _check
       if [[ "$_check" == "YES" ]]; then
-        log WARN "你真的要创建该目录吗？你确定你的设置正确吗？"
+        log WARN "您真的要创建该目录吗？您确定您的设置正确吗？"
         read -rp "请输入 YES 或 NO (区分大小写) " _check_again
         [[ "$_check_again" == "YES" ]] || error_exit "用户终止操作"
         mkdir -p "$DEPLOY_DIR"
@@ -279,10 +316,10 @@ main() {
   fi
   # 排除项目列表文件是否存在
   if [[ ! -f "$DEPLOY_DIR/user_exclude_file.txt" ]]; then
-    log WARN "你没有设置排除项目列表！"
-    log WARN "你需要创建的文件为 $DEPLOY_DIR/user_exclude_file.txt"
-    log WARN "请在该文件中写入你需要排除的项目，每行一个"
-    log WARN "如果你确实不需要排除任何文件，请创建一个空文件来抑制该警告"
+    log WARN "您没有设置排除项目列表！"
+    log WARN "您需要创建的文件为 $DEPLOY_DIR/user_exclude_file.txt"
+    log WARN "请在该文件中写入您需要排除的项目，每行一个"
+    log WARN "如果您确实不需要排除任何文件，请创建一个空文件来抑制该警告"
     log WARN "更多内容请参阅：$TOOLS_REPO/blob/main/Linux/Shell/README.md"
     error_exit "$DEPLOY_DIR/user_exclude_file.txt 文件不存在"
   fi
