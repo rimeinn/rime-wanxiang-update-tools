@@ -6,9 +6,9 @@ $IsUpdateSchemaDown = $true
 $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
-# 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0"
-# [1]-墨奇; [2]-小鹤; [3]-自然码; [4]-简单鹤; [5]-虎码; [6]-五笔; [7]-汉心; [9]-基础版"
-$InputSchemaType = "3"
+# 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
+# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码
+$InputSchemaType = "7"
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
 #$SkipFiles = @(
@@ -54,17 +54,17 @@ $DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
 $Debug = $false;
 
 $KeyTable = @{
-    "1" = "moqi";
-    "2" = "flypy";
-    "3" = "zrm";
-    "4" = "jdh";
+    "0" = "base";
+    "1" = "flypy";
+    "2" = "hanxin";
+    "3" = "jdh";
+    "4" = "moqi";
     "5" = "tiger";
     "6" = "wubi";
-    "7" = "hanxin";
-    "9" = "base";
+    "7" = "zrm";
 }
 
-$SchemaDownloadTip = "[1]-墨奇; [2]-小鹤; [3]-自然码; [4]-简单鹤; [5]-虎码; [6]-五笔; [7]-汉心; [9]-基础版";
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
