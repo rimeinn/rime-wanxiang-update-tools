@@ -13,38 +13,12 @@ DEPLOY_DIR=""
 ######### 配置结束 #########
 
 # 全局变量
-SCHEMA_REPO="https://github.com/amzxyz/rime_wanxiang"
-GRAM_REPO="https://github.com/amzxyz/RIME-LMDG"
-TOOLS_REPO="https://github.com/expoli/rime-wanxiang-update-tools"
-SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang"
-GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG"
-TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools"
+SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
+GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
+TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
 FUZHU_LIST=("all" "base" "flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-# UPDATE_TOOLS_VERSION="v999" # 测试用
-declare -A SCHEMA_MAP=(
-  ["moqi"]="rime-wanxiang-moqi-fuzhu.zip"
-  ["flypy"]="rime-wanxiang-flypy-fuzhu.zip"
-  ["zrm"]="rime-wanxiang-zrm-fuzhu.zip"
-  ["jdh"]="rime-wanxiang-jdh-fuzhu.zip"
-  ["tiger"]="rime-wanxiang-tiger-fuzhu.zip"
-  ["wubi"]="rime-wanxiang-wubi-fuzhu.zip"
-  ["hanxin"]="rime-wanxiang-hanxin-fuzhu.zip"
-  ["all"]="rime-wanxiang-all-fuzhu.zip"
-  ["base"]="rime-wanxiang-base.zip"
-)
-declare -A DICT_MAP=(
-  ["moqi"]="1-pro-moqi-fuzhu-dicts.zip"
-  ["flypy"]="2-pro-flypy-fuzhu-dicts.zip"
-  ["zrm"]="3-pro-zrm-fuzhu-dicts.zip"
-  ["jdh"]="4-pro-jdh-fuzhu-dicts.zip"
-  ["tiger"]="5-pro-tiger-fuzhu-dicts.zip"
-  ["wubi"]="6-pro-wubi-fuzhu-dicts.zip"
-  ["hanxin"]="7-pro-hanxin-fuzhu-dicts.zip"
-  ["all"]="8-pro-all-dicts.zip"
-  ["base"]="9-base-dicts.zip"
-)
 
 # 日志与错误处理
 log() {
@@ -85,7 +59,7 @@ fuzhu_check() {
 script_check() {
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
     log WARN "您似乎正在使用源文件！"
-    log WARN "请从 $TOOLS_REPO/releases/latest 页面下载正式版！"
+    log WARN "请从 Release 页面下载正式版！"
     error_exit "终止操作"
   fi
   log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
@@ -93,12 +67,11 @@ script_check() {
   local local_version remote_version
   local_version="$UPDATE_TOOLS_VERSION"
   remote_version=$(
-    curl -sL --connect-timeout 10 $TOOLS_API/releases |
+    curl -sL --connect-timeout 10 $TOOLS_API |
       jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
   )
   if [[ "$remote_version" > "$local_version" ]]; then
     log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-    log WARN "您可从该链接下载: $GH_DL/$UPDATE_TOOLS_REPO/releases/tag/$remote_version"
   else
     log INFO "工具已是最新版本"
   fi
@@ -106,6 +79,12 @@ script_check() {
 
 update_schema() {
   local fuzhu="$1" gram="$2"
+  # 缓存 GitHub API 响应
+  if [[ ! -f "$TEMP_DIR/schema_$fuzhu.json" ]]; then
+    if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/schema_$fuzhu.json"; then
+      error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+    fi
+  fi
   # 获取本地版本号
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
@@ -116,49 +95,57 @@ update_schema() {
   log INFO "当前方案文件版本号为 $local_version"
   # 获取远程版本号
   remote_version=$(
-    curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-      jq -r '.[].tag_name' | grep -vE "dict-nightly" | sort -rV | head -n 1
+    jq -r '.[].tag_name' "$TEMP_DIR/schema_$fuzhu.json" |
+      grep -vE "dict-nightly" | sort -rV | head -n 1
   )
   if [[ "$remote_version" > "$local_version" ]]; then
     log INFO "方案文件最新版本号为 $remote_version, 以下内容为更新日志"
     local changelog
     changelog=$(
-      curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-        jq -r --arg version "$remote_version" '.[] |
-        select(.tag_name == $version ) | .body'
+      jq -r --arg version "$remote_version" '.[] |
+      select(.tag_name == $version ) | .body' "$TEMP_DIR/schema_$fuzhu.json"
     )
     echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
     sleep 3
     log INFO "开始更新方案文件，正在下载文件"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]}" \
-      "$SCHEMA_REPO/releases/download/$remote_version/${SCHEMA_MAP[$fuzhu]}"
+    local schemaurl schemaname local_sha256sum remote_sha256sum
+    schemaurl=$(
+      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($fuzhu)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
+    )
+    schemaname=$(
+      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($fuzhu)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
+    )
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
     log INFO "正在验证文件完整性"
-    local local_sha256sum remote_sha256sum
-    local_sha256sum=$(sha256sum "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]}" | awk '{print $1}')
+    local_sha256sum=$(sha256sum "$TEMP_DIR/$schemaname" | awk '{print $1}')
     remote_sha256sum=$(
-      curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-        jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
-        select(.tag_name == $version) | .assets.[] |
-        select(.name | test($name)) | .digest' | awk -F ':' '{print $2}'
+      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version) | .assets.[] |
+      select(.name | test($name)) | .digest' "$TEMP_DIR/schema_$fuzhu.json" |
+        awk -F ':' '{print $2}'
     )
     [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "方案文件下载出错，请重试！"
     log INFO "验证成功，开始更新方案文件"
-    unzip -q "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]}" -d "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]%.zip}"
-    rm -r "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]%.zip}"/{简纯.trime.yaml,custom_phrase.txt,squirrel.yaml,weasel.yaml}
+    unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
+    rm -r "$TEMP_DIR/${schemaname%.zip}"/{简纯.trime.yaml,custom_phrase.txt,squirrel.yaml,weasel.yaml}
     local exclude_file
     while IFS= read -r _line; do
       exclude_file="$_line"
       if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
         log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
       else
-        cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]%.zip}/$exclude_file"
+        cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
       fi
     done <"$DEPLOY_DIR/user_exclude_file.txt"
     # 单独处理语法模型
     [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
-      "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]%.zip}/wanxiang-lts-zh-hans.gram"
+      "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
     rm -rf "${DEPLOY_DIR:?}"
-    cp -rf "$TEMP_DIR/${SCHEMA_MAP[$fuzhu]%.zip}" "${DEPLOY_DIR}"
+    cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
     log INFO "方案文件更新成功"
   else
     log INFO "方案文件无需更新"
@@ -166,39 +153,52 @@ update_schema() {
 }
 update_dict() {
   local fuzhu="$1"
+  # 缓存 GitHub API 响应
+  if [[ ! -f "$TEMP_DIR/schema_$fuzhu.json" ]]; then
+    if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/schema_$fuzhu.json"; then
+      error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+    fi
+  fi
   local local_date remote_date
-  if [[ -f "${DEPLOY_DIR}/dicts/chengyu.txt" ]]; then
-    local_date=$(stat -c %Z "${DEPLOY_DIR}/dicts/chengyu.txt")
+  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
+    local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/chengyu.txt")
   else
     local_date=0
   fi
   remote_date=$(
-    curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .updated_at'
+    jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
+    select(.tag_name == $version ) | .assets.[] |
+    select(.name | test($name)) | .updated_at' "$TEMP_DIR/schema_$fuzhu.json"
   )
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新词典文件"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/${DICT_MAP[$fuzhu]}" \
-      "$SCHEMA_REPO/releases/download/dict-nightly/${DICT_MAP[$fuzhu]}"
-    log INFO "正在验证文件完整性"
-    local local_sha256sum remote_sha256sum
-    local_sha256sum=$(sha256sum "$TEMP_DIR/${DICT_MAP[$fuzhu]}" | awk '{print $1}')
-    remote_sha256sum=$(
-      curl -sL --connect-timeout 10 $SCHEMA_API/releases |
-        jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
+    local dicturl dictname local_sha256sum remote_sha256sum
+    dicturl=$(
+      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
       select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .digest' | awk -F ':' '{print $2}'
+      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
+    )
+    dictname=$(
+      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($name)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
+    )
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
+    log INFO "正在验证文件完整性"
+    local_sha256sum=$(sha256sum "$TEMP_DIR/$dictname" | awk '{print $1}')
+    remote_sha256sum=$(
+      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($name)) | .digest' "$TEMP_DIR/schema_$fuzhu.json" |
+        awk -F ':' '{print $2}'
     )
     [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "词典文件下载出错，请重试！"
     log INFO "验证成功，开始更新词典文件"
-    unzip -q "$TEMP_DIR/${DICT_MAP[$fuzhu]}" -d "$TEMP_DIR"
-    local dict_dir
-    dict_dir="${DICT_MAP[$fuzhu]:2}"
-    dict_dir="${dict_dir%.zip}"
-    cp -rf "$TEMP_DIR/$dict_dir"/* "${DEPLOY_DIR}/dicts"
+    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
+    dictname="${dictname:2}"
+    dictname="${dictname%.zip}"
+    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
     log INFO "词典文件更新成功"
   else
     local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
@@ -206,35 +206,42 @@ update_dict() {
   fi
 }
 update_gram() {
-  local local_date remote_date
-  if [[ -f "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram" ]]; then
-    local_date=$(stat -c %Z "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram")
+  # 缓存 GitHub API 响应
+  if ! curl -sL --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/gram.json"; then
+    error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+  fi
+  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
+  if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
+    local_date=$(stat -c %Z "$DEPLOY_DIR/$gramname")
   else
     local_date=0
   fi
   remote_date=$(
-    curl -sL --connect-timeout 10 $GRAM_API/releases |
-      jq -r --arg version "LTS" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .updated_at'
+    jq -r --arg version "LTS" --arg name "$gramname" '.[] |
+    select(.tag_name == $version ) | .assets.[] |
+    select(.name | test($name)) | .updated_at' "$TEMP_DIR/gram.json"
   )
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新语法模型"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/wanxiang-lts-zh-hans.gram" \
-      "$GRAM_REPO/releases/download/LTS/wanxiang-lts-zh-hans.gram"
+    local gramurl local_sha256sum remote_sha256sum
+    gramurl=$(
+      jq -r --arg version "LTS" --arg name "$gramname" '.[] |
+      select(.tag_name == $version ) | .assets.[] |
+      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/gram.json"
+    )
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$gramname" "$gramurl"
     log INFO "正在验证文件完整性"
-    local local_sha256sum remote_sha256sum
-    local_sha256sum=$(sha256sum "$TEMP_DIR/wanxiang-lts-zh-hans.gram" | awk '{print $1}')
+    local_sha256sum=$(sha256sum "$TEMP_DIR/$gramname" | awk '{print $1}')
     remote_sha256sum=$(
-      curl -sL --connect-timeout 10 $GRAM_API/releases |
-        jq -r --arg version "LTS" --arg name "wanxiang-lts-zh-hans.gram" '.[] |
+      jq -r --arg version "LTS" --arg name "$gramname" '.[] |
       select(.tag_name == $version) | .assets.[] |
-      select(.name == $name) | .digest' | awk -F ':' '{print $2}'
+      select(.name == $name) | .digest' "$TEMP_DIR/gram.json" |
+        awk -F ':' '{print $2}'
     )
     [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "语法模型下载出错，请重试！"
     log INFO "验证成功，开始语法模型文件"
-    cp -rf "$TEMP_DIR/wanxiang-lts-zh-hans.gram" "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram"
+    cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
     log INFO "语法模型更新成功"
   else
     local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
@@ -251,13 +258,40 @@ main() {
   fi
   # 检查必要的依赖
   deps_check
+  # 检查 GitHub 连接状态
+  log INFO "正在检查 GitHub 连接状态"
+  if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
+    error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
+  elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
+    error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
+  fi
   # 脚本自检
   script_check
   # 处理用户输入
-  local schema="" fuzhu="" dict="false" gram="false"
+  local depdir="" inputime="" schema="" fuzhu="" dict="false" gram="false"
   # 解析命令行参数
   while [[ "$#" -gt 0 ]]; do
     case $1 in
+    --depdir)
+      if [[ -n "$depdir" ]]; then
+        error_exit "选项 depdir 需要参数！"
+      else
+        shift
+      fi
+      DEPLOY_DIR="$1"
+      ;;
+    --inputime)
+      if [[ -n "$inputime" ]]; then
+        error_exit "选项 inputime 需要参数！"
+      else
+        shift
+      fi
+      if [[ "$1" != "fcitx5" && "$1" != "ibus" ]]; then
+        error_exit "选项 inputime 的参数只能为 fcitx5 或 ibus"
+      else
+        inputime="$1"
+      fi
+      ;;
     --schema)
       if [[ -n "$schema" ]]; then
         error_exit "选项 scheam 需要参数！"
@@ -291,7 +325,6 @@ main() {
     *)
       log WARN "您可能错误的使用了该脚本"
       log WARN "请前往 GitHub 页面阅读 Readme"
-      log WARN "直达链接：$TOOLS_REPO/blob/main/Linux/Shell/README.md"
       error_exit "参数输入错误: $1"
       ;;
     esac
@@ -320,7 +353,6 @@ main() {
     log WARN "您需要创建的文件为 $DEPLOY_DIR/user_exclude_file.txt"
     log WARN "请在该文件中写入您需要排除的项目，每行一个"
     log WARN "如果您确实不需要排除任何文件，请创建一个空文件来抑制该警告"
-    log WARN "更多内容请参阅：$TOOLS_REPO/blob/main/Linux/Shell/README.md"
     error_exit "$DEPLOY_DIR/user_exclude_file.txt 文件不存在"
   fi
   # 检查 schema 和 fuzhu 是否同时存在
@@ -335,15 +367,25 @@ main() {
   if [[ "$schema" == "base" && "$fuzhu" != "base" ]]; then
     error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
   fi
+  # 开始更新
   [[ -z "$schema" ]] || update_schema "$fuzhu" "$gram"
   [[ "$dict" == "false" ]] || update_dict "$fuzhu"
   [[ "$gram" == "false" ]] || update_gram
-  # 提示用户重新进行部署
-  log INFO "更新完成，请重新部署 rime"
-  # Fcitx5+Plasma (KDE) 用户可取消以下注释来自动部署
-  # if command -v qdbus6 >/dev/null; then
-  #   qdbus6 org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
-  # fi
+  # 自动部署
+  if [[ "$inputime" == "fcitx5" ]]; then
+    if command -v qdbus6 >/dev/null; then
+      log INFO "更新完成。已检测到 Fcitx5 守护进程，正在自动部署"
+      qdbus6 org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig "fcitx://config/addon/rime/deploy" ""
+    fi
+  elif [[ "$inputime" == "ibus" ]]; then
+    if command -v ibus-daemon >/dev/null; then
+      log INFO "更新完成。已检测到 iBus 守护进程，正在自动部署"
+      ibus-daemon -drx
+    fi
+  else
+    # 提示用户重新进行部署
+    log INFO "更新完成。请手动重新部署 rime"
+  fi
 }
 
 main "$@"

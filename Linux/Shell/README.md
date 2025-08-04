@@ -91,3 +91,21 @@ rime-wanxiang-update-linux --schema pro --fuzhu zrm --gram
 ```bash
 rime-wanxiang-update-linux --fuzhu zrm --dict --gram
 ```
+
+### 高级用法
+
+#### 传入 DEPLOY_DIR 与 inputime
+
+脚本还支持直接传入部署目录，这样可以避免修改脚本，方便更新脚本自身  
+以下是一个示例
+
+```bash
+rime-wanxiang-update-linux --depdir "$HOME/.local/share/fcitx5/rime"
+```
+
+脚本也可以传入输入引擎，这可以实现 Rime 的自动部署  
+以下是一个示例
+
+```bash
+rime-wanxiang-update-linux --inputime fcitx5
+```
