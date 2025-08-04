@@ -6,7 +6,7 @@ $IsUpdateSchemaDown = $true
 $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
-# 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
+# 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0"
 # [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码
 $InputSchemaType = "7"
 
@@ -595,6 +595,85 @@ if (-not (Test-Path $targetDir)) {
     New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
 }
 
+# 获取本地 Rime 方案的版本号
+function Get-LocalRimeSchemaVersion {
+    param(
+        [string]$rimeUserDirPath
+    )
+    $versionFilePath = Join-Path $rimeUserDirPath "version.txt"
+    if (Test-Path $versionFilePath) {
+        try {
+            # 读取文件内容，移除可能的空白字符和 'v' 前缀
+            # 使用 -Raw 读取整个文件内容，防止按行读取导致问题
+            $versionContent = (Get-Content $versionFilePath -Encoding UTF8 -Raw).Trim() -replace '^v', ''
+            # 如果是空字符串，返回 null
+            if ([string]::IsNullOrWhiteSpace($versionContent)) {
+                 Write-Warning "警告：本地方案版本文件 '$versionFilePath' 内容为空。"
+                 return $null
+            }
+            return [System.Version]$versionContent
+        }
+        catch {
+            Write-Warning "警告：无法解析本地方案版本文件 '$versionFilePath'。内容可能不符合版本号格式。错误：$_"
+            return $null # 解析失败或文件内容不符则返回 null
+        }
+    } else {
+        Write-Warning "警告：本地方案版本文件 '$versionFilePath' 不存在。"
+        return $null # 文件不存在则返回 null
+    }
+}
+
+# 解析远程 GitHub Release 的 Tag 为版本号
+function Parse-RemoteSchemaVersionTag {
+    param(
+        [string]$tagName
+    )
+    # 移除可能的 'v' 前缀
+    $versionString = $tagName -replace '^v', ''
+    try {
+        return [System.Version]$versionString
+    }
+    catch {
+        Write-Warning "警告：无法解析远程版本标签 '$tagName'。内容可能不符合版本号格式。错误：$_"
+        return $null # 解析失败则返回 null
+    }
+}
+
+# 比较本地和远程方案版本号
+function Compare-SchemaVersion {
+    param(
+        [System.Version]$localSchemaVersion, # 传入的本地版本号对象
+        [System.Version]$remoteSchemaVersion  # 传入的远程版本号对象
+    )
+
+    $localVersionDisplay = if ($localSchemaVersion) { $localSchemaVersion.ToString() } else { "未检测到或无法解析" }
+    $remoteVersionDisplay = if ($remoteSchemaVersion) { $remoteSchemaVersion.ToString() } else { "无法获取" }
+
+    Write-Host "本地方案版本: $localVersionDisplay" -ForegroundColor Green
+    Write-Host "远程方案版本: $remoteVersionDisplay" -ForegroundColor Green
+
+    # 如果远程版本无法获取，则无法进行更新判断
+    if ($null -eq $remoteSchemaVersion) {
+        Write-Error "无法获取远程方案版本号，跳过更新判断。" -ForegroundColor Red
+        return $false # 无法判断，默认不更新
+    }
+
+    # 如果本地版本不存在或无法解析（首次运行或version.txt损坏/丢失），则默认需要更新
+    if ($null -eq $localSchemaVersion) {
+        Write-Host "本地方案版本信息未找到或无法解析，视为需要更新。" -ForegroundColor Yellow
+        return $true
+    }
+
+    # 比较版本号：如果远程版本大于本地版本，则需要更新
+    if ($remoteSchemaVersion -gt $localSchemaVersion) {
+        Write-Host "发现新版本，准备更新" -ForegroundColor Yellow
+        return $true
+    } else {
+        Write-Host "当前已是最新版本" -ForegroundColor Green
+        return $false
+    }
+}
+
 function Test-FileSHA256 {
     param (
         [Parameter(Mandatory=$true)]
@@ -678,19 +757,20 @@ $UpdateFlag = $false
 
 if ($InputSchemaDown -eq "0") {
     # 下载方案
-    $SchemaUpdateTimeKey = $KeyTable[$InputSchemaType] + "_schema_update_time"
-    $SchemaUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey
-    $SchemaRemoteTime = [datetime]::Parse($ExpectedSchemaTypeInfo.updated_at)
     Write-Host "正在检查方案是否需要更新..." -ForegroundColor Yellow
-    Write-Host "本地时间: $SchemaUpdateTime" -ForegroundColor Green
-    Write-Host "远程时间: $SchemaRemoteTime" -ForegroundColor Green
-    if (Compare-UpdateTime -localTime $SchemaUpdateTime -remoteTime $SchemaRemoteTime) {
+    $LocalSchemaVersion = Get-LocalRimeSchemaVersion -rimeUserDirPath $targetDir
+    $RemoteSchemaVersion = Parse-RemoteSchemaVersionTag -tagName $SelectedSchemaRelease.tag_name
+    $needsSchemaUpdate = Compare-SchemaVersion -localSchemaVersion $LocalSchemaVersion -remoteSchemaVersion $RemoteSchemaVersion
+
+    if ($needsSchemaUpdate) {
         $UpdateFlag = $true
+
         Write-Host "正在下载方案..." -ForegroundColor Green
         Download-Files -assetInfo $ExpectedSchemaTypeInfo -outFilePath $tempSchemaZip
         Write-Host "正在解压方案..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempSchemaZip -destinationPath $SchemaExtractPath
         Write-Host "正在复制文件..." -ForegroundColor Green
+        
         # 方案里面没有子文件夹，直接复制到目标目录
         $sourceDir = $SchemaExtractPath
         if (-not (Test-Path $sourceDir)) {
@@ -728,8 +808,6 @@ if ($InputSchemaDown -eq "0") {
             }
         }
 
-        # 将现在的本地时间记录到JSON文件
-        Save-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey -value $SchemaRemoteTime
         # 清理临时文件
         Remove-Item -Path $tempSchemaZip -Force
         Remove-Item -Path $SchemaExtractPath -Recurse -Force
