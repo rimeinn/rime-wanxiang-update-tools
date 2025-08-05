@@ -112,12 +112,12 @@ update_schema() {
     schemaurl=$(
       jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
       select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($fuzhu)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
+      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
     )
     schemaname=$(
       jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
       select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($fuzhu)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
+      select(.name | test($name)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
     )
     curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
     log INFO "正在验证文件完整性"
