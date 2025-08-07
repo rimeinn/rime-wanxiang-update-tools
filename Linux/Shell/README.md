@@ -27,28 +27,37 @@ chmod +x rime-wanxiang-update-linux
 
 在部署目录下创建名为 `user_exclude_file.txt` 的文件，以下是一个示例
 
-- 注意：这是一个 `txt` 文件，请不要写注释等无关内容
+- 注释内容以 "#" 开头
 
 ```txt
+# 文件本身
 user_exclude_file.txt
-user_zrm.userdb
-user_zrmzc.userdb
-lua/tips/tips_user.txt
+# 用户数据库
+lua/sequence.userdb
+user_flypyzc.userdb
+# custom 文件
 default.custom.yaml
-wanxiang_mixedcode.custom.yaml
 wanxiang_pro.custom.yaml
 wanxiang_reverse.custom.yaml
+wanxiang_mixedcode.custom.yaml
+# 萌娘百科词库
+dicts/moegirl.pro.dict.yaml
+wanxiang_pro.dict.yaml
+# 自定义 lua
+lua/shijian.lua
+lua/super_comment.lua
 ```
-
-第一行：该文件本身，千万不要忘了它  
-第二行—第三行：文件夹示例  
-第四行：子目录文件示例  
-第五行—第八行：custom 文件示例
 
 ### 使用适当的参数运行脚本
 
 以下内容使用专业版、自然码辅助码进行示例，请按需修改  
 你可以组合多个参数运行
+
+#### 使用 CNB 镜像
+
+```bash
+rime-wanxiang-update-linux --mirror cnb
+```
 
 #### 更新全部内容
 
@@ -72,24 +81,6 @@ rime-wanxiang-update-linux --dict --fuzhu zrm
 
 ```bash
 rime-wanxiang-update-linux --gram
-```
-
-#### 更新方案文件与词典文件
-
-```bash
-rime-wanxiang-update-linux --schema pro --fuzhu zrm --dict
-```
-
-#### 更新方案文件与语法模型
-
-```bash
-rime-wanxiang-update-linux --schema pro --fuzhu zrm --gram
-```
-
-#### 更新词典文件与语法模型
-
-```bash
-rime-wanxiang-update-linux --fuzhu zrm --dict --gram
 ```
 
 ### 高级用法

@@ -108,11 +108,13 @@ update_schema_cnb() {
     done
     local exclude_file
     while IFS= read -r _line; do
-      exclude_file="$_line"
-      if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-        log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-      else
-        cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+      if [[ "$_line" != \#* ]]; then
+        exclude_file="$_line"
+        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+        else
+          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        fi
       fi
     done <"$DEPLOY_DIR/user_exclude_file.txt"
     # 单独处理语法模型
@@ -228,11 +230,13 @@ update_schema() {
     done
     local exclude_file
     while IFS= read -r _line; do
-      exclude_file="$_line"
-      if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-        log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-      else
-        cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+      if [[ "$_line" != \#* ]]; then
+        exclude_file="$_line"
+        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+        else
+          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        fi
       fi
     done <"$DEPLOY_DIR/user_exclude_file.txt"
     # 单独处理语法模型
