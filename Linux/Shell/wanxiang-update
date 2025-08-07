@@ -63,7 +63,7 @@ script_check() {
     error_exit "终止操作"
   fi
   log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
-  log INFO "正在检查本工具是否有更新"
+  log INFO "正在检查本工具是否存在更新"
   local local_version remote_version
   local_version="$UPDATE_TOOLS_VERSION"
   remote_version=$(
@@ -75,6 +75,96 @@ script_check() {
   else
     log INFO "工具已是最新版本"
   fi
+}
+
+update_schema_cnb() {
+  local fuzhu="$1" gram="$2"
+  local local_version remote_version
+  if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
+    local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+  else
+    local_version="v0"
+  fi
+  log INFO "当前方案文件版本号为 $local_version"
+  # 获取远程版本号
+  remote_version=$(
+    curl -sL --connect-timeout 10 \
+      "https://cnb.cool/amzxyz/rime-wanxiang/-/git/raw/wanxiang/lua/wanxiang.lua" |
+      grep "wanxiang.version" | awk -F '"' '{print $2}'
+  )
+  if [[ "$remote_version" > "$local_version" ]]; then
+    log INFO "方案文件最新版本号为 $remote_version 正在下载文件"
+    local schemaurl schemaname
+    [[ "$fuzhu" == "base" ]] || fuzhu="$fuzhu-fuzhu"
+    schemaname="rime-wanxiang-$fuzhu.zip"
+    schemaurl="https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/$remote_version/$schemaname"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
+    log INFO "下载成功，开始更新方案文件"
+    unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
+    for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
+      if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
+        rm -r "$TEMP_DIR/${schemaname%.zip}/${_file:?}"
+      fi
+    done
+    local exclude_file
+    while IFS= read -r _line; do
+      exclude_file="$_line"
+      if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+        log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+      else
+        cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+      fi
+    done <"$DEPLOY_DIR/user_exclude_file.txt"
+    # 单独处理语法模型
+    [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
+      "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
+    rm -rf "${DEPLOY_DIR:?}"
+    cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+    log INFO "方案文件更新成功"
+  else
+    log INFO "方案文件无需更新"
+  fi
+}
+
+update_dict_cnb() {
+  local fuzhu="$1"
+  log WARN "因技术原因，我们无法确认词典文件是否需要更新"
+  log WARN "我们默认您需要更新, 3 秒后更新开始"
+  sleep 3
+  log INFO "正在下载最新词典文件"
+  local dicturl dictname dictmap
+  declare -A dictmap=(
+    ["moqi"]="1-pro-moqi-fuzhu-dicts.zip"
+    ["flypy"]="2-pro-flypy-fuzhu-dicts.zip"
+    ["zrm"]="3-pro-zrm-fuzhu-dicts.zip"
+    ["jdh"]="4-pro-jdh-fuzhu-dicts.zip"
+    ["tiger"]="5-pro-tiger-fuzhu-dicts.zip"
+    ["wubi"]="6-pro-wubi-fuzhu-dicts.zip"
+    ["hanxin"]="7-pro-hanxin-fuzhu-dicts.zip"
+    ["all"]="8-pro-all-dicts.zip"
+    ["base"]="9-base-dicts.zip"
+  )
+  dictname="${dictmap[$fuzhu]}"
+  dicturl="https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/v1.0.0/$dictname"
+  curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
+  log INFO "下载成功，开始更新词典文件"
+  unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
+  dictname="${dictname:2}"
+  dictname="${dictname%.zip}"
+  cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+  log INFO "词典文件更新成功"
+}
+
+update_gram_cnb() {
+  log WARN "因技术原因，我们无法确认语法模型是否需要更新"
+  log WARN "我们默认您需要更新, 3 秒后更新开始"
+  sleep 3
+  log INFO "正在下载最新语法模型"
+  curl -L --connect-timeout 10 -o "$TEMP_DIR/wanxiang-lts-zh-hans.gram" \
+    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/model/wanxiang-lts-zh-hans.gram"
+  log INFO "下载成功，开始更新语法文件"
+  cp -rf "$TEMP_DIR/wanxiang-lts-zh-hans.gram" "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram"
+  log INFO "语法模型更新成功"
 }
 
 update_schema() {
@@ -131,7 +221,11 @@ update_schema() {
     [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "方案文件下载出错，请重试！"
     log INFO "验证成功，开始更新方案文件"
     unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
-    rm -r "$TEMP_DIR/${schemaname%.zip}"/{简纯.trime.yaml,custom_phrase.txt,squirrel.yaml,weasel.yaml}
+    for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
+      if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
+        rm -r "$TEMP_DIR/${schemaname%.zip}/${_file:?}"
+      fi
+    done
     local exclude_file
     while IFS= read -r _line; do
       exclude_file="$_line"
@@ -252,26 +346,31 @@ update_gram() {
 main() {
   # 脚本退出清理临时目录
   trap cleanup EXIT
+  # 欢迎语
+  log INFO "欢迎使用万象方案更新助手"
   # 检查是否为root用户
   if [[ "$EUID" -eq 0 ]]; then
     error_exit "请不要使用 root 身份运行该脚本！"
   fi
   # 检查必要的依赖
   deps_check
-  # 检查 GitHub 连接状态
-  log INFO "正在检查 GitHub 连接状态"
-  if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
-    error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
-  elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
-    error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
-  fi
-  # 脚本自检
-  script_check
   # 处理用户输入
-  local depdir="" inputime="" schema="" fuzhu="" dict="false" gram="false"
+  local mirror="" depdir="" inputime="" schema="" fuzhu="" dict="false" gram="false"
   # 解析命令行参数
   while [[ "$#" -gt 0 ]]; do
     case $1 in
+    --mirror)
+      if [[ -n "$mirror" ]]; then
+        error_exit "选项 mirror 需要参数！"
+      else
+        shift
+      fi
+      if [[ "$1" != "cnb" ]]; then
+        error_exit "选项 mirror 的参数目前只能为 cnb"
+      else
+        mirror="$1"
+      fi
+      ;;
     --depdir)
       if [[ -n "$depdir" ]]; then
         error_exit "选项 depdir 需要参数！"
@@ -368,9 +467,32 @@ main() {
     error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
   fi
   # 开始更新
-  [[ -z "$schema" ]] || update_schema "$fuzhu" "$gram"
-  [[ "$dict" == "false" ]] || update_dict "$fuzhu"
-  [[ "$gram" == "false" ]] || update_gram
+  if [[ "$mirror" == "cnb" ]]; then
+    if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
+      log WARN "您似乎正在使用源文件！"
+      log WARN "请从 Release 页面下载正式版！"
+      error_exit "终止操作"
+    fi
+    log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
+    log WARN "由于您正在使用镜像，无法检查本工具是否存在更新"
+    [[ -z "$schema" ]] || update_schema_cnb "$fuzhu" "$gram"
+    [[ "$dict" == "false" ]] || update_dict_cnb "$fuzhu"
+    [[ "$gram" == "false" ]] || update_gram_cnb
+  else
+    # 检查 GitHub 连接状态
+    log INFO "正在检查 GitHub 连接状态"
+    if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
+    elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
+    fi
+    # 脚本自检
+    script_check
+    # 开始更新
+    [[ -z "$schema" ]] || update_schema "$fuzhu" "$gram"
+    [[ "$dict" == "false" ]] || update_dict "$fuzhu"
+    [[ "$gram" == "false" ]] || update_gram
+  fi
   # 自动部署
   if [[ "$inputime" == "fcitx5" ]]; then
     if command -v qdbus6 >/dev/null; then
