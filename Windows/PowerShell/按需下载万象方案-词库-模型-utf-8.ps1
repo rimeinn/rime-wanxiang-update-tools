@@ -1,13 +1,13 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
-$AutoUpdate = $true
+$AutoUpdate = $false
 
 # 是否使用镜像源，如果设置为 $true，则从 CNB 获取资源；否则从 GitHub 获取。
 $UseMirrorSource = $false
 
 # 设置自动更新时，是否更新方案、词库、模型，不想更新某项就改成false
-$IsUpdateSchemaDown = $false
+$IsUpdateSchemaDown = $true
 $IsUpdateDictDown = $true
-$IsUpdateModel = $false
+$IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0"
 # [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码
