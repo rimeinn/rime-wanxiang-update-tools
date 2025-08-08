@@ -82,6 +82,7 @@ update_schema_cnb() {
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
     local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+    [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
     local_version="v0"
   fi
@@ -92,6 +93,7 @@ update_schema_cnb() {
       "https://cnb.cool/amzxyz/rime-wanxiang/-/git/raw/wanxiang/lua/wanxiang.lua" |
       grep "wanxiang.version" | awk -F '"' '{print $2}'
   )
+  [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
   if [[ "$remote_version" > "$local_version" ]]; then
     log INFO "方案文件最新版本号为 $remote_version 正在下载文件"
     local schemaurl schemaname
@@ -217,6 +219,7 @@ update_schema() {
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
     local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+    [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
     local_version="v0"
   fi
@@ -226,6 +229,7 @@ update_schema() {
     jq -r '.[].tag_name' "$TEMP_DIR/schema_$fuzhu.json" |
       grep -vE "dict-nightly" | sort -rV | head -n 1
   )
+  [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
   if [[ "$remote_version" > "$local_version" ]]; then
     log INFO "方案文件最新版本号为 $remote_version, 以下内容为更新日志"
     local changelog
