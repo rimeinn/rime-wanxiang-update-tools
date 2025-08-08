@@ -257,25 +257,6 @@ function Get-CnbReleaseData {
     }
 }
 
-# CNB: 简化版下载函数 (无SHA校验)
-function Download-FileFromUrl {
-    param(
-        [string]$url,
-        [string]$outFilePath,
-        [string]$fileName
-    )
-    try {
-        Write-Host "正在下载文件: $fileName..." -ForegroundColor Green
-        Write-Host "URL: $url" -ForegroundColor DarkGray
-        Invoke-WebRequest -Uri $url -OutFile $outFilePath -UseBasicParsing
-        Write-Host "下载完成" -ForegroundColor Green
-    }
-    catch {
-        Write-Host "下载失败: $_" -ForegroundColor Red
-        Exit-Tip 1
-    }
-}
-
 function Test-VersionSuffix {
     param(
         [string]$url
@@ -522,24 +503,41 @@ function Test-FileSHA256 {
 
 function Download-Files {
     param(
-        [Object]$assetInfo,
-        [string]$outFilePath
+        [string]$outFilePath,                    # 公共的输出路径参数
+        [Object]$assetInfo = $null,              # GitHub 下载的资产信息
+        [string]$url = $null,                    # CNB 下载的URL
+        [string]$fileName = $null                # CNB下载的文件名
     )
-  
+
     try {
-        $downloadUrl = $assetInfo.browser_download_url
-        Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
-        Write-Host "下载完成" -ForegroundColor Green
-        $SHA256 = $assetInfo.digest.Split(":")[1]
-        if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
-            Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
-            Remove-Item -Path $outFilePath -Force
-            Exit-Tip 1
+        if ($UseMirrorSource) {
+            Write-Host "正在从CNB源下载文件:$fileName..." -ForegroundColor Green
+            Write-Host "URL: $url" -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $url -OutFile $outFilePath -UseBasicParsing
+            Write-Host "下载完成" -ForegroundColor Green
+            # CNB 没有提供 SHA256 校验，该逻辑可以省略但是保持结构一致性
+        } else {
+            if (-not $assetInfo) {
+                Write-Host "错误：在GitHub模式下必须提供 assetInfo" -ForegroundColor Red
+                exit 1
+            }
+
+            $downloadUrl = $assetInfo.browser_download_url
+            Write-Host "正在从GitHub下载文件:$($assetInfo.name)..." -ForegroundColor Green
+            Write-Host "URL: $downloadUrl" -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
+            Write-Host "下载完成" -ForegroundColor Green
+
+            $SHA256 = $assetInfo.digest.Split(":")[1]
+            if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
+                Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
+                Remove-Item -Path $outFilePath -Force
+                Exit-Tip 1
+            }
         }
     }
     catch {
-        Write-Host "下载失败: $_" -ForegroundColor Red
+        Write-Host "下载失败: $($_.Exception.Message)" -ForegroundColor Red
         Exit-Tip 1
     }
 }
@@ -657,7 +655,7 @@ if ($UseMirrorSource) {
                 if (Compare-UpdateTime -localTime $SchemaUpdateTime -remoteTime $SchemaRemoteTime) {
                     $UpdateFlag = $true
                     $downloadUrl = "https://cnb.cool/$CnbOwner/$CnbSchemaRepo/-/releases/download/$remoteSchemaTag/$($schemaAsset.name)"
-                    Download-FileFromUrl -url $downloadUrl -outFilePath $tempSchemaZip -fileName $schemaAsset.name
+                    Download-Files -url $downloadUrl -outFilePath $tempSchemaZip -fileName $schemaAsset.name
                     Expand-ZipFile -zipFilePath $tempSchemaZip -destinationPath $SchemaExtractPath
                   
                     Stop-WeaselServer; Start-Sleep -Seconds 1
@@ -702,7 +700,7 @@ if ($UseMirrorSource) {
                 if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
                     $UpdateFlag = $true
                     $downloadUrl = "https://cnb.cool/$CnbOwner/$CnbSchemaRepo/-/releases/download/$CnbDictTag/$($dictAsset.name)"
-                    Download-FileFromUrl -url $downloadUrl -outFilePath $tempDictZip -fileName $dictAsset.name
+                    Download-Files -url $downloadUrl -outFilePath $tempDictZip -fileName $dictAsset.name
                     Expand-ZipFile -zipFilePath $tempDictZip -destinationPath $DictExtractPath
                     
                     $sourceDir = Get-DictExtractedFolderPath -extractPath $DictExtractPath -assetName $KeyTable[$InputSchemaType]
@@ -748,7 +746,7 @@ if ($UseMirrorSource) {
                 if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
                     $UpdateFlag = $true
                     $downloadUrl = "https://cnb.cool/$CnbOwner/$CnbSchemaRepo/-/releases/download/$CnbGramTag/$($gramAsset.name)"
-                    Download-FileFromUrl -url $downloadUrl -outFilePath $tempGram -fileName $gramAsset.name
+                    Download-Files -url $downloadUrl -outFilePath $tempGram -fileName $gramAsset.name
                   
                     Stop-WeaselServer; Start-Sleep -Seconds 1
                     Copy-Item -Path $tempGram -Destination $targetDir -Force
