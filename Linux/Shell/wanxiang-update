@@ -129,12 +129,13 @@ update_schema_cnb() {
 }
 
 update_dict_cnb() {
-  local fuzhu="$1"
-  log WARN "因技术原因，我们无法确认词典文件是否需要更新"
-  log WARN "我们默认您需要更新, 3 秒后更新开始"
-  sleep 3
-  log INFO "正在下载最新词典文件"
-  local dicturl dictname dictmap
+  local fuzhu="$1" dicturl dictname dictmap
+  # 不科学的 API 获取
+  curl -sL --connect-timeout 10 \
+    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/tag/v1.0.0" >"$TEMP_DIR/dicts.html"
+  grep -oP '<script id="__NEXT_DATA__".*?>.*?</script>' "$TEMP_DIR/dicts.html" |
+    sed 's/<[^>]*>//g' >"$TEMP_DIR/dicts.json"
+  # 定义文件名映射
   declare -A dictmap=(
     ["moqi"]="1-pro-moqi-fuzhu-dicts.zip"
     ["flypy"]="2-pro-flypy-fuzhu-dicts.zip"
@@ -148,25 +149,60 @@ update_dict_cnb() {
   )
   dictname="${dictmap[$fuzhu]}"
   dicturl="https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/v1.0.0/$dictname"
-  curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
-  log INFO "下载成功，开始更新词典文件"
-  unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-  dictname="${dictname:2}"
-  dictname="${dictname%.zip}"
-  cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
-  log INFO "词典文件更新成功"
+  local local_date remote_date
+  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
+    local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/chengyu.txt")
+  else
+    local_date=0
+  fi
+  remote_date=$(
+    jq -r --arg name "$dictname" '.props.pageProps.releasesDetailData.release.assets[] | 
+    select(.name == "$name") | .updatedAt' "$TEMP_DIR/dicts.json"
+  )
+  remote_date=$(date -d "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新词典文件"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
+    log INFO "下载成功，开始更新词典文件"
+    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
+    dictname="${dictname:2}"
+    dictname="${dictname%.zip}"
+    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+    log INFO "词典文件更新成功"
+  else
+    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "词典文件最后更新于 $local_date, 您目前无需更新它"
+  fi
 }
 
 update_gram_cnb() {
-  log WARN "因技术原因，我们无法确认语法模型是否需要更新"
-  log WARN "我们默认您需要更新, 3 秒后更新开始"
-  sleep 3
-  log INFO "正在下载最新语法模型"
-  curl -L --connect-timeout 10 -o "$TEMP_DIR/wanxiang-lts-zh-hans.gram" \
-    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/model/wanxiang-lts-zh-hans.gram"
-  log INFO "下载成功，开始更新语法文件"
-  cp -rf "$TEMP_DIR/wanxiang-lts-zh-hans.gram" "${DEPLOY_DIR}/wanxiang-lts-zh-hans.gram"
-  log INFO "语法模型更新成功"
+  # 不科学的 API 获取
+  curl -sL --connect-timeout 10 \
+    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/tag/model" >"$TEMP_DIR/gram.html"
+  grep -oP '<script id="__NEXT_DATA__".*?>.*?</script>' "$TEMP_DIR/gram.html" |
+    sed 's/<[^>]*>//g' >"$TEMP_DIR/gram.json"
+  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
+  if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
+    local_date=$(stat -c %Z "$DEPLOY_DIR/$gramname")
+  else
+    local_date=0
+  fi
+  remote_date=$(
+    jq -r --arg name "$gramname" '.props.pageProps.releasesDetailData.release.assets[] |
+    select(.name == "$name") | .updatedAt' "$TEMP_DIR/gram.json"
+  )
+  remote_date=$(date -d "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新语法模型"
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$gramname" \
+      "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/model/$gramname"
+    log INFO "下载成功，开始更新语法文件"
+    cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
+    log INFO "语法模型更新成功"
+  else
+    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "语法模型最后更新于 $local_date, 您目前无需更新它"
+  fi
 }
 
 update_schema() {
