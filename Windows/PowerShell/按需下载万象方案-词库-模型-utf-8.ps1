@@ -2,12 +2,12 @@
 $AutoUpdate = $true
 
 # 是否使用镜像源，如果设置为 $true，则从 CNB 获取资源；否则从 GitHub 获取。
-$UseMirrorSource = $true
+$UseMirrorSource = $false
 
 # 设置自动更新时，是否更新方案、词库、模型，不想更新某项就改成false
-$IsUpdateSchemaDown = $true
+$IsUpdateSchemaDown = $false
 $IsUpdateDictDown = $true
-$IsUpdateModel = $true
+$IsUpdateModel = $false
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0"
 # [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码
@@ -72,18 +72,6 @@ $KeyTable = @{
     "5" = "tiger";
     "6" = "wubi";
     "7" = "zrm";
-}
-
-# CNB 词库镜像源文件名映射表
-$CnbDictFilenameMap = @{
-    "moqi"   = "1-pro-moqi-fuzhu-dicts.zip";
-    "flypy"  = "2-pro-flypy-fuzhu-dicts.zip";
-    "zrm"    = "3-pro-zrm-fuzhu-dicts.zip";
-    "jdh"    = "4-pro-jdh-fuzhu-dicts.zip" ;
-    "tiger"  = "5-pro-tiger-fuzhu-dicts.zip";
-    "wubi"   = "6-pro-wubi-fuzhu-dicts.zip";
-    "hanxin" = "7-pro-hanxin-fuzhu-dicts.zip";
-    "base"   = "9-base-dicts.zip";
 }
 
 $SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
@@ -696,42 +684,47 @@ if ($UseMirrorSource) {
         Write-Host "--- 正在检查词库(Dict)更新 ---" -ForegroundColor Yellow
         $dictPageUrl = "https://cnb.cool/$CnbOwner/$CnbSchemaRepo/-/releases/tag/$CnbDictTag"
         $cnbDictData = Get-CnbReleaseData -pageUrl $dictPageUrl
-
+ 
         if ($cnbDictData) {
-            $targetDictFileName = $CnbDictFilenameMap[$KeyTable[$InputSchemaType]]
-            $dictAsset = $cnbDictData.props.pageProps.releasesDetailData.release.assets | Where-Object { $_.name -eq $targetDictFileName } | Select-Object -First 1
-
+            # 使用关键字匹配，而不是硬编码的文件名
+            $keyword = $KeyTable[$InputSchemaType]
+            $dictAsset = $cnbDictData.props.pageProps.releasesDetailData.release.assets | Where-Object { $_.name -match $keyword } | Select-Object -First 1
+ 
             if ($dictAsset) {
+                Write-Host "匹配到词库文件: $($dictAsset.name)" -ForegroundColor Cyan
                 $DictUpdateTimeKey = $KeyTable[$InputSchemaType] + "_dict_update_time"
                 $DictUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey
                 $DictRemoteTime = [datetime]::Parse($dictAsset.updatedAt)
-
+ 
                 Write-Host "本地记录时间: $DictUpdateTime" -ForegroundColor Green
                 Write-Host "远程文件时间: $DictRemoteTime" -ForegroundColor Green
-
+ 
                 if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
                     $UpdateFlag = $true
                     $downloadUrl = "https://cnb.cool/$CnbOwner/$CnbSchemaRepo/-/releases/download/$CnbDictTag/$($dictAsset.name)"
                     Download-FileFromUrl -url $downloadUrl -outFilePath $tempDictZip -fileName $dictAsset.name
                     Expand-ZipFile -zipFilePath $tempDictZip -destinationPath $DictExtractPath
-                  
+                    
                     $sourceDir = Get-DictExtractedFolderPath -extractPath $DictExtractPath -assetName $KeyTable[$InputSchemaType]
-                  
+                    
                     Stop-WeaselServer; Start-Sleep -Seconds 1
-                  
+                    
                     $dictTargetDir = Join-Path $targetDir $DictFileSaveDirTable[$DictFileSaveDirTableIndex]
                     if (-not (Test-Path -Path $dictTargetDir)){ New-Item -ItemType Directory -Path $dictTargetDir | Out-Null }
-                  
+                    
                     Get-ChildItem -Path $sourceDir | ForEach-Object {
                          if (-not (Test-SkipFile -filePath $_.Name)) {
                             Copy-Item -Path $_.FullName -Destination $dictTargetDir -Recurse -Force
                          } else { Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow }
                     }
-
+ 
                     Save-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey -value $DictRemoteTime
                     Remove-Item -Path $tempDictZip, $DictExtractPath -Recurse -Force
                 }
-            } else { Write-Host "错误: 在CNB页面上未找到词库文件 $targetDictFileName" -ForegroundColor Red }
+            } else { 
+                # 更新错误信息，使其更有用
+                Write-Host "错误: 在CNB词库页面上未找到包含关键字 '$keyword' 的文件" -ForegroundColor Red
+            }
         }
     }
 
@@ -816,7 +809,8 @@ if ($UseMirrorSource) {
     Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_name)"
     Write-Host "方案更新日志: " -ForegroundColor Yellow
     Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
-
+    
+    # 根据用户输入的方案号获取下载链接
     function Get-ExpectedAssetTypeInfo {
         param(
             [string]$index,
