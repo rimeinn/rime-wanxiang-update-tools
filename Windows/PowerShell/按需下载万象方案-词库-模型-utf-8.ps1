@@ -1,5 +1,5 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
-$AutoUpdate = $false
+$AutoUpdate = $true
 
 # 是否使用镜像源，如果设置为 $true，则从 CNB 获取资源；否则从 GitHub 获取。
 $UseMirrorSource = $true
@@ -609,6 +609,12 @@ function Expand-ZipFile {
     }
 }
 
+# 创建目标目录（如果不存在）
+if (-not (Test-Path $targetDir)) {
+    Write-Host "创建目标目录: $targetDir" -ForegroundColor Green
+    New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+}
+
 # 通过 UseMirrorSource 开关分离 GitHub 和 CNB 的逻辑
 if ($UseMirrorSource) {
     #############################################
@@ -879,6 +885,9 @@ if ($UseMirrorSource) {
         $DictUpdateTimeKey = $KeyTable[$InputSchemaType] + "_dict_update_time"
         $DictUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey
         $DictRemoteTime = [datetime]::Parse($ExpectedDictTypeInfo.updated_at)
+        Write-Host "正在检查词库是否需要更新..." -ForegroundColor Yellow
+        Write-Host "本地时间: $DictUpdateTime" -ForegroundColor Green
+        Write-Host "远程时间: $DictRemoteTime" -ForegroundColor Green
         if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
             $UpdateFlag = $true
             Download-Files -assetInfo $ExpectedDictTypeInfo -outFilePath $tempDictZip
@@ -915,6 +924,9 @@ if ($UseMirrorSource) {
         $GramUpdateTimeKey = $GramReleaseTag + "_gram_update_time"
         $GramUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $GramUpdateTimeKey
         $GramRemoteTime = [datetime]::Parse($ExpectedGramTypeInfo.updated_at)
+        Write-Host "正在检查模型是否需要更新..." -ForegroundColor Yellow
+        Write-Host "本地时间: $GramUpdateTime" -ForegroundColor Green
+        Write-Host "远程时间: $GramRemoteTime" -ForegroundColor Green    
         if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
             Update-GramModel
         }
