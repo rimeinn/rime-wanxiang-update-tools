@@ -13,6 +13,7 @@ DEPLOY_DIR=""
 ######### 配置结束 #########
 
 # 全局变量
+CNB_API="https://cnb.cool/_next/data/2e640926f70b3d5b/zh/amzxyz/rime-wanxiang/-/releases.json?slug=amzxyz&slug=rime-wanxiang&slug=-&slug=releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
@@ -43,7 +44,7 @@ cleanup() {
   fi
 }
 deps_check() {
-  for _cmd in curl jq unzip sha256sum; do
+  for _cmd in curl jq unzip; do
     command -v "$_cmd" >/dev/null || error_exit "缺少必要依赖：$_cmd"
   done
 }
@@ -57,210 +58,131 @@ fuzhu_check() {
   return 1
 }
 script_check() {
+  local mirror="$1"
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
     log WARN "您似乎正在使用源文件！"
     log WARN "请从 Release 页面下载正式版！"
     error_exit "终止操作"
   fi
   log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
-  log INFO "正在检查本工具是否存在更新"
-  local local_version remote_version
-  local_version="$UPDATE_TOOLS_VERSION"
-  remote_version=$(
-    curl -sL --connect-timeout 10 $TOOLS_API |
-      jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
-  )
-  if [[ "$remote_version" > "$local_version" ]]; then
-    log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-  else
-    log INFO "工具已是最新版本"
+  if [[ "$mirror" == "github" ]]; then
+    # 检查 GitHub 连接状态
+    log INFO "正在检查 GitHub 连接状态"
+    if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
+    elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
+    fi
+    log INFO "正在检查本工具是否存在更新"
+    local local_version remote_version
+    local_version="$UPDATE_TOOLS_VERSION"
+    remote_version=$(
+      curl -sL --connect-timeout 10 $TOOLS_API |
+        jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
+    )
+    if [[ "$remote_version" > "$local_version" ]]; then
+      log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
+    else
+      log INFO "工具已是最新版本"
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    log WARN "由于您正在使用镜像，无法检查本工具是否存在更新"
   fi
 }
 
-update_schema_cnb() {
-  local fuzhu="$1" gram="$2"
-  local local_version remote_version
-  if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
-    local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
-    [[ "$local_version" == v* ]] || local_version="v$local_version"
-  else
-    local_version="v0"
-  fi
-  log INFO "当前方案文件版本号为 $local_version"
-  # 获取远程版本号
-  remote_version=$(
-    curl -sL --connect-timeout 10 \
-      "https://cnb.cool/amzxyz/rime-wanxiang/-/git/raw/wanxiang/lua/wanxiang.lua" |
-      grep "wanxiang.version" | awk -F '"' '{print $2}'
-  )
-  [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
-  if [[ "$remote_version" > "$local_version" ]]; then
-    log INFO "方案文件最新版本号为 $remote_version 正在下载文件"
-    local schemaurl schemaname
-    [[ "$fuzhu" == "base" ]] || fuzhu="$fuzhu-fuzhu"
-    schemaname="rime-wanxiang-$fuzhu.zip"
-    schemaurl="https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/$remote_version/$schemaname"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
-    log INFO "下载成功，开始更新方案文件"
-    unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
-    for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
-      if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
-        rm -r "$TEMP_DIR/${schemaname%.zip}/${_file:?}"
-      fi
-    done
-    local exclude_file
-    while IFS= read -r _line; do
-      if [[ "$_line" != \#* ]]; then
-        exclude_file="$_line"
-        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-        else
-          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
-        fi
-      fi
-    done <"$DEPLOY_DIR/user_exclude_file.txt"
-    # 单独处理语法模型
-    [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
-      "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
-    rm -rf "${DEPLOY_DIR:?}"
-    cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
-    log INFO "方案文件更新成功"
-  else
-    log INFO "方案文件无需更新"
-  fi
-}
-
-update_dict_cnb() {
-  local fuzhu="$1" dicturl dictname dictmap
-  # 不科学的 API 获取
-  curl -sL --connect-timeout 10 \
-    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/tag/v1.0.0" >"$TEMP_DIR/dicts.html"
-  grep -oP '<script id="__NEXT_DATA__".*?>.*?</script>' "$TEMP_DIR/dicts.html" |
-    sed 's/<[^>]*>//g' >"$TEMP_DIR/dicts.json"
-  # 定义文件名映射
-  declare -A dictmap=(
-    ["moqi"]="1-pro-moqi-fuzhu-dicts.zip"
-    ["flypy"]="2-pro-flypy-fuzhu-dicts.zip"
-    ["zrm"]="3-pro-zrm-fuzhu-dicts.zip"
-    ["jdh"]="4-pro-jdh-fuzhu-dicts.zip"
-    ["tiger"]="5-pro-tiger-fuzhu-dicts.zip"
-    ["wubi"]="6-pro-wubi-fuzhu-dicts.zip"
-    ["hanxin"]="7-pro-hanxin-fuzhu-dicts.zip"
-    ["all"]="8-pro-all-dicts.zip"
-    ["base"]="9-base-dicts.zip"
-  )
-  dictname="${dictmap[$fuzhu]}"
-  dicturl="https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/v1.0.0/$dictname"
-  local local_date remote_date
-  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
-    local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/chengyu.txt")
-  else
-    local_date=0
-  fi
-  remote_date=$(
-    jq -r --arg name "$dictname" '.props.pageProps.releasesDetailData.release.assets[] | 
-    select(.name == "$name") | .updatedAt' "$TEMP_DIR/dicts.json"
-  )
-  remote_date=$(date -d "$remote_date" +%s)
-  if [[ $remote_date -gt $local_date ]]; then
-    log INFO "正在下载最新词典文件"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
-    log INFO "下载成功，开始更新词典文件"
-    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-    dictname="${dictname:2}"
-    dictname="${dictname%.zip}"
-    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
-    log INFO "词典文件更新成功"
-  else
-    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
-    log INFO "词典文件最后更新于 $local_date, 您目前无需更新它"
-  fi
-}
-
-update_gram_cnb() {
-  # 不科学的 API 获取
-  curl -sL --connect-timeout 10 \
-    "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/tag/model" >"$TEMP_DIR/gram.html"
-  grep -oP '<script id="__NEXT_DATA__".*?>.*?</script>' "$TEMP_DIR/gram.html" |
-    sed 's/<[^>]*>//g' >"$TEMP_DIR/gram.json"
-  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
-  if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
-    local_date=$(stat -c %Z "$DEPLOY_DIR/$gramname")
-  else
-    local_date=0
-  fi
-  remote_date=$(
-    jq -r --arg name "$gramname" '.props.pageProps.releasesDetailData.release.assets[] |
-    select(.name == "$name") | .updatedAt' "$TEMP_DIR/gram.json"
-  )
-  remote_date=$(date -d "$remote_date" +%s)
-  if [[ $remote_date -gt $local_date ]]; then
-    log INFO "正在下载最新语法模型"
-    curl -L --connect-timeout 10 -o "$TEMP_DIR/$gramname" \
-      "https://cnb.cool/amzxyz/rime-wanxiang/-/releases/download/model/$gramname"
-    log INFO "下载成功，开始更新语法文件"
-    cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
-    log INFO "语法模型更新成功"
-  else
-    local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
-    log INFO "语法模型最后更新于 $local_date, 您目前无需更新它"
+get_info() {
+  local mirror="$1" version="$2" name="$3" info
+  if [[ "$mirror" == "github" ]]; then
+    info=$(
+      jq -r --arg version "$version" --arg name "$name" '.[] |
+      select( .tag_name == $version ) | .assets.[] |
+      select( .name | test( $name ) )' "$TEMP_DIR/github_$name.json"
+    )
+    echo "$info"
+  elif [[ "$mirror" == "cnb" ]]; then
+    info=$(
+      jq -r --arg version "refs/tags/$version" --arg name "$name" \
+        '.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+          select( .tagRef == $version ) | .assets[] |
+          select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
+    )
+    echo "$info"
   fi
 }
 
 update_schema() {
-  local fuzhu="$1" gram="$2"
-  # 缓存 GitHub API 响应
-  if [[ ! -f "$TEMP_DIR/schema_$fuzhu.json" ]]; then
-    if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/schema_$fuzhu.json"; then
-      error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+  local mirror="$1" fuzhu="$2" gram="$3"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
     fi
   fi
   # 获取本地版本号
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
-    local_version=v$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
     [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
     local_version="v0"
   fi
-  log INFO "当前方案文件版本号为 $local_version"
   # 获取远程版本号
-  remote_version=$(
-    jq -r '.[].tag_name' "$TEMP_DIR/schema_$fuzhu.json" |
-      grep -vE "dict-nightly" | sort -rV | head -n 1
-  )
+  if [[ "$mirror" == "github" ]]; then
+    remote_version=$(
+      jq -r '.[].tag_name' "$TEMP_DIR/github_$fuzhu.json" |
+        grep -vE "dict-nightly" | sort -rV | head -n 1
+    )
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_version=$(
+      jq -r '.pageProps.initialState.slug.repo.releases.list.data.releases[].tagRef' \
+        "$TEMP_DIR/cnb.json" | grep -vE "model" | sort -rV | head -n 1
+    )
+    remote_version="${remote_version#"refs/tags/"}"
+  fi
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
   if [[ "$remote_version" > "$local_version" ]]; then
-    log INFO "方案文件最新版本号为 $remote_version, 以下内容为更新日志"
+    log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
     local changelog
-    changelog=$(
-      jq -r --arg version "$remote_version" '.[] |
-      select(.tag_name == $version ) | .body' "$TEMP_DIR/schema_$fuzhu.json"
-    )
+    if [[ "$mirror" == "github" ]]; then
+      changelog=$(
+        jq -r --arg version "$remote_version" '.[] |
+      select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
+      )
+    elif [[ "$mirror" == "cnb" ]]; then
+      changelog=$(
+        jq -r --arg version "refs/tags/$remote_version" \
+          '.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+          select( .tagRef == $version ) | .body' "$TEMP_DIR/cnb.json"
+      )
+    fi
     echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
     sleep 3
     log INFO "开始更新方案文件，正在下载文件"
-    local schemaurl schemaname local_sha256sum remote_sha256sum
-    schemaurl=$(
-      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
-    )
-    schemaname=$(
-      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
-    )
+    local schemaurl schemaname local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.browser_download_url')
+    elif [[ "$mirror" == "cnb" ]]; then
+      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.path')
+      schemaurl="https://cnb.cool$schemaurl"
+    fi
+    schemaname=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.name')
     curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
     log INFO "正在验证文件完整性"
-    local_sha256sum=$(sha256sum "$TEMP_DIR/$schemaname" | awk '{print $1}')
-    remote_sha256sum=$(
-      jq -r --arg version "$remote_version" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version) | .assets.[] |
-      select(.name | test($name)) | .digest' "$TEMP_DIR/schema_$fuzhu.json" |
-        awk -F ':' '{print $2}'
-    )
-    [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "方案文件下载出错，请重试！"
+    local_size=$(stat -c %s "$TEMP_DIR/$schemaname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.sizeInByte')
+    fi
+    [[ "$local_size" == "$remote_size" ]] || error_exit "方案文件下载出错，请重试！"
     log INFO "验证成功，开始更新方案文件"
     unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
     for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
@@ -286,15 +208,24 @@ update_schema() {
     cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
     log INFO "方案文件更新成功"
   else
-    log INFO "方案文件无需更新"
+    log INFO "远程方案文件版本号为 $remote_version"
+    log INFO "本地方案文件版本号为 $local_version, 您目前无需更新它"
   fi
 }
 update_dict() {
-  local fuzhu="$1"
-  # 缓存 GitHub API 响应
-  if [[ ! -f "$TEMP_DIR/schema_$fuzhu.json" ]]; then
-    if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/schema_$fuzhu.json"; then
-      error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+  local mirror="$1" fuzhu="$2"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
     fi
   fi
   local local_date remote_date
@@ -303,50 +234,59 @@ update_dict() {
   else
     local_date=0
   fi
-  remote_date=$(
-    jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
-    select(.tag_name == $version ) | .assets.[] |
-    select(.name | test($name)) | .updated_at' "$TEMP_DIR/schema_$fuzhu.json"
-  )
+  if [[ "$mirror" == "github" ]]; then
+    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at')
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updatedAt')
+  fi
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新词典文件"
-    local dicturl dictname local_sha256sum remote_sha256sum
-    dicturl=$(
-      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/schema_$fuzhu.json"
-    )
-    dictname=$(
-      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .name' "$TEMP_DIR/schema_$fuzhu.json"
-    )
+    local dicturl dictname local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.browser_download_url')
+      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.name')
+    elif [[ "$mirror" == "cnb" ]]; then
+      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.path')
+      dicturl="https://cnb.cool$dicturl"
+      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.name')
+    fi
     curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
     log INFO "正在验证文件完整性"
-    local_sha256sum=$(sha256sum "$TEMP_DIR/$dictname" | awk '{print $1}')
-    remote_sha256sum=$(
-      jq -r --arg version "dict-nightly" --arg name "$fuzhu" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .digest' "$TEMP_DIR/schema_$fuzhu.json" |
-        awk -F ':' '{print $2}'
-    )
-    [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "词典文件下载出错，请重试！"
+    local_size=$(stat -c %s "$TEMP_DIR/$dictname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.sizeInByte')
+    fi
+    [[ "$local_size" == "$remote_size" ]] || error_exit "词典文件下载出错，请重试！"
     log INFO "验证成功，开始更新词典文件"
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-    dictname="${dictname:2}"
-    dictname="${dictname%.zip}"
+    dictname="${dictname:2}" && dictname="${dictname%.zip}"
     cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
     log INFO "词典文件更新成功"
   else
+    remote_date=$(date -d "@$remote_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "远程词典文件最后更新于 $remote_date"
     local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
-    log INFO "词典文件最后更新于 $local_date, 您目前无需更新它"
+    log INFO "本地词典文件最后更新于 $local_date, 您目前无需更新它"
   fi
 }
 update_gram() {
-  # 缓存 GitHub API 响应
-  if ! curl -sL --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/gram.json"; then
-    error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+  local mirror="$1"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_gram.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_gram.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
+    fi
   fi
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
@@ -354,36 +294,38 @@ update_gram() {
   else
     local_date=0
   fi
-  remote_date=$(
-    jq -r --arg version "LTS" --arg name "$gramname" '.[] |
-    select(.tag_name == $version ) | .assets.[] |
-    select(.name | test($name)) | .updated_at' "$TEMP_DIR/gram.json"
-  )
+  if [[ "$mirror" == "github" ]]; then
+    remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updatedAt')
+  fi
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新语法模型"
-    local gramurl local_sha256sum remote_sha256sum
-    gramurl=$(
-      jq -r --arg version "LTS" --arg name "$gramname" '.[] |
-      select(.tag_name == $version ) | .assets.[] |
-      select(.name | test($name)) | .browser_download_url' "$TEMP_DIR/gram.json"
-    )
+    local gramurl local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      gramurl=$(get_info "$mirror" "LTS" "gram" | jq -r '.browser_download_url')
+    elif [[ "$mirror" == "cnb" ]]; then
+      gramurl=$(get_info "$mirror" "model" "gram" | jq -r '.path')
+      gramurl="https://cnb.cool$gramurl"
+    fi
     curl -L --connect-timeout 10 -o "$TEMP_DIR/$gramname" "$gramurl"
     log INFO "正在验证文件完整性"
-    local_sha256sum=$(sha256sum "$TEMP_DIR/$gramname" | awk '{print $1}')
-    remote_sha256sum=$(
-      jq -r --arg version "LTS" --arg name "$gramname" '.[] |
-      select(.tag_name == $version) | .assets.[] |
-      select(.name == $name) | .digest' "$TEMP_DIR/gram.json" |
-        awk -F ':' '{print $2}'
-    )
-    [[ "$local_sha256sum" == "$remote_sha256sum" ]] || error_exit "语法模型下载出错，请重试！"
-    log INFO "验证成功，开始语法模型文件"
+    local_size=$(stat -c %s "$TEMP_DIR/$gramname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "LTS" "gram" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.sizeInByte')
+    fi
+    [[ "$local_size" == "$remote_size" ]] || error_exit "语法模型下载出错，请重试！"
+    log INFO "验证成功，开始更新语法模型"
     cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
     log INFO "语法模型更新成功"
   else
+    remote_date=$(date -d "@$remote_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "远程语法模型最后更新于 $remote_date"
     local_date=$(date -d "@$local_date" +"%Y-%m-%d %H:%M:%S")
-    log INFO "语法模型最后更新于 $local_date, 您目前无需更新它"
+    log INFO "本地语法模型最后更新于 $local_date, 您目前无需更新它"
   fi
 }
 
@@ -510,33 +452,13 @@ main() {
   if [[ "$schema" == "base" && "$fuzhu" != "base" ]]; then
     error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
   fi
+  [[ -n "$mirror" ]] || mirror="github"
+  # 脚本自检
+  script_check "$mirror"
   # 开始更新
-  if [[ "$mirror" == "cnb" ]]; then
-    if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
-      log WARN "您似乎正在使用源文件！"
-      log WARN "请从 Release 页面下载正式版！"
-      error_exit "终止操作"
-    fi
-    log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
-    log WARN "由于您正在使用镜像，无法检查本工具是否存在更新"
-    [[ -z "$schema" ]] || update_schema_cnb "$fuzhu" "$gram"
-    [[ "$dict" == "false" ]] || update_dict_cnb "$fuzhu"
-    [[ "$gram" == "false" ]] || update_gram_cnb
-  else
-    # 检查 GitHub 连接状态
-    log INFO "正在检查 GitHub 连接状态"
-    if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
-      error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
-    elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
-      error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
-    fi
-    # 脚本自检
-    script_check
-    # 开始更新
-    [[ -z "$schema" ]] || update_schema "$fuzhu" "$gram"
-    [[ "$dict" == "false" ]] || update_dict "$fuzhu"
-    [[ "$gram" == "false" ]] || update_gram
-  fi
+  [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram"
+  [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu"
+  [[ "$gram" == "false" ]] || update_gram "$mirror"
   # 自动部署
   if [[ "$inputime" == "fcitx5" ]]; then
     if command -v qdbus6 >/dev/null; then
