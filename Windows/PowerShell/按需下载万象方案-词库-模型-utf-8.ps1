@@ -749,7 +749,17 @@ function Download-Files {
         Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
         Write-Host "下载完成" -ForegroundColor Green
-        if (-not $UseCnbMirrorSource) {
+        if ($UseCnbMirrorSource) {
+            # 校验文件大小
+            $expectedSize = [int64]$assetInfo.sizeInByte
+            $actualSize = (Get-Item $outFilePath).Length
+            if ($expectedSize -ne $actualSize) {
+                Write-Host "文件大小校验失败，删除文件" -ForegroundColor Red
+                Write-Host "期望大小: $expectedSize 字节，实际大小: $actualSize 字节" -ForegroundColor Red
+                Remove-Item -Path $outFilePath -Force
+                Exit-Tip 1
+            }
+        } else {
             $SHA256 = $assetInfo.digest.Split(":")[1]
             if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
                 Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
@@ -944,17 +954,27 @@ if ($InputGramModel -eq "0") {
         $UpdateFlag = $true
     } elseif (Test-Path -Path $filePath) {
         if ($UseCnbMirrorSource) {
-            return
-        }
-        # 计算目标文件的MD5
-        $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
-        # 计算远程文件的MD5
-        $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
-        # 比较MD5
-        if ($localSHA256 -ne $remoteSHA256) {
-            Write-Host "模型MD5不匹配，需要更新" -ForegroundColor Red
-            Update-GramModel
-            $UpdateFlag = $true
+            # 校验文件大小
+            $expectedSize = [int64]$ExpectedGramTypeInfo.sizeInByte
+            $actualSize = (Get-Item $filePath).Length
+            if ($expectedSize -ne $actualSize) {
+                Write-Host "文件大小校验失败，需要更新" -ForegroundColor Red
+                Write-Host "期望大小: $expectedSize 字节，实际大小: $actualSize 字节" -ForegroundColor Red
+                Remove-Item -Path $filePath -Force
+                Update-GramModel
+                $UpdateFlag = $true
+            }
+        } else {
+            # 计算目标文件的SHA256
+            $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
+            # 计算远程文件的SHA256
+            $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
+            # 比较SHA256
+            if ($localSHA256 -ne $remoteSHA256) {
+                Write-Host "模型SHA256不匹配，需要更新" -ForegroundColor Red
+                Update-GramModel
+                $UpdateFlag = $true
+            }
         }
     } else {
         Write-Host "模型不存在，需要更新" -ForegroundColor Red
