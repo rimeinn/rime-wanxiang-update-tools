@@ -10,8 +10,8 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
-$InputSchemaType = "7";
+# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+$InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
 #$SkipFiles = @(
@@ -70,14 +70,13 @@ $KeyTable = @{
     "0" = "base";
     "1" = "flypy";
     "2" = "hanxin";
-    "3" = "jdh";
-    "4" = "moqi";
-    "5" = "tiger";
-    "6" = "wubi";
-    "7" = "zrm";
+    "3" = "moqi";
+    "4" = "tiger";
+    "5" = "wubi";
+    "6" = "zrm";
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
