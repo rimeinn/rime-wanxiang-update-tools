@@ -184,7 +184,7 @@ first_config() {
   log INFO "您似乎是第一次使用该工具，接下来引导您进行必要的配置"
   local schema_type help_code
   schema_type=("base" "pro")
-  help_code=("flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
+  help_code=("flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
   local input schema helpcode confirm
   input=$ENGINE
   log INFO "请选择您使用方案类型"
