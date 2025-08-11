@@ -10,8 +10,8 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
-$InputSchemaType = "7";
+# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+$InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
 #$SkipFiles = @(
@@ -70,14 +70,13 @@ $KeyTable = @{
     "0" = "base";
     "1" = "flypy";
     "2" = "hanxin";
-    "3" = "jdh";
-    "4" = "moqi";
-    "5" = "tiger";
-    "6" = "wubi";
-    "7" = "zrm";
+    "3" = "moqi";
+    "4" = "tiger";
+    "5" = "wubi";
+    "6" = "zrm";
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -780,15 +779,49 @@ function Expand-ZipFile {
         [string]$zipFilePath,
         [string]$destinationPath
     )
-
+ 
     try {
         Write-Host "正在解压文件: $zipFilePath" -ForegroundColor Green
         Write-Host "解压到: $destinationPath" -ForegroundColor Green
-        Expand-Archive -Path $zipFilePath -DestinationPath $destinationPath -Force
+ 
+        # --- 获取 7z.exe 路径 ---
+        $weaselRootDir = Get-WeaselInstallDir
+        if (-not $weaselRootDir) {
+            Throw "无法获取小狼毫输入法安装目录，因此无法定位 7z.exe 进行解压。"
+        }
+        $sevenZipPath = Join-Path $weaselRootDir "7z.exe"
+ 
+        # 检查 7z.exe 是否存在
+        if (-not (Test-Path $sevenZipPath -PathType Leaf)) {
+            Throw "找不到 7z.exe。预期路径: '$sevenZipPath'。请确认小狼毫输入法安装正常且包含 7z.exe"
+        }
+        Write-Host "已找到 7z.exe：$sevenZipPath" -ForegroundColor DarkCyan
+ 
+        # --- 确保目标目录存在 ---
+        if (-not (Test-Path $destinationPath)) {
+            try {
+                New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
+                Write-Host "已创建目标目录: $destinationPath" -ForegroundColor Yellow
+            }
+            catch {
+                Throw "创建目标目录 '$destinationPath' 失败: $($_.Exception.Message)。"
+            }
+        }
+ 
+        # --- 调用 7z.exe 进行解压 ---
+        $arguments = "x `"$zipFilePath`" -o`"$destinationPath`" -y"
+        Write-Host "正在调用 7-Zip 进行解压..." -ForegroundColor DarkGreen
+ 
+        $process = Start-Process -FilePath $sevenZipPath -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+      
+        if ($process.ExitCode -ne 0) {
+            Throw "7-Zip 解压失败，退出代码: $($process.ExitCode)。"
+        }
+      
         Write-Host "解压完成" -ForegroundColor Green
     }
     catch {
-        Write-Host "解压失败: $_" -ForegroundColor Red
+        Write-Host "解压失败: $($_.Exception.Message)" -ForegroundColor Red
         Remove-Item -Path $zipFilePath -Force -ErrorAction SilentlyContinue
         Exit-Tip 1
     }
