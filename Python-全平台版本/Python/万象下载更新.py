@@ -405,8 +405,8 @@ class ConfigManager:
         if self.scheme_type == 'pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
-            print("[1]-墨奇 [2]-小鹤 [3]-自然码 [4]-简单鹤")
-            print("[5]-虎码 [6]-五笔 [7]-汉心")
+            print("[1]-墨奇 [2]-小鹤 [3]-自然码")
+            print("[4]-虎码 [5]-五笔 [6]-汉心")
         
             while True:
                 choice = input("请选择你的辅助码方案（1-7）: ").strip()
