@@ -14,27 +14,27 @@ import re
 from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
+UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 # ====================== 全局配置 ======================
-
-# 镜像域名变量，用于加速GitHub访问（当前值：gh-proxy.com）
-# 配置方式：访问 https://github.akams.cn/ 可测速手动选取低延迟节点，然后将其域名复制给 MIRROR_DOMAN
-MIRROR_DOMAIN = "gh-proxy.com"  # 可选项示例：github.sagolu.top, gh-proxy.com, github.chenc.dev
-# GitHub 仓库信息
+# 仓库信息
 OWNER = "amzxyz"
 REPO = "rime_wanxiang"
+# cnb信息
+CNB_REPO = "rime-wanxiang"
 DICT_TAG = "dict-nightly"
 # 模型相关配置
 MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
-
-# # 基础版方案和词库文件名
-# BASE_SCHEME_FILE = "rime-wanxiang-base.zip"
-# BASE_DICT_FILE = "9-base-zh-dicts.zip"
-
+# cnb请求匹配规则
+CNB_REGEX_PATTERN = r'.*<script id="__NEXT_DATA__".*>(\{.*\})</script>'
+CNB_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+    "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+}
 # Zh词库目录
 ZH_DICTS = ZH_DICTS_PRO = "dicts"
-
 SCHEME_MAP = {
     '1': 'moqi',
     '2': 'flypy',
@@ -64,7 +64,6 @@ def system_check():
 SYSTEM_TYPE = system_check()
 
 # ====================== 界面函数 ======================
-UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 BORDER = "=" * 35 if SYSTEM_TYPE == 'ios' else "-" * 60
 SUB_BORDER = "-" * 30 if SYSTEM_TYPE == 'ios' else "-" * 55
 INDENT = " " * 2
@@ -362,7 +361,7 @@ class ConfigManager:
             'scheme_type': '',
             'scheme_file': '',
             'dict_file': '',
-            'use_mirror': 'false',
+            'use_mirror': 'true',
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
@@ -406,8 +405,8 @@ class ConfigManager:
         if self.scheme_type == 'pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
-            print("[1]-墨奇 [2]-小鹤 [3]-自然码 [4]-简单鹤")
-            print("[5]-虎码 [6]-五笔 [7]-汉心")
+            print("[1]-墨奇 [2]-小鹤 [3]-自然码")
+            print("[4]-虎码 [5]-五笔 [6]-汉心")
         
             while True:
                 choice = input("请选择你的辅助码方案（1-7）: ").strip()
@@ -447,21 +446,24 @@ class ConfigManager:
                 dict_pattern = f"*{scheme_key}*dicts.zip"
             
 
-            scheme_checker = GithubFileChecker(
+            scheme_checker = FileChecker(
                 owner=OWNER,
-                repo=REPO,
-                pattern=scheme_pattern
+                repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
+                pattern=scheme_pattern,
+                use_mirror=self.config.getboolean('Settings', 'use_mirror')
             )
-            dict_checker = GithubFileChecker(
+            dict_checker = FileChecker(
                 owner=OWNER,
-                repo=REPO,
+                repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
                 pattern=dict_pattern,
+                use_mirror=self.config.getboolean('Settings', 'use_mirror'),
                 tag=DICT_TAG
             )
             
             # 获取文件名
             scheme_file = scheme_checker.get_latest_file()
             dict_file = dict_checker.get_latest_file()
+            print(scheme_file, dict_file)
             
             # 验证文件名是否有效
             if not scheme_file or not dict_file:
@@ -511,7 +513,7 @@ class ConfigManager:
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
-            ("[use_mirror]", "是否打开镜像(镜像网址:bgithub.xyz,默认false)", 'use_mirror'),
+            ("[use_mirror]", "是否使用国内仓库CNB(网址:cnb.cool,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
             ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
@@ -625,20 +627,27 @@ class ConfigManager:
             os.makedirs(dir, exist_ok=True)
 
 
-class GithubFileChecker:
-    def __init__(self, owner, repo, pattern, tag=None):
+class FileChecker:
+    def __init__(self, owner, repo, pattern, use_mirror, tag=None):
         self.owner = owner
         self.repo = repo
         self.pattern_regex = re.compile(pattern.replace('*', '.*'))
         self.tag = tag
+        self.use_mirror = use_mirror
 
     def get_latest_file(self) -> Optional[str]:
         """获取匹配模式的最新文件"""
-        releases = self._get_releases()
-        for release in releases:
-            for asset in release.get("assets", []):
+        if self.use_mirror:
+            releases = self._get_cnb_releases()
+            for asset in releases.get("assets", []):
                 if self.pattern_regex.match(asset['name']):
                     return asset['name']
+        else:
+            releases = self._get_releases()
+            for release in releases:
+                for asset in release.get("assets", []):
+                    if self.pattern_regex.match(asset['name']):
+                        return asset['name']
         return None
 
     def _get_releases(self) -> List:
@@ -654,6 +663,24 @@ class GithubFileChecker:
         response.raise_for_status()
         # 返回结果处理：指定标签时为单个Release，否则为列表
         return [response.json()] if self.tag else response.json()
+    
+    def _get_cnb_releases(self) -> Dict:
+        headers = CNB_HEADERS
+        url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
+        response = requests.get(url=url, headers=headers)
+        regex_res = re.search(CNB_REGEX_PATTERN, response.text)
+        json_all = json.loads(regex_res.group(1)) if regex_res else {}
+        if json_all:
+            releases_all = json_all['props']['pageProps']['initialState']['slug']['repo']['releases']['list']['data']
+            releases_list = releases_all['releases']
+            for release in releases_list:
+                if self.tag:
+                    if "词库" in release.get("title"):
+                        return release # 词库
+                if "万象拼音输入方案" in release.get("title"):
+                    return release # 方案
+        return {}
+        
 
 # ====================== 更新基类 ======================
 class UpdateHandler:
@@ -731,14 +758,23 @@ class UpdateHandler:
     
         whole_old_file_paths: List[str] = []
         should_delete_paths: List[str] = []
-    
+        
+        old_members = new_members = []
         try:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
-                old_members = old_zip.namelist()
+                for i in old_zip.namelist():
+                    try:
+                        old_members.append(i.encode('cp437').decode('utf-8'))
+                    except:
+                        old_members.append(i)
     
             if new_temp_zip and os.path.isfile(new_temp_zip):
                 with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
-                    new_members = new_zip.namelist()
+                    for i in new_zip.namelist():
+                        try:
+                            new_members.append(i.encode('cp437').decode('utf-8'))
+                        except:
+                            new_members.append(i)
     
             # 处理词库情况下的路径差异
             if is_dict:
@@ -818,11 +854,12 @@ class UpdateHandler:
                 "update_time": info["update_time"],
                 "tag": info.get("tag", ""),
                 "apply_time": datetime.now(timezone.utc).isoformat(),
-                "sha256": info["sha256"]
+                "sha256": info.get("sha256", ""),
+                "cnb_id": info.get("id", "")
             }, f)
         
 
-    def github_api_request(self, url, output_json=True) -> Optional[Dict]:
+    def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Dict]:
         """
         带令牌认证的API请求
         Args:
@@ -830,12 +867,12 @@ class UpdateHandler:
         Returns:
             dict: API响应的JSON数据
         """
-        headers = {"User-Agent": "RIME-Updater/1.0"}
-        if self.github_token:
-            headers["Authorization"] = f"Bearer {self.github_token}"
-        # # 在请求前打印通知
-        # if "api.github.com" in url:
-        #     print(f"{COLOR['BLUE']}请求 api.github.com: {url}{COLOR['ENDC']}")
+        if use_mirror:
+            headers = CNB_HEADERS
+        else:
+            headers = {"User-Agent": "RIME-Updater/1.0"}
+            if self.github_token:
+                headers["Authorization"] = f"Bearer {self.github_token}"
         
         max_retries = 2
         for attempt in range(max_retries + 1):
@@ -843,6 +880,12 @@ class UpdateHandler:
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
                 if output_json:
+                    if use_mirror:
+                        if re.search(CNB_REGEX_PATTERN, response.text):
+                            json_all = json.loads(re.search(CNB_REGEX_PATTERN, response.text).group(1))
+                            releases_list = json_all['props']['pageProps']['initialState']['slug']['repo']['releases']['list']['data']['releases']
+                            return releases_list
+                        return None
                     return response.json()
                 else:
                     return response
@@ -868,19 +911,6 @@ class UpdateHandler:
         return None
 
 
-    def mirror_url(self, url) -> str:
-        """
-        智能镜像处理
-        Args:
-            url (str): 原始URL
-        Returns:
-            str: 处理后的URL
-        """
-        # return url.replace("github.com", "bgithub.xyz") if self.use_mirror else url         # 备用
-        if not self.use_mirror:
-            return url
-        return f"https://{MIRROR_DOMAIN}/{url}"
-
     def download_file(self, url, save_path, is_continue) -> bool:
         """
         带进度显示的稳健下载
@@ -890,9 +920,9 @@ class UpdateHandler:
             is_continue (bool): 是否断点续传
         """
         try:
-            # 统一提示镜像状态
+            # 统一提示使用cnb或GitHub状态
             if self.use_mirror:
-                print(f"{COLOR['OKBLUE']}[i] 正在使用镜像 https://{MIRROR_DOMAIN} 下载{COLOR['ENDC']}")
+                print(f"{COLOR['OKBLUE']}[i] 正在使用 https://cnb.cool 下载{COLOR['ENDC']}")
                 # print(f"{COLOR['WARNING']}注意: 如果使用代理，请确保关闭后再尝试下载{COLOR['ENDC']}")
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
@@ -943,9 +973,21 @@ class UpdateHandler:
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 exclude_patterns = self.exclude_files  # 获取排除模式
-                members = zip_ref.namelist()  # 获取所有成员
-                # 过滤出需要解压的文件
-                members = [m for m in members if not m.endswith('/')]
+                
+                members = []
+                info_map = {}  # 解码后名字 → ZipInfo 映射
+    
+                for info in zip_ref.infolist():
+                    try:
+                        decoded_name = info.filename.encode('cp437').decode('utf-8')
+                    except:
+                        decoded_name = info.filename
+    
+                    if info.is_dir():
+                        continue
+    
+                    members.append(decoded_name)
+                    info_map[decoded_name] = info
     
                 # 计算实际需要解压的文件数量
                 valid_members = []
@@ -985,8 +1027,9 @@ class UpdateHandler:
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
                         target_path = os.path.join(target_dir, normalized_path)
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                        with open(target_path, 'wb') as f:
-                            f.write(zip_ref.read(member))
+                        info = info_map[member]
+                        with zip_ref.open(info) as src, open(target_path, 'wb') as dst:
+                            dst.write(src.read())
                         pbar.update(1)  # 更新进度条
     
             return True
@@ -1121,8 +1164,13 @@ class CombinedUpdater:
         self.filename_retry_count: int = 0
     def fetch_all_updates(self) -> None:
         """获取所有更新信息"""
-        self.shared_releases = self.scheme_updater.github_api_request(
-            f"https://api.github.com/repos/{OWNER}/{REPO}/releases"
+        url = f"https://api.github.com/repos/{OWNER}/{REPO}/releases"
+        use_mirror = self.config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
+        if use_mirror:
+            url = f"https://cnb.cool/{OWNER}/{CNB_REPO}/-/releases"
+        self.shared_releases = self.scheme_updater.remote_api_request(
+            url = url,
+            use_mirror = use_mirror
         )
         # 使用共享的releases数据检查方案和词库更新
         self.scheme_updater.update_info = self._extract_scheme_update()
@@ -1188,11 +1236,12 @@ class CombinedUpdater:
                 if asset["name"] == self.scheme_updater.scheme_file:
                     update_description = release.get("body", "无更新说明")
                     return {
-                        "url": self.scheme_updater.mirror_url(asset["browser_download_url"]),
-                        "update_time": asset["updated_at"],
-                        "tag": release["tag_name"],
+                        "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
+                        "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                        "tag": release.get("tag_name") or release.get("tagRef").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
                         "description": update_description,
-                        "sha256": asset["digest"].split(':')[-1]
+                        "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
+                        "id": asset.get("id", "")                                               # 仅cnb
                     }
         return None
     
@@ -1205,10 +1254,11 @@ class CombinedUpdater:
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
                     return {
-                        "url": self.dict_updater.mirror_url(asset["browser_download_url"]),
-                        "update_time": asset["updated_at"],
-                        "tag": release["tag_name"],
-                        "sha256": asset["digest"].split(':')[-1]
+                        "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
+                        "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                        "tag": release.get("tag_name") or release.get("tagRef").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
+                        "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
+                        "id": asset.get("id", "")                                               # 仅cnb
                     }
         return None
 
@@ -1245,17 +1295,17 @@ class SchemeUpdater(UpdateHandler):
             print_success("当前已是最新方案")
             return 0  # 没有更新
 
-
-        # 校验本地文件和远端文件sha256
         target_file = os.path.join(self.custom_dir, self.scheme_file)
-        if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化，将更新本地保存的记录")
-            self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
-            return 0
+        # 校验本地文件和远端文件sha256
+        if remote_info['sha256']:
+            if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
+                print_success("文件内容未变化，将更新本地保存的记录")
+                self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
+                return 0
         
-            
         # 下载更新
-        temp_file = os.path.join(self.custom_dir, f"temp_scheme_{remote_info['sha256']}.zip")
+        _suffix = remote_info['sha256'] or remote_info['id']
+        temp_file = os.path.join(self.custom_dir, f"temp_scheme_{_suffix}.zip")
         if os.path.exists(temp_file):
             is_continue = True
         else:
@@ -1378,8 +1428,6 @@ class DictUpdater(UpdateHandler):
         
             # 保存记录
             self.save_record(self.record_file, "dict_file", self.dict_file, info)
-
-
         except Exception as e:
             # 清理残留文件
             if os.path.exists(temp):
@@ -1412,13 +1460,15 @@ class DictUpdater(UpdateHandler):
 
         target_file = os.path.join(self.custom_dir, self.dict_file)
         # 校验本地文件和远端文件sha256
-        if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-            print_success("文件内容未变化，将更新本地保存的记录")
-            self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
-            return 0
+        if remote_info['sha256']:
+            if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
+                print_success("文件内容未变化，将更新本地保存的记录")
+                self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
+                return 0
 
         # 下载流程
-        temp_file = os.path.join(self.custom_dir, f"temp_dict_{remote_info['sha256']}.zip")
+        _suffix = remote_info['sha256'] or remote_info['id']
+        temp_file = os.path.join(self.custom_dir, f"temp_dict_{_suffix}.zip")
         if os.path.exists(temp_file):
             is_continue = True
         else:
@@ -1436,7 +1486,6 @@ class DictUpdater(UpdateHandler):
             self._delete_old_files(old_files, _)
             print_warning("已移除上个版本的词库文件")
         
-
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
             print_success("词库更新完成")
@@ -1469,20 +1518,27 @@ class ModelUpdater(UpdateHandler):
 
     def check_update(self) -> Optional[Dict]:
         """检查模型更新"""
-        release = self.github_api_request(
-            f"https://api.github.com/repos/{OWNER}/{MODEL_REPO}/releases/tags/{MODEL_TAG}"
+        url = f"https://api.github.com/repos/{OWNER}/{MODEL_REPO}/releases/tags/{MODEL_TAG}"
+        use_mirror = self.config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
+        if use_mirror:
+            url = f"https://cnb.cool/{OWNER}/{CNB_REPO}/-/releases"
+        release = self.remote_api_request(
+            url = url,
+            use_mirror = use_mirror
         )
         if not release:
             return None
             
+        release = release[-1] if isinstance(release, list) else release
         for asset in release.get("assets", []):
             if asset["name"] == self.model_file:
                 return {
-                    "url": self.mirror_url(asset["browser_download_url"]),
+                    "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                     # 使用asset的更新时间
-                    "update_time": asset["updated_at"],
-                    "size": asset["size"],
-                    "sha256": asset["digest"].split(':')[-1]
+                    "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                    "size": asset.get("size") or asset.get("sizeInByte"),
+                    "sha256": asset.get("digest").split(':')[-1] if asset.get("digest") else "",
+                    "id": asset.get("id")
                 }
         return None
 
@@ -1509,7 +1565,6 @@ class ModelUpdater(UpdateHandler):
             print_success("当前已是最新模型")
             return 0
 
-
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match(remote_info)
 
@@ -1520,7 +1575,8 @@ class ModelUpdater(UpdateHandler):
             return 0
 
         # 下载到临时文件
-        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{remote_info['sha256']}.tmp") 
+        _suffix = remote_info['sha256'] or remote_info['id']
+        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{_suffix}.tmp") 
         if os.path.exists(temp_file):
             is_continue = True
         else:
@@ -1563,8 +1619,10 @@ class ModelUpdater(UpdateHandler):
     def _check_hash_match(self, remote_info) -> bool:
         """检查临时文件与目标文件哈希是否一致"""
         temp_hash = remote_info['sha256']
-        target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
-        return temp_hash == target_hash
+        if temp_hash:
+            target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
+            return temp_hash == target_hash
+        return False
 
 
 class ScriptUpdater(UpdateHandler):
@@ -1573,7 +1631,7 @@ class ScriptUpdater(UpdateHandler):
         self.script_path = os.path.abspath(__file__)
 
     def check_update(self) -> Optional[Dict]:
-        releases = self.github_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
+        releases = self.remote_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
         if not releases:
             return None
         
@@ -1584,7 +1642,7 @@ class ScriptUpdater(UpdateHandler):
         for asset in releases[0].get("assets", []):
             if asset["name"] == 'rime-wanxiang-update-win-mac-ios-android.py':
                 return {
-                    "url": self.mirror_url(asset["browser_download_url"]),
+                    "url": asset["browser_download_url"],
                     "update_time": datetime.strptime(asset["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                     "tag": remote_version,
                     "description": update_info
@@ -1592,7 +1650,7 @@ class ScriptUpdater(UpdateHandler):
             
     def update_script(self, url: str) -> bool:
         """更新脚本"""
-        res = self.github_api_request(url=url, output_json=False)
+        res = self.remote_api_request(url=url, output_json=False)
         if res.status_code == 200:
             with open(self.script_path, 'wb') as f:
                 f.write(res.content)
@@ -1642,16 +1700,14 @@ def calculate_sha256(file_path) -> Optional[str]:
     except Exception as e:
         print_error(f"计算哈希失败: {str(e)}")
         return None
-
     
 def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
+    has_script_update = script_updater.update_info
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
-
-    has_script_update = script_updater.update_info
     
     # 脚本更新提示
     if has_script_update:
@@ -1717,11 +1773,6 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
     # 如果没有更新显示提示
     if not (has_scheme_update or has_dict_update or has_model_update):
         print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
-        # print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
-        # time.sleep(4)
-        # sys.exit(0)
-
-
 
 def perform_auto_update(
     config_manager: ConfigManager, 
@@ -1737,15 +1788,21 @@ def perform_auto_update(
         # 只有在配置触发模式下才显示更新检查信息
         if is_config_triggered:
             print_subheader("正在检查可用更新...")
-            print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
+            use_mirror = config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
+            if use_mirror:
+                request_target = "cnb.cool" 
+                print(f"{COLOR['WARNING']}脚本更新依然使用api.github.com，请保持网络畅通...{COLOR['ENDC']}")
+            else:
+                request_target = "api.github.com"
+            print(f"{COLOR['BLUE']}请求 {request_target} 中...{COLOR['ENDC']}")
         
         combined_updater = CombinedUpdater(config_manager)
         combined_updater.fetch_all_updates()
     # 获取各个更新器的实例
+    script_updater = combined_updater.script_updater
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
-    script_updater = combined_updater.script_updater
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
         print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
@@ -1829,17 +1886,23 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
     """创建并显示更新信息"""
     if show:
         print_subheader("正在检查可用更新...")
-        print(f"{COLOR['BLUE']}请求 api.github.com 中...{COLOR['ENDC']}")
+        use_mirror = config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
+        if use_mirror:
+            print(f"{COLOR['WARNING']}脚本更新依然使用api.github.com，请保持网络畅通...{COLOR['ENDC']}")
+            request_target = "cnb.cool" 
+        else:
+            request_target = "api.github.com"
+        print(f"{COLOR['BLUE']}请求 {request_target} 中...{COLOR['ENDC']}")
     
     # 创建组合更新器并获取所有更新信息
     combined_updater = CombinedUpdater(config_manager)
     combined_updater.fetch_all_updates()
     
     # 获取各个更新器的实例
+    script_updater = combined_updater.script_updater
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
-    script_updater = combined_updater.script_updater
     
     # 使用函数打印更新状态
     if show:
@@ -1859,8 +1922,6 @@ def open_config_file(config_path) -> None:
                 subprocess.run(['xdg-open', config_path])
         except:
             print_warning("无法打开配置文件，请手动编辑。")
-
-
 
 # ====================== 主程序 ======================
 def main():
@@ -1980,7 +2041,6 @@ def main():
                     if deployer and updated == 1:
                         print_warning("请手动部署输入法")
 
-
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
                 if user_input.strip().lower() == '':
@@ -1998,7 +2058,6 @@ def main():
     except Exception as e:
         print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
