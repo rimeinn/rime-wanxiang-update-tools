@@ -11,7 +11,7 @@ ENGINE=""
 ######### 配置结束 #########
 
 # 全局变量
-CNB_API="https://cnb.cool/_next/data/2e640926f70b3d5b/zh/amzxyz/rime-wanxiang/-/releases.json?slug=amzxyz&slug=rime-wanxiang&slug=-&slug=releases"
+CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
@@ -112,6 +112,7 @@ script_check() {
     )
     if [[ "$remote_version" > "$local_version" ]]; then
       log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
+      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-macos.sh"
     else
       log INFO "工具已是最新版本"
     fi
@@ -132,12 +133,20 @@ get_info() {
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
       jq -r --arg version "refs/tags/$version" --arg name "$name" \
-        '.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+        '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
           select( .tagRef == $version ) | .assets[] |
           select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
     )
     echo "$info"
   fi
+}
+
+cache_cnb_api() {
+  if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.html"; then
+    error_exit "连接到 CNB 失败，您可能需要检查网络"
+  fi
+  awk 'BEGIN{RS="</script>"} /id="__NEXT_DATA__"/{gsub(/.*<script[^>]*>/,""); print; exit}' \
+    "$TEMP_DIR/cnb.html" >"$TEMP_DIR/cnb.json"
 }
 
 update_schema() {
@@ -151,9 +160,7 @@ update_schema() {
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
+      cache_cnb_api
     fi
   fi
   # 获取本地版本号
@@ -172,7 +179,7 @@ update_schema() {
     )
   elif [[ "$mirror" == "cnb" ]]; then
     remote_version=$(
-      jq -r '.pageProps.initialState.slug.repo.releases.list.data.releases[].tagRef' \
+      jq -r '.props.pageProps.initialState.slug.repo.releases.list.data.releases[].tagRef' \
         "$TEMP_DIR/cnb.json" | grep -vE "model" | sort -rV | head -n 1
     )
     remote_version="${remote_version#"refs/tags/"}"
@@ -189,7 +196,7 @@ update_schema() {
     elif [[ "$mirror" == "cnb" ]]; then
       changelog=$(
         jq -r --arg version "refs/tags/$remote_version" \
-          '.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+          '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
           select( .tagRef == $version ) | .body' "$TEMP_DIR/cnb.json"
       )
     fi
@@ -212,7 +219,10 @@ update_schema() {
     elif [[ "$mirror" == "cnb" ]]; then
       remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.sizeInByte')
     fi
-    [[ "$local_size" == "$remote_size" ]] || error_exit "方案文件下载出错，请重试！"
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "方案文件下载出错，请重试！"
+    fi
     log INFO "验证成功，开始更新方案文件"
     unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
     for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
@@ -255,9 +265,7 @@ update_dict() {
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
+      cache_cnb_api
     fi
   fi
   local local_date remote_date
@@ -291,7 +299,10 @@ update_dict() {
     elif [[ "$mirror" == "cnb" ]]; then
       remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.sizeInByte')
     fi
-    [[ "$local_size" == "$remote_size" ]] || error_exit "词典文件下载出错，请重试！"
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "词典文件下载出错，请重试！"
+    fi
     log INFO "验证成功，开始更新词典文件"
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
     dictname="${dictname:2}" && dictname="${dictname%.zip}"
@@ -317,9 +328,7 @@ update_gram() {
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
+      cache_cnb_api
     fi
   fi
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
@@ -351,7 +360,10 @@ update_gram() {
     elif [[ "$mirror" == "cnb" ]]; then
       remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.sizeInByte')
     fi
-    [[ "$local_size" == "$remote_size" ]] || error_exit "语法模型下载出错，请重试！"
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "语法模型下载出错，请重试！"
+    fi
     log INFO "验证成功，开始更新语法模型"
     cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
     log INFO "语法模型更新成功"
@@ -425,12 +437,12 @@ main() {
       ;;
     --schema)
       if [[ -n "$schema" ]]; then
-        error_exit "选项 scheam 需要参数！"
+        error_exit "选项 schema 需要参数！"
       else
         shift
       fi
       if [[ "$1" != "base" && "$1" != "pro" ]]; then
-        error_exit "选项 scheam 的参数只能为 base 或 pro"
+        error_exit "选项 schema 的参数只能为 base 或 pro"
       else
         schema="$1"
       fi
@@ -456,6 +468,7 @@ main() {
     *)
       log WARN "您可能错误的使用了该脚本"
       log WARN "请前往 GitHub 页面阅读 Readme"
+      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/blob/main/Mac/Shell/README.md"
       error_exit "参数输入错误: $1"
       ;;
     esac
