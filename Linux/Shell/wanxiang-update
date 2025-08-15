@@ -3,12 +3,41 @@
 set -euo pipefail
 
 #### 配置 Rime 部署目录 ####
-# 支持相对路径、绝对路径、拓展变量
-# 例如 "/home/user/.local/share/fcitx5/rime"
-# 例如 "$HOME/.local/share/fcitx5/rime"
-# 例如 "${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime"
+echo "请选择 Rime 部署的目录："
+echo "1) 使用默认路径 ($HOME/.local/share/fcitx5/rime)"
+echo "2) 使用 XDG 标准路径 (${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime)"
+echo "3) 自定义路径"
+echo "4) 退出"
 
-DEPLOY_DIR=""
+read -p "请输入选项编号 (1-4): " choice
+
+case $choice in
+    1)
+        DEPLOY_DIR="$HOME/.local/share/fcitx5/rime"
+        echo "已设置部署目录为: $DEPLOY_DIR"
+        ;;
+    2)
+        DEPLOY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime"
+        echo "已设置部署目录为: $DEPLOY_DIR"
+        ;;
+    3)
+        read -p "请输入自定义路径: " custom_path
+        if [ -z "$custom_path" ]; then
+            echo "错误：路径不能为空"
+            exit 1
+        fi
+        DEPLOY_DIR="$custom_path"
+        echo "已设置部署目录为: $DEPLOY_DIR"
+        ;;
+    4)
+        echo "退出配置"
+        exit 0
+        ;;
+    *)
+        echo "错误：无效的选项"
+        exit 1
+        ;;
+esac
 
 ######### 配置结束 #########
 
