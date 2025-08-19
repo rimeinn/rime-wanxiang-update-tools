@@ -8,29 +8,34 @@ set -euo pipefail
 # 例如 "squirrel"
 ENGINE=""
 
+######### 配置结束 #########
 
-# 日志彩色输出
-RED="\033[0;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-NC="\033[0m"
-readonly RED GREEN YELLOW NC
+# 全局变量
+CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
+SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
+GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
+TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
+FUZHU_LIST=("all" "base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
+TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
+UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 
-# 日志函数
+# 日志与错误处理
 log() {
-  local level="$1" color="$NC"
+  local red="\033[0;31m" green="\033[0;32m" yellow="\033[0;33m" nc="\033[0m"
+  local level="$1" color="$nc"
   case "$level" in
-  INFO) color="$GREEN" ;;
-  WARN) color="$YELLOW" ;;
-  ERROR) color="$RED" ;;
+  INFO) color="$green" ;;
+  WARN) color="$yellow" ;;
+  ERROR) color="$red" ;;
   esac
   shift
-  printf "${color}[%s] %s${NC}\n" "$level" "$*"
+  printf "${color}[%s] %s${nc}\n" "$level" "$*"
 }
 
 # 获取当前脚本名称
 script_name=$(basename $0)
 
+engine_check() {
 # 输入法引擎检测
 if [ -z "$ENGINE" ]; then
   log ERROR "当前未配置输入法引擎"
@@ -56,327 +61,321 @@ elif [ "$ENGINE" == "squirrel" ]; then
   exit
   fi
 fi
+}
 
-
-# 获取输入法配置路径
-if [ "$ENGINE" = "fcitx5" ]; then
-  DEPLOY_DIR="$HOME/.local/share/fcitx5/rime"
-else
-  DEPLOY_DIR="$HOME/Library/Rime"
-fi
-######### 配置结束 #########
-
-# 缓存文件
-TEMP_DIR=$(mktemp -d /tmp/wanxiang-update.XXXXXX)
-readonly DEPLOY_DIR TEMP_DIR
-
-# 工具相关
-TOOLS_DIR="$DEPLOY_DIR/update_tools_config"
-CONFIG_FILE="$TOOLS_DIR/user_config.json"
-UPDATE_FILE="$TOOLS_DIR/update_info.json"
-RAW_DIR="$TOOLS_DIR/raw"
-UPDATE_TOOLS_REPO="expoli/rime-wanxiang-update-tools"
-UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
-readonly CONFIG_FILE UPDATE_FILE RAW_DIR UPDATE_TOOLS_REPO UPDATE_TOOLS_VERSION
-
-# 仓库信息
-SCHEMA_REPO="amzxyz/rime_wanxiang"
-GRAM_REPO="amzxyz/RIME-LMDG"
-GH_API="https://api.github.com/repos"
-GH_DL="https://github.com"
-readonly SCHEMA_REPO GRAM_REPO GH_API GH_DL
-
-
-# 错误处理函数
 error_exit() {
   log ERROR "$*"
   cleanup
   exit 1
 }
-# 清理临时文件
 cleanup() {
   if [[ -d "$TEMP_DIR" ]]; then
     rm -rf "$TEMP_DIR" || log WARN "清理缓存文件失败"
   fi
 }
-# 检查必要依赖
-check_deps() {
-  for _cmd in curl unzip jq; do
+deps_check() {
+  for _cmd in curl jq unzip; do
     command -v "$_cmd" >/dev/null || error_exit "缺少必要依赖：$_cmd"
   done
 }
-# 获取 GitHub API 响应并缓存
-get_github_response() {
-  local type="$1" url
-  case "$type" in
-  tools) url="$GH_API/$UPDATE_TOOLS_REPO/releases" ;;
-  schema) url="$GH_API/$SCHEMA_REPO/releases" ;;
-  dict) url="$GH_API/$SCHEMA_REPO/releases" ;;
-  gram) url="$GH_API/$GRAM_REPO/releases" ;;
-  esac
-  # 如果设置了 GITHUB_TOKEN 环境变量，使用认证头
-  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    auth_header="Authorization: token $GITHUB_TOKEN"
-    curl -sL --connect-timeout 5 -H "$auth_header" "$url" >"$TEMP_DIR/${type}_response.json"
-  else
-    curl -sL --connect-timeout 5 "$url" >"$TEMP_DIR/${type}_response.json"
-  fi
-  
-  # 检查 curl 是否成功
-  if [[ $? -ne 0 ]]; then
-    error_exit "GitHub API 响应错误"
-  fi
+fuzhu_check() {
+  local fuzhu_check="$1"
+  for _fuzhu in "${FUZHU_LIST[@]}"; do
+    if [[ "$fuzhu_check" == "$_fuzhu" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
-
-get_latest_version() {
-  local type="$1" version
-
-  local json_file="$TEMP_DIR/${type}_response.json"
-
-  # 检查文件是否存在
-  if [ ! -f "$json_file" ]; then
-    log ERROR "❌ JSON 文件不存在：$json_file" >&2
-    return 1
-  fi
-
-  # 先验证 JSON 是否为数组，避免用 .[] 出错
-  if ! jq -e 'type == "array"' "$json_file" >/dev/null; then
-    log ERROR "❌ JSON 格式错误，预期为数组，请检查网络情况或请求次数达到限制：$json_file" >&2
-    return 1
-  fi
-
-  # 安全提取 tag_name 字段并筛选
-  version=$(jq -r '.[].tag_name' "$json_file" 2>/dev/null |
-    grep -vE "rc|beta|dict-nightly" |
-    sort -Vr |
-    head -n 1)
-
-  # 如果提取为空
-  if [ -z "$version" ]; then
-    log ERROR "❌ 没有找到有效的 tag_name 版本" >&2
-    return 1
-  fi
-
-  echo "$version"
-}
-# 脚本自检
-update_tools_check() {
+script_check() {
+  local mirror="$1"
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
-    log WARN "你正在使用源文件！"
-    log WARN "请从 $GH_DL/$UPDATE_TOOLS_REPO/releases/latest 页面下载正式版！"
-    error_exit "操作终止"
+    log WARN "您似乎正在使用源文件！"
+    log WARN "请从 Release 页面下载正式版！"
+    error_exit "终止操作"
   fi
   log INFO "工具当前版本 $UPDATE_TOOLS_VERSION"
-  log INFO "正在检查本工具是否有更新"
-  local local_version remote_version
-  get_github_response "tools"
-  local_version="$UPDATE_TOOLS_VERSION"
-  remote_version=$(get_latest_version "tools")
-  if [[ "$remote_version" > "$local_version" ]]; then
-    log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-    log WARN "你可从该链接下载: $GH_DL/$UPDATE_TOOLS_REPO/releases/tag/$remote_version"
-  else
-    log INFO "工具已是最新版本"
-  fi
-}
-# 首次使用配置
-first_config() {
-  log INFO "您似乎是第一次使用该工具，接下来引导您进行必要的配置"
-  local schema_type help_code
-  schema_type=("base" "pro")
-  help_code=("flypy" "hanxin" "jdh" "moqi" "tiger" "wubi" "zrm")
-  local input schema helpcode confirm
-  input=$ENGINE
-  log INFO "请选择您使用方案类型"
-  PS3="请输入选项前数字: "
-  select _choice in "${schema_type[@]}"; do
-    [[ -n "$_choice" ]] || error_exit "无效的选择"
-    schema="$_choice"
-    break
-  done
-  if [[ "$schema" == "pro" ]]; then
-    log INFO "请选择您使用的辅助码"
-    PS3="请输入选项前数字: "
-    select _choice in "${help_code[@]}"; do
-      [[ -n "$_choice" ]] || error_exit "无效的选择"
-      helpcode="$_choice"
-      break
-    done
-  else
-    helpcode="base"
-  fi
-  log INFO "您选择了以下方案组合: "
-  log INFO "输入引擎: $input"
-  log INFO "方案类型: $schema"
-  [[ "$schema" == "base" ]] || log INFO "辅助码  : $helpcode"
-  log INFO "部署目录: $DEPLOY_DIR"
-  log INFO "这些内容是否正确？"
-  read -rp "请输入 YES 或 NO (区分大小写): " confirm
-  [[ "$confirm" == "YES" ]] || error_exit "用户终止操作"
-  mkdir -p "$TOOLS_DIR" || error_exit "你没有部署目录的访问权限！"
-  mkdir -p "$RAW_DIR" || error_exit "你没有部署目录的访问权限！"
-  echo -e "{
-  \"input\": \"$input\",\n  \"schema\": \"${schema}\",
-  \"helpcode\": \"$helpcode\",\n  \"deploy_dir\": \"$DEPLOY_DIR\",
-  \"exclude_file\": []\n}" >"$CONFIG_FILE"
-  echo -e "{
-  \"version\": \"null\",
-  \"schema\": {\n    \"name\": \"null\",\n    \"sha256\": \"null\",
-    \"update\": \"1970-01-01T00:00:00Z\",\n    \"url\": \"null\"\n  },
-  \"dict\": {\n    \"name\": \"null\",\n    \"sha256\": \"null\",
-    \"update\": \"1970-01-01T00:00:00Z\",\n    \"url\": \"null\"\n  },
-  \"gram\": {\n    \"name\": \"null\",\n    \"sha256\": \"null\",
-    \"update\": \"1970-01-01T00:00:00Z\",\n    \"url\": \"null\"\n  }\n}" >"$UPDATE_FILE"
-  add_exclude_file
-}
-add_exclude_file() {
-  log INFO "接下来将添加更新时需要保留的内容"
-  log INFO "请输入需要保留的文件/目录的相对路径"
-  log INFO "例如你想要保留部署目录下的 \"wanxiang.custom.yaml\""
-  log INFO "该文件完整路径为: $DEPLOY_DIR/wanxiang.custom.yaml"
-  log INFO "那么你只需要输入 \"wanxiang.custom.yaml\" 即可"
-  log INFO "每次只可以输入一个文件或目录"
-  log INFO "我们已经预设了以下内容作为排除项"
-  log INFO "\"installation.yaml\" \"user.yaml\""
-  log INFO "\"*.custom.yaml\" \"*.userdb\""
-  log INFO "全部输入完成后，请输入 \"DONE\" 来结束 (区分大小写)"
-  log WARN "请仔细阅读以上内容" && sleep 3
-  local newdata newjson
-  EXCLUDE_FILE=(
-    "update_tools_config"
-    "installation.yaml"
-    "user.yaml"
-    ".custom.yaml"
-    ".userdb"
-  )
-  for _newdata in "${EXCLUDE_FILE[@]}"; do
-    newjson=$(jq --arg newdata "$_newdata" '.exclude_file += [$newdata]' "$CONFIG_FILE")
-    echo "$newjson" >"$CONFIG_FILE"
-  done
-  while true; do
-    read -rp "请输入需要排除的内容 (输入 DONE 结束): " newdata
-    [[ "$newdata" != "DONE" ]] || break
-    if [[ -n $newdata ]]; then
-      newjson=$(jq --arg newdata "$newdata" '.exclude_file += [$newdata]' "$CONFIG_FILE")
-      echo "$newjson" >"$CONFIG_FILE"
-      log INFO "已添加 $DEPLOY_DIR/$newdata 到保留内容"
+  if [[ "$mirror" == "github" ]]; then
+    # 检查 GitHub 连接状态
+    log INFO "正在检查 GitHub 连接状态"
+    if ! curl -sL --connect-timeout 5 "https://api.github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub API, 请检查您的网络"
+    elif ! curl -sL --connect-timeout 5 "https://github.com" >/dev/null; then
+      error_exit "您似乎无法连接到 GitHub, 请检查您的网络"
     fi
-  done
-  log INFO "以下内容为更新时保留内容，这些内容是否正确？"
-  jq '.exclude_file[]' "$CONFIG_FILE"
-  read -rp "请输入 YES 或 NO (区分大小写): " confirm
-  if [[ "$confirm" != "YES" ]]; then
-    rm -rf "$TOOLS_DIR"
-    error_exit "用户终止操作"
-  fi
-}
-new_update_info() {
-  local version="$1" helpcode="$2" type="$3" newfile="$4" newdata newjson
-  newdata=$(jq -r --arg version "$version" --arg help_code "$helpcode" \
-    '.[] | select(.tag_name == $version ) | 
-    .assets.[]| select(.name | test($help_code)) |
-    { name: .name, sha256: .digest, update: .updated_at, url: .browser_download_url }' \
-    "$TEMP_DIR/${type}_response.json")
-  newjson=$(jq --arg type "$type" --argjson newdata "$newdata" '.[$type] = $newdata' "$newfile")
-  echo "$newjson" >"$newfile"
-}
-check_update() {
-  local helpcode="$1" newfile="$2" deploy_dir="$3"
-  local local_data remote_data
-  local schemacheck dictcheck gramcheck
-  # 方案文件
-  local_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.schema.update' "$UPDATE_FILE")" "+%s")
-  remote_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.schema.update' "$newfile")" "+%s")
-  if [[ ! $local_data < $remote_data ]]; then
-    log INFO "方案文件 无需更新"
-    schemacheck="NO"
-  else
-    download_and_unzip "schema" "$newfile"
-    schemacheck="YES"
-  fi
-  # 词典文件
-  local_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.dict.update' "$UPDATE_FILE")" "+%s")
-  remote_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.dict.update' "$newfile")" "+%s")
-  if [[ ! $local_data < $remote_data ]]; then
-    log INFO "词典文件 无需更新"
-    dictcheck="NO"
-  else
-    download_and_unzip "dict" "$newfile"
-    dictcheck="YES"
-  fi
-  # 语法模型
-  local_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.gram.update' "$UPDATE_FILE")" "+%s")
-  remote_data=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$(jq -r '.gram.update' "$newfile")" "+%s")
-  if [[ ! $local_data < $remote_data ]]; then
-    log INFO "语法模型 无需更新"
-    gramcheck="NO"
-  else
-    download_and_unzip "gram" "$newfile"
-    gramcheck="YES"
-  fi
-  [[ "$schemacheck" == "NO" && "$dictcheck" == "NO" && "$gramcheck" == "NO" ]] ||
-    touch "$TEMP_DIR/needed_update"
-}
-download_and_unzip() {
-  local type="$1" newfile="$2" displayname
-  case "$type" in
-  schema) displayname="方案文件" ;;
-  dict) displayname="词典文件" ;;
-  gram) displayname="语法模型" ;;
-  esac
-  log INFO "$displayname 需要更新，正在下载最新文件"
-  mkdir -p "$RAW_DIR"
-  local filename filehash fileurl checkhash
-  filename=$(jq -r --arg type "$type" '.[$type].name' "$newfile")
-  filehash=$(jq -r --arg type "$type" '.[$type].sha256' "$newfile" | awk -F ':' '{print $2}')
-  fileurl=$(jq -r --arg type "$type" '.[$type].url' "$newfile")
-  if [[ -f "$RAW_DIR/$filename" ]]; then
-    checkhash=$(sha256sum "$RAW_DIR/$filename" | awk '{print $1}')
-    if [[ "$filehash" != "$checkhash" ]]; then
-      rm -r "$RAW_DIR/${filename:?}"
-      curl -L --connect-timeout 5 -o "$RAW_DIR/$filename" "$fileurl"
-      checkhash=$(sha256sum "$RAW_DIR/$filename" | awk '{print $1}')
-      [[ "$filehash" == "$checkhash" ]] || error_exit "文件下载出错，请重试！"
+    log INFO "正在检查本工具是否存在更新"
+    local local_version remote_version
+    local_version="$UPDATE_TOOLS_VERSION"
+    remote_version=$(
+      curl -sL --connect-timeout 10 $TOOLS_API |
+        jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
+    )
+    if [[ "$remote_version" > "$local_version" ]]; then
+      log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
+      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-macos.sh"
     else
-      log INFO "文件已存在，跳过下载"
+      log INFO "工具已是最新版本"
     fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    log WARN "由于您正在使用镜像，无法检查本工具是否存在更新"
+  fi
+}
+
+get_info() {
+  local mirror="$1" version="$2" name="$3" info
+  if [[ "$mirror" == "github" ]]; then
+    info=$(
+      jq -r --arg version "$version" --arg name "$name" '.[] |
+      select( .tag_name == $version ) | .assets.[] |
+      select( .name | test( $name ) )' "$TEMP_DIR/github_$name.json"
+    )
+    echo "$info"
+  elif [[ "$mirror" == "cnb" ]]; then
+    info=$(
+      jq -r --arg version "refs/tags/$version" --arg name "$name" \
+        '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+          select( .tagRef == $version ) | .assets[] |
+          select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
+    )
+    echo "$info"
+  fi
+}
+
+cache_cnb_api() {
+  if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.html"; then
+    error_exit "连接到 CNB 失败，您可能需要检查网络"
+  fi
+  awk 'BEGIN{RS="</script>"} /id="__NEXT_DATA__"/{gsub(/.*<script[^>]*>/,""); print; exit}' \
+    "$TEMP_DIR/cnb.html" >"$TEMP_DIR/cnb.json"
+}
+
+update_schema() {
+  local mirror="$1" fuzhu="$2" gram="$3"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      cache_cnb_api
+    fi
+  fi
+  # 获取本地版本号
+  local local_version remote_version
+  if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
+    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+    [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
-    curl -L --connect-timeout 5 -o "$RAW_DIR/$filename" "$fileurl"
-    checkhash=$(sha256sum "$RAW_DIR/$filename" | awk '{print $1}')
-    [[ "$filehash" == "$checkhash" ]] || error_exit "文件下载出错，请重试！"
+    local_version="v0"
   fi
-  if [[ "$type" == "schema" ]]; then
-    unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR/$type"
-  elif [[ "$type" == "dict" ]]; then
-    unzip -q "$RAW_DIR/$filename" -d "$TEMP_DIR"
-    mv "$TEMP_DIR"/*dicts "$TEMP_DIR/$type"
+  # 获取远程版本号
+  if [[ "$mirror" == "github" ]]; then
+    remote_version=$(
+      jq -r '.[].tag_name' "$TEMP_DIR/github_$fuzhu.json" |
+        grep -vE "dict-nightly" | sort -rV | head -n 1
+    )
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_version=$(
+      jq -r '.props.pageProps.initialState.slug.repo.releases.list.data.releases[].tagRef' \
+        "$TEMP_DIR/cnb.json" | grep -vE "model" | sort -rV | head -n 1
+    )
+    remote_version="${remote_version#"refs/tags/"}"
   fi
-}
-update_all_file() {
-  local deploy_dir="$1"
-  if [[ -d "$TEMP_DIR/schema" ]]; then
-    log INFO "正在更新 方案文件"
-    rm -rf "$TEMP_DIR/schema"/{简纯+.trime.yaml,custom_phrase.txt,squirrel.yaml,weasel.yaml}
-    find "$TEMP_DIR/schema" -type f -exec chmod 644 {} +
-    EXCLUDE_FILE=()
-    while IFS= read -r line; do
-      EXCLUDE_FILE+=("$line")
-    done < <(jq -r '.exclude_file[]' "$CONFIG_FILE")
-
-    for _file in "${EXCLUDE_FILE[@]}"; do
-      cp -rf "$deploy_dir"/*"$_file" "$TEMP_DIR/schema"
+  [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
+  if [[ "$remote_version" > "$local_version" ]]; then
+    log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
+    local changelog
+    if [[ "$mirror" == "github" ]]; then
+      changelog=$(
+        jq -r --arg version "$remote_version" '.[] |
+      select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
+      )
+    elif [[ "$mirror" == "cnb" ]]; then
+      changelog=$(
+        jq -r --arg version "refs/tags/$remote_version" \
+          '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
+          select( .tagRef == $version ) | .body' "$TEMP_DIR/cnb.json"
+      )
+    fi
+    echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
+    sleep 3
+    log INFO "开始更新方案文件，正在下载文件"
+    local schemaurl schemaname local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.browser_download_url')
+    elif [[ "$mirror" == "cnb" ]]; then
+      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.path')
+      schemaurl="https://cnb.cool$schemaurl"
+    fi
+    schemaname=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.name')
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$schemaname" "$schemaurl"
+    log INFO "正在验证文件完整性"
+    local_size=$(stat -f %z "$TEMP_DIR/$schemaname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.sizeInByte')
+    fi
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "方案文件下载出错，请重试！"
+    fi
+    log INFO "验证成功，开始更新方案文件"
+    unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
+    for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
+      if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
+        rm -r "$TEMP_DIR/${schemaname%.zip}/${_file:?}"
+      fi
     done
-    rm -rf "$deploy_dir"
-    cp -rf "$TEMP_DIR/schema" "$deploy_dir"
+    local exclude_file
+    while IFS= read -r _line; do
+      if [[ "$_line" != \#* ]]; then
+        exclude_file="$_line"
+        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+        else
+          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        fi
+      fi
+    done <"$DEPLOY_DIR/user_exclude_file.txt"
+    # 单独处理语法模型
+    [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
+      "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
+    rm -rf "${DEPLOY_DIR:?}"
+    cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+    log INFO "方案文件更新成功"
+    return 0 
+  else
+    log INFO "远程方案文件版本号为 $remote_version"
+    log INFO "本地方案文件版本号为 $local_version, 您目前无需更新它"
+    return 1
   fi
-  if [[ -d "$TEMP_DIR/dict" ]]; then
-    log INFO "正在更新 词典文件"
-    cp -rf "$TEMP_DIR/dict"/* "$deploy_dir/dicts"*/
-  fi
-  log INFO "正在更新 语法模型"
-  cp -rf "$RAW_DIR"/*.gram "$deploy_dir"
 }
-
+update_dict() {
+  local mirror="$1" fuzhu="$2"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      cache_cnb_api
+    fi
+  fi
+  local local_date remote_date
+  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
+    local_date=$(stat -f %c "$DEPLOY_DIR/dicts/chengyu.txt")
+  else
+    local_date=0
+  fi
+  if [[ "$mirror" == "github" ]]; then
+    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at')
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updatedAt')
+  fi
+  remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新词典文件"
+    local dicturl dictname local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.browser_download_url')
+      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.name')
+    elif [[ "$mirror" == "cnb" ]]; then
+      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.path')
+      dicturl="https://cnb.cool$dicturl"
+      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.name')
+    fi
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
+    log INFO "正在验证文件完整性"
+    local_size=$(stat -f %z "$TEMP_DIR/$dictname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.sizeInByte')
+    fi
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "词典文件下载出错，请重试！"
+    fi
+    log INFO "验证成功，开始更新词典文件"
+    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
+    dictname="${dictname:2}" && dictname="${dictname%.zip}"
+    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+    log INFO "词典文件更新成功"
+    return 0
+  else
+    remote_date=$(date -r "$remote_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "远程词典文件最后更新于 $remote_date"
+    local_date=$(date -r "$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "本地词典文件最后更新于 $local_date, 您目前无需更新它"
+    return 1
+  fi
+}
+update_gram() {
+  local mirror="$1"
+  # 缓存 API 响应
+  if [[ "$mirror" == "github" ]]; then
+    if [[ ! -f "$TEMP_DIR/github_gram.json" ]]; then
+      if ! curl -sL --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_gram.json"; then
+        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      fi
+    fi
+  elif [[ "$mirror" == "cnb" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+      cache_cnb_api
+    fi
+  fi
+  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
+  if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
+    local_date=$(stat -f %c "$DEPLOY_DIR/$gramname")
+  else
+    local_date=0
+  fi
+  if [[ "$mirror" == "github" ]]; then
+    remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
+  elif [[ "$mirror" == "cnb" ]]; then
+    remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updatedAt')
+  fi
+  remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
+  if [[ $remote_date -gt $local_date ]]; then
+    log INFO "正在下载最新语法模型"
+    local gramurl local_size remote_size
+    if [[ "$mirror" == "github" ]]; then
+      gramurl=$(get_info "$mirror" "LTS" "gram" | jq -r '.browser_download_url')
+    elif [[ "$mirror" == "cnb" ]]; then
+      gramurl=$(get_info "$mirror" "model" "gram" | jq -r '.path')
+      gramurl="https://cnb.cool$gramurl"
+    fi
+    curl -L --connect-timeout 10 -o "$TEMP_DIR/$gramname" "$gramurl"
+    log INFO "正在验证文件完整性"
+    local_size=$(stat -f %z "$TEMP_DIR/$gramname")
+    if [[ "$mirror" == "github" ]]; then
+      remote_size=$(get_info "$mirror" "LTS" "gram" | jq -r '.size')
+    elif [[ "$mirror" == "cnb" ]]; then
+      remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.sizeInByte')
+    fi
+    if [[ "$local_size" != "$remote_size" ]]; then
+      log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
+      error_exit "语法模型下载出错，请重试！"
+    fi
+    log INFO "验证成功，开始更新语法模型"
+    cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
+    log INFO "语法模型更新成功"
+    return 0
+  else
+    remote_date=$(date -r "$remote_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "远程语法模型最后更新于 $remote_date"
+    local_date=$(date -r "$local_date" +"%Y-%m-%d %H:%M:%S")
+    log INFO "本地语法模型最后更新于 $local_date, 您目前无需更新它"
+    return 1
+  fi
+}
 # 部属函数
 deploy() {
   local deploy_executable="$1"
@@ -395,51 +394,148 @@ deploy() {
     echo "请手动部署"
   fi
 }
-
-# 主函数
 main() {
+  # 脚本退出清理临时目录
   trap cleanup EXIT
-  # 检查必要的依赖
-  check_deps
-  # 检查临时目录
-  [[ -d "$TEMP_DIR" ]] || error_exit "临时目录创建失败"
   # 欢迎语
-  log INFO "欢迎使用 Rime 万象输入方案 更新助手"
+  log INFO "欢迎使用万象方案更新助手"
+  # 检查是否为root用户
+  if [[ "$EUID" -eq 0 ]]; then
+    error_exit "请不要使用 root 身份运行该脚本！"
+  fi
+  # 检查必要的依赖
+  deps_check
+  # 处理用户输入
+  local mirror="" schema="" fuzhu="" dict="false" gram="false"
+  # 解析命令行参数
+  while [[ "$#" -gt 0 ]]; do
+    case $1 in
+    --mirror)
+      if [[ -n "$mirror" ]]; then
+        error_exit "选项 mirror 需要参数！"
+      else
+        shift
+      fi
+      if [[ "$1" != "cnb" ]]; then
+        error_exit "选项 mirror 的参数目前只能为 cnb"
+      else
+        mirror="$1"
+      fi
+      ;;
+    --engine)
+      if [[ -n "$ENGINE" ]]; then
+        error_exit "选项 engine 已指定！"
+      fi
+      shift
+      if [[ -z "$1" || "$1" == --* ]]; then
+        error_exit "选项 engine 需要参数！"
+      fi
+      if [[ "$1" != "fcitx5" && "$1" != "squirrel" ]]; then
+        error_exit "选项 engine 的参数只能为 fcitx5 或 squirrel"
+      fi
+      ENGINE="$1"
+      ;;
+    --schema)
+      if [[ -n "$schema" ]]; then
+        error_exit "选项 schema 需要参数！"
+      else
+        shift
+      fi
+      if [[ "$1" != "base" && "$1" != "pro" ]]; then
+        error_exit "选项 schema 的参数只能为 base 或 pro"
+      else
+        schema="$1"
+      fi
+      ;;
+    --fuzhu)
+      if [[ -n "$fuzhu" ]]; then
+        error_exit "选项 fuzhu 需要参数！"
+      else
+        shift
+      fi
+      if fuzhu_check "$1"; then
+        fuzhu="$1"
+      else
+        error_exit "选项 fuzhu 的参数只能为 ${FUZHU_LIST[*]} 其中之一"
+      fi
+      ;;
+    --dict)
+      dict="true"
+      ;;
+    --gram)
+      gram="true"
+      ;;
+    *)
+      log WARN "您可能错误的使用了该脚本"
+      log WARN "请前往 GitHub 页面阅读 Readme"
+      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/blob/main/Mac/Shell/README.md"
+      error_exit "参数输入错误: $1"
+      ;;
+    esac
+    shift
+  done
+  
+  engine_check
+  # 获取输入法配置路径
+  if [ "$ENGINE" = "fcitx5" ]; then
+    DEPLOY_DIR="$HOME/.local/share/fcitx5/rime"
+  else
+    DEPLOY_DIR="$HOME/Library/Rime"
+  fi
+  
+  # 判断是否设置了部署目录
+  if [[ -n "$DEPLOY_DIR" ]]; then
+    if [[ ! -d "$DEPLOY_DIR" ]]; then
+      log WARN "部署目录 $DEPLOY_DIR 不存在，您要创建它吗？"
+      read -rp "请输入 YES 或 NO (区分大小写) " _check
+      if [[ "$_check" == "YES" ]]; then
+        log WARN "您真的要创建该目录吗？您确定您的设置正确吗？"
+        read -rp "请输入 YES 或 NO (区分大小写) " _check_again
+        [[ "$_check_again" == "YES" ]] || error_exit "用户终止操作"
+        mkdir -p "$DEPLOY_DIR"
+      else
+        error_exit "用户终止操作"
+      fi
+    fi
+  else
+    error_exit "请设置部署目录！"
+  fi
+  # 排除项目列表文件是否存在
+  if [[ ! -f "$DEPLOY_DIR/user_exclude_file.txt" ]]; then
+    log WARN "您没有设置排除项目列表！"
+    log WARN "您需要创建的文件为 $DEPLOY_DIR/user_exclude_file.txt"
+    log WARN "请在该文件中写入您需要排除的项目，每行一个"
+    log WARN "如果您确实不需要排除任何文件，请创建一个空文件来抑制该警告"
+    error_exit "$DEPLOY_DIR/user_exclude_file.txt 文件不存在"
+  fi
+  # 检查 schema 和 fuzhu 是否同时存在
+  if [[ -n "$schema" && -z "$fuzhu" ]]; then
+    error_exit "选项 schema 与选项 fuzhu 必须同时使用"
+  fi
+  # 检查 dict 和 fuzhu 是否同时存在
+  if [[ "$dict" == "true" && -z "$fuzhu" ]]; then
+    error_exit "选项 dict 与选项 fuzhu 必须同时使用"
+  fi
+  # 检查当 schema 为 base 时，fuzhu 是否也为 base
+  if [[ "$schema" == "base" && "$fuzhu" != "base" ]]; then
+    error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
+  fi
+  [[ -n "$mirror" ]] || mirror="github"
   # 脚本自检
-  update_tools_check
-  # 判断是否第一次使用
-  [[ -d "$TOOLS_DIR" ]] || first_config
-  # 获取用户设置
-  local helpcode deploy_dir
-  helpcode=$(jq -r '.helpcode' "$CONFIG_FILE")
-  deploy_dir=$(jq -r '.deploy_dir' "$CONFIG_FILE")
-  # 缓存 GitHub API 响应
-  get_github_response "schema"
-  get_github_response "dict"
-  get_github_response "gram"
-  # 检查版本号
-  local local_data remote_data
-  local_data=$(jq -r '.version' "$UPDATE_FILE")
-  remote_data=$(get_latest_version "schema")
-  log INFO "当前版本号为 $local_data, 最新版本号为 $remote_data"
-  [[ ! "$local_data" > "$remote_data" ]] || log INFO "正在检查是否需要更新"
-  # 生成新版 update_info
-  local newfile newjson
-  cp "$UPDATE_FILE" "$TEMP_DIR/new_update_info.json"
-  newfile="$TEMP_DIR/new_update_info.json"
-  newjson=$(jq --arg newdata "$remote_data" '.version = $newdata' "$newfile")
-  echo "$newjson" >"$newfile"
-  new_update_info "$remote_data" "$helpcode" "schema" "$newfile"
-  new_update_info "dict-nightly" "$helpcode" "dict" "$newfile"
-  new_update_info "LTS" "lts" "gram" "$newfile"
-  # 检查更新
-  check_update "$helpcode" "$newfile" "$deploy_dir"
-  if [[ -f "$TEMP_DIR/needed_update" ]]; then
-    log INFO "开始更新文件"
-    update_all_file "$deploy_dir"
-    mv "$newfile" "$UPDATE_FILE"
-    log INFO "更新完成！"
-    # 自动部署
+  script_check "$mirror"
+  # 开始更新
+  updated=false
+  [[ -z "$schema" ]] || {
+    update_schema "$mirror" "$fuzhu" "$gram" && updated=true
+  }
+  [[ "$dict" == "false" ]] || {
+    update_dict "$mirror" "$fuzhu" && updated=true
+  }
+  [[ "$gram" == "false" ]] || {
+    update_gram "$mirror" && updated=true
+  }
+  # 自动部署
+  if [ "$updated" = true ]; then
     if [ "$ENGINE" = "squirrel" ]; then
       DEPLOY_EXECUTABLE="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
       deploy "$DEPLOY_EXECUTABLE" --reload
@@ -447,9 +543,7 @@ main() {
       DEPLOY_EXECUTABLE="/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
       deploy "$DEPLOY_EXECUTABLE" /config/addon/rime/deploy -X POST -d '{}'
     fi
-  else
-    log INFO "你正在使用最新版本，无需更新"
   fi
 }
-# 调用主函数
-main
+
+main "$@"

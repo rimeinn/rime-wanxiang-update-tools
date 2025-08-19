@@ -1,14 +1,17 @@
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 $AutoUpdate = $false;
 
+# 是否使用 CNB 镜像源，如果设置为 $true，则从 CNB 获取资源；否则从 GitHub 获取。
+$UseCnbMirrorSource = $true
+
 # 设置自动更新时，是否更新方案、词库、模型，不想更新某项就改成false
 $IsUpdateSchemaDown = $true
 $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码"
-$InputSchemaType = "7";
+# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+$InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
 #$SkipFiles = @(
@@ -27,6 +30,8 @@ $InputSchemaType = "7";
 
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
+$Debug = $false;
+
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
     Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
@@ -35,36 +40,49 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 }
 
 # 设置仓库所有者和名称
-$SchemaOwner = "amzxyz"
-$SchemaRepo = "rime_wanxiang"
-$GramRepo = "RIME-LMDG"
-$GramReleaseTag = "LTS"
-$GramModelFileName = "wanxiang-lts-zh-hans.gram"
-$ReleaseTimeRecordFile = "release_time_record.json"
 $UpdateToolsOwner = "expoli"
 $UpdateToolsRepo = "rime-wanxiang-update-tools"
 # 定义临时文件路径
 $tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
 $tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
 $tempGram = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram"
-$tempGramMd5 = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram.md5"
 $SchemaExtractPath = Join-Path $env:TEMP "wanxiang_schema_extract"
 $DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
 
-$Debug = $false;
+$GramModelFileName = "wanxiang-lts-zh-hans.gram"
+$ReleaseTimeRecordFile = "release_time_record.json"
+
+if ($UseCnbMirrorSource) {
+    $SchemaOwner = "amzxyz"
+    $SchemaRepo = "rime-wanxiang"
+    $GramRepo = "RIME-LMDG"
+    $GramReleaseTag = "model"
+    $DictReleaseTag = "v1.0.0"
+} else {
+    $SchemaOwner = "amzxyz"
+    $SchemaRepo = "rime_wanxiang"
+    $GramRepo = "RIME-LMDG"
+    $GramReleaseTag = "LTS"
+    $DictReleaseTag = "dict-nightly"
+}
 
 $KeyTable = @{
     "0" = "base";
     "1" = "flypy";
     "2" = "hanxin";
-    "3" = "jdh";
-    "4" = "moqi";
-    "5" = "tiger";
-    "6" = "wubi";
-    "7" = "zrm";
+    "3" = "moqi";
+    "4" = "tiger";
+    "5" = "wubi";
+    "6" = "zrm";
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-简单鹤; [4]-墨奇; [5]-虎码; [6]-五笔; [7]-自然码";
+$UriHeader = @{
+    "accept"="application/vnd.cnb.web+json"
+    "cache-control"="no-cache"
+    'Accept-Charset' = 'utf-8'
+}
+
+$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -202,11 +220,14 @@ function Start-WeaselServer {
 
 function Start-WeaselReDeploy{
     $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk"
+    $backupEnglishShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Weasel\Weasel Deploy.lnk"
     if (Test-Path -Path $defaultShortcutPath) {
         Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
         Invoke-Item -Path $defaultShortcutPath
-    }
-    else {
+    } elseif (Test-Path -Path $backupEnglishShortcutPath) {
+        Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
+        Invoke-Item -Path $backupEnglishShortcutPath
+    } else {
         Write-Host "未找到默认的【小狼毫】重新部署快捷方式，将尝试执行默认的重新部署命令" -ForegroundColor Yellow
         Write-Host "跳过触发重新部署" -ForegroundColor Yellow
     }
@@ -227,7 +248,12 @@ function Test-VersionSuffix {
     )
     # tag_name = v1.0.0 or v1.0
     $pattern = 'v(\d+)(\.\d+)+'
-    return $url -match $pattern
+    if ($UseCnbMirrorSource) {
+        return $url -match $pattern | Where-Object { $_ -notmatch $DictReleaseTag -and $_ -notmatch $GramReleaseTag }
+    }
+    else {
+        return $url -match $pattern
+    }
 }
 
 function Test-DictSuffix {
@@ -235,12 +261,72 @@ function Test-DictSuffix {
         [string]$url
     )
 
-    # tag_name = dict-nightly
-    $pattern = 'dict-nightly'
-    return $url -match $pattern
+    return $url -match $DictReleaseTag
 }
 
-function Get-ReleaseInfo {
+function Test-CnbGramSuffix {
+    param(
+        [string]$url
+    )
+    # tag_name = model
+    return $url -match $GramReleaseTag
+}
+
+function Invoke-FileUtf8 {
+    param(
+        [Parameter(Mandatory=$true)][string]$Uri,
+        [hashtable]$Headers
+    )
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $tmp
+        $bytes = [System.IO.File]::ReadAllBytes($tmp)
+        $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
+        return $text
+    } catch {
+        Write-Error "错误：下载或解析文件失败: $Uri"
+        Write-Error $_.Exception.Message
+        Exit-Tip 1
+    } finally {
+            Remove-Item $tmp -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-CnbReleaseInfo {
+    param(
+        [string]$owner,
+        [string]$repo
+    )
+
+    # https://cnb.cool/amzxyz/rime-wanxiang/-/releases?page=1&page_size=20&query=
+    $apiUrl = "https://cnb.cool/$owner/$repo/-/releases?page=1&page_size=100&query="
+
+    try {
+        Write-Host "正在从 CNB 页面获取信息: $apiUrl" -ForegroundColor Cyan
+        $jsonDataTmp = Invoke-FileUtf8 -Uri $apiUrl -Headers $UriHeader
+        $jsonDataFormat = $jsonDataTmp | ConvertFrom-Json
+      
+        if ($jsonDataFormat.releases){
+            $releaseData = $jsonDataFormat.releases
+            Write-Host "成功获取 CNB release 版本信息" -ForegroundColor Green
+            if ($jsonDataFormat.release_count -eq 0) {
+                Write-Error "CNB release 版本没有可下载资源"
+                Exit-Tip 1
+            }
+            return $releaseData
+        } else {
+            Write-Error "错误：在页面中未找到 'release' 数据。"
+            Exit-Tip 1
+        }
+    }
+    catch {
+        Write-Error "错误：下载或解析CNB页面失败: $pageUrl"
+        Write-Error $_.Exception.Message
+        Exit-Tip 1
+    }
+}
+
+function Get-GithubReleaseInfo {
     param(
         [string]$owner,
         [string]$repo
@@ -280,7 +366,24 @@ function Get-ReleaseInfo {
     return $response
 }
 
-$UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo
+function Get-ReleaseInfo {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [bool]$updateToolFlag = $false
+    )
+    # 构建API请求URL
+    if ($updateToolFlag) {
+        return Get-GithubReleaseInfo -owner $owner -repo $repo
+    }
+    if ($UseCnbMirrorSource){
+        return Get-CnbReleaseInfo -owner $owner -repo $repo
+    } else {
+        return Get-GithubReleaseInfo -owner $owner -repo $repo
+    }
+}
+
+$UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo -updateToolFlag $true
 
 # 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
 # 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本,
@@ -289,8 +392,8 @@ if ($UpdateTollsResponse.Count -eq 0) {
     Write-Host "没有找到更新工具的版本信息，请检查网络连接或仓库是否存在" -ForegroundColor Red
     Exit-Tip 1
 }
-# 过滤掉包含 -rc 的 tag_name
-$StableUpdateToolsReleases = $UpdateTollsResponse | Where-Object { $_.tag_name -notmatch '-rc' }
+
+$StableUpdateToolsReleases = $UpdateTollsResponse
 if ($StableUpdateToolsReleases.Count -eq 0) {
     Write-Host "没有找到稳定版的更新工具版本信息" -ForegroundColor Yellow
 } else {
@@ -305,17 +408,36 @@ if ($StableUpdateToolsReleases.Count -eq 0) {
 
 # 获取最新的版本信息
 $SchemaResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $SchemaRepo
-$GramResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $GramRepo
+if ($UseCnbMirrorSource) {
+    $GramResponse = $SchemaResponse
+} else {
+    $GramResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $GramRepo
+}
 
 $SelectedDictRelease = $null
 $SelectedSchemaRelease = $null
 $SelectedGramRelease = $null
 
-foreach ($release in $SchemaResponse) {
-    if (($null -eq $SelectedDictRelease) -and (Test-DictSuffix -url $release.tag_name)) {
-        $SelectedDictRelease = $release
+function Get-ReleaseTagName {
+    param(
+        [object]$release
+    )
+    if ($UseCnbMirrorSource) {
+        $tag_name = $release.tag_ref
+    } else {
+        $tag_name = $release.tag_name
     }
-    if ((Test-VersionSuffix -url $release.tag_name) -and (-not $SelectedSchemaRelease)) {
+    return $tag_name
+}
+
+foreach ($release in $SchemaResponse) {
+    $tag_name = Get-ReleaseTagName -release $release
+
+    if (($null -eq $SelectedDictRelease) -and (Test-DictSuffix -url $tag_name)) {
+        $SelectedDictRelease = $release
+        continue
+    }
+    if ((-not $SelectedSchemaRelease) -and (Test-VersionSuffix -url $tag_name)) {
         $SelectedSchemaRelease = $release
     }
     if ($SelectedDictRelease -and $SelectedSchemaRelease) {
@@ -324,30 +446,38 @@ foreach ($release in $SchemaResponse) {
 }
 
 foreach ($release in $GramResponse) {
+    $tag_name = Get-ReleaseTagName -release $release
     if ($Debug) {
-        Write-Host "release.tag_name: $($release.tag_name)" -ForegroundColor Green
+        Write-Host "release.tag_name: $tag_name" -ForegroundColor Green
         Write-Host "GramReleaseTag: $GramReleaseTag" -ForegroundColor Green
     }
-    if ($release.tag_name -eq $GramReleaseTag) {
+    if ($tag_name -match $GramReleaseTag) {
         $SelectedGramRelease = $release
     }
 }
 
 if ($SelectedDictRelease -and $SelectedSchemaRelease -and $SelectedGramRelease) {
-    Write-Host "解析出最新的词库链接为：$($SelectedDictRelease.html_url)" -ForegroundColor Green
-    Write-Host "解析出最新的版本链接为：$($SelectedSchemaRelease.html_url)" -ForegroundColor Green
-    Write-Host "解析出最新的模型链接为：$($SelectedGramRelease.html_url)" -ForegroundColor Green
+    if (-not $UseCnbMirrorSource) {
+        Write-Host "解析出最新的词库链接为：$($SelectedDictRelease.html_url)" -ForegroundColor Green
+        Write-Host "解析出最新的版本链接为：$($SelectedSchemaRelease.html_url)" -ForegroundColor Green
+        Write-Host "解析出最新的模型链接为：$($SelectedGramRelease.html_url)" -ForegroundColor Green
+    }
 } else {
     Write-Error "未找到符合条件的版本或词库链接"
     Exit-Tip 1
 }
 
 # 获取最新的版本的tag_name
-Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_name)"
-Write-Host "方案更新日志: " -ForegroundColor Yellow
-Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
+if (-not $UseCnbMirrorSource) {
+    Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_name)"
+    Write-Host "方案更新日志: " -ForegroundColor Yellow
+    Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
+} else {
+    Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_ref)"
+    Write-Host "方案更新日志: " -ForegroundColor Yellow
+    Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
+}
 
-$SchemaTag = $SelectedSchemaRelease.tag_name
 
 $promptSchemaType = "请选择你要下载的方案类型的编号: `n$SchemaDownloadTip"
 $promptAllUpdate = "是否更新所有内容（方案、词库、模型）:`n[0]-更新所有; [1]-不更新所有"
@@ -628,15 +758,32 @@ function Download-Files {
     )
     
     try {
-        $downloadUrl = $assetInfo.browser_download_url
+        if ($UseCnbMirrorSource) {
+            $downloadUrl = "https://cnb.cool" + $assetInfo.path
+        } else {
+            $downloadUrl = $assetInfo.browser_download_url
+        }
+        
         Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
         Write-Host "下载完成" -ForegroundColor Green
-        $SHA256 = $assetInfo.digest.Split(":")[1]
-        if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
-            Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
-            Remove-Item -Path $outFilePath -Force
-            Exit-Tip 1
+        if ($UseCnbMirrorSource) {
+            # 校验文件大小
+            $expectedSize = [int64]$assetInfo.size_in_byte
+            $actualSize = (Get-Item $outFilePath).Length
+            if ($expectedSize -ne $actualSize) {
+                Write-Host "文件大小校验失败，删除文件" -ForegroundColor Red
+                Write-Host "期望大小: $expectedSize 字节，实际大小: $actualSize 字节" -ForegroundColor Red
+                Remove-Item -Path $outFilePath -Force
+                Exit-Tip 1
+            }
+        } else {
+            $SHA256 = $assetInfo.digest.Split(":")[1]
+            if (-not (Test-FileSHA256 -FilePath $outFilePath -CompareSHA256 $SHA256)) {
+                Write-Host "SHA256 校验失败，删除文件" -ForegroundColor Red
+                Remove-Item -Path $outFilePath -Force
+                Exit-Tip 1
+            }
         }
     }
     catch {
@@ -651,15 +798,49 @@ function Expand-ZipFile {
         [string]$zipFilePath,
         [string]$destinationPath
     )
-
+ 
     try {
         Write-Host "正在解压文件: $zipFilePath" -ForegroundColor Green
         Write-Host "解压到: $destinationPath" -ForegroundColor Green
-        Expand-Archive -Path $zipFilePath -DestinationPath $destinationPath -Force
+ 
+        # --- 获取 7z.exe 路径 ---
+        $weaselRootDir = Get-WeaselInstallDir
+        if (-not $weaselRootDir) {
+            Throw "无法获取小狼毫输入法安装目录，因此无法定位 7z.exe 进行解压。"
+        }
+        $sevenZipPath = Join-Path $weaselRootDir "7z.exe"
+ 
+        # 检查 7z.exe 是否存在
+        if (-not (Test-Path $sevenZipPath -PathType Leaf)) {
+            Throw "找不到 7z.exe。预期路径: '$sevenZipPath'。请确认小狼毫输入法安装正常且包含 7z.exe"
+        }
+        Write-Host "已找到 7z.exe：$sevenZipPath" -ForegroundColor DarkCyan
+ 
+        # --- 确保目标目录存在 ---
+        if (-not (Test-Path $destinationPath)) {
+            try {
+                New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
+                Write-Host "已创建目标目录: $destinationPath" -ForegroundColor Yellow
+            }
+            catch {
+                Throw "创建目标目录 '$destinationPath' 失败: $($_.Exception.Message)。"
+            }
+        }
+ 
+        # --- 调用 7z.exe 进行解压 ---
+        $arguments = "x `"$zipFilePath`" -o`"$destinationPath`" -y"
+        Write-Host "正在调用 7-Zip 进行解压..." -ForegroundColor DarkGreen
+ 
+        $process = Start-Process -FilePath $sevenZipPath -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+      
+        if ($process.ExitCode -ne 0) {
+            Throw "7-Zip 解压失败，退出代码: $($process.ExitCode)。"
+        }
+      
         Write-Host "解压完成" -ForegroundColor Green
     }
     catch {
-        Write-Host "解压失败: $_" -ForegroundColor Red
+        Write-Host "解压失败: $($_.Exception.Message)" -ForegroundColor Red
         Remove-Item -Path $zipFilePath -Force -ErrorAction SilentlyContinue
         Exit-Tip 1
     }
@@ -674,13 +855,20 @@ if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq 
     Exit-Tip 0
 }
 
+function Get-UpdateAtObj {
+    param (
+        [object]$assetInfo
+    )
+    return $assetInfo.updated_at
+}
+
 $UpdateFlag = $false
 
 if ($InputSchemaDown -eq "0") {
     # 下载方案
     $SchemaUpdateTimeKey = $KeyTable[$InputSchemaType] + "_schema_update_time"
     $SchemaUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey
-    $SchemaRemoteTime = [datetime]::Parse($ExpectedSchemaTypeInfo.updated_at)
+    $SchemaRemoteTime = [datetime]::Parse($(Get-UpdateAtObj -assetInfo $ExpectedSchemaTypeInfo))
     Write-Host "正在检查方案是否需要更新..." -ForegroundColor Yellow
     Write-Host "本地时间: $SchemaUpdateTime" -ForegroundColor Green
     Write-Host "远程时间: $SchemaRemoteTime" -ForegroundColor Green
@@ -740,7 +928,7 @@ if ($InputDictDown -eq "0") {
     # 下载词库
     $DictUpdateTimeKey = $KeyTable[$InputSchemaType] + "_dict_update_time"
     $DictUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $DictUpdateTimeKey
-    $DictRemoteTime = [datetime]::Parse($ExpectedDictTypeInfo.updated_at)
+    $DictRemoteTime = [datetime]::Parse($(Get-UpdateAtObj -assetInfo $ExpectedDictTypeInfo))
     Write-Host "正在检查词库是否需要更新..." -ForegroundColor Yellow
     Write-Host "本地时间: $DictUpdateTime" -ForegroundColor Green
     Write-Host "远程时间: $DictRemoteTime" -ForegroundColor Green
@@ -800,7 +988,7 @@ if ($InputGramModel -eq "0") {
     # 下载模型
     $GramUpdateTimeKey = $GramReleaseTag + "_gram_update_time"
     $GramUpdateTime = Get-TimeRecord -filePath $TimeRecordFile -key $GramUpdateTimeKey
-    $GramRemoteTime = [datetime]::Parse($ExpectedGramTypeInfo.updated_at)
+    $GramRemoteTime = [datetime]::Parse($(Get-UpdateAtObj -assetInfo $ExpectedGramTypeInfo))
     Write-Host "正在检查模型是否需要更新..." -ForegroundColor Yellow
     # 检查目标文件 $targetDir/$tempGram 是否存在
     $filePath = Join-Path $targetDir $GramModelFileName
@@ -812,17 +1000,30 @@ if ($InputGramModel -eq "0") {
     if (Compare-UpdateTime -localTime $GramUpdateTime -remoteTime $GramRemoteTime) {
         Update-GramModel
         $UpdateFlag = $true
-    }elseif (Test-Path -Path $filePath) {
-        # 计算目标文件的MD5
-        $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
-        # 计算远程文件的MD5
-        $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
-        # 比较MD5
-        if ($localSHA256 -ne $remoteSHA256) {
-            Write-Host "模型MD5不匹配，需要更新" -ForegroundColor Red
-            Update-GramModel
-            $UpdateFlag = $true
-        }   
+    } elseif (Test-Path -Path $filePath) {
+        if ($UseCnbMirrorSource) {
+            # 校验文件大小
+            $expectedSize = [int64]$ExpectedGramTypeInfo.size_in_byte
+            $actualSize = (Get-Item $filePath).Length
+            if ($expectedSize -ne $actualSize) {
+                Write-Host "文件大小校验失败，需要更新" -ForegroundColor Red
+                Write-Host "期望大小: $expectedSize 字节，实际大小: $actualSize 字节" -ForegroundColor Red
+                Remove-Item -Path $filePath -Force
+                Update-GramModel
+                $UpdateFlag = $true
+            }
+        } else {
+            # 计算目标文件的SHA256
+            $localSHA256 = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLower()
+            # 计算远程文件的SHA256
+            $remoteSHA256 = $ExpectedGramTypeInfo.digest.Split(":")[1].ToLower()
+            # 比较SHA256
+            if ($localSHA256 -ne $remoteSHA256) {
+                Write-Host "模型SHA256不匹配，需要更新" -ForegroundColor Red
+                Update-GramModel
+                $UpdateFlag = $true
+            }
+        }
     } else {
         Write-Host "模型不存在，需要更新" -ForegroundColor Red
         Update-GramModel
