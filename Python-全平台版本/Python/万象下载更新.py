@@ -26,12 +26,11 @@ DICT_TAG = "dict-nightly"
 MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
-# cnb请求匹配规则
-CNB_REGEX_PATTERN = r'.*<script id="__NEXT_DATA__".*>(\{.*\})</script>'
+
 CNB_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
     "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+    "Accept": "application/vnd.cnb.web+json" # 确保返回JSON
 }
 # Zh词库目录
 ZH_DICTS = ZH_DICTS_PRO = "dicts"
@@ -668,10 +667,9 @@ class FileChecker:
         headers = CNB_HEADERS
         url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
         response = requests.get(url=url, headers=headers)
-        regex_res = re.search(CNB_REGEX_PATTERN, response.text)
         json_all = json.loads(regex_res.group(1)) if regex_res else {}
-        if json_all:
-            releases_all = json_all['props']['pageProps']['initialState']['slug']['repo']['releases']['list']['data']
+        if response.status_code == 200:
+            releases_all = response.json()
             releases_list = releases_all['releases']
             for release in releases_list:
                 if self.tag:
@@ -881,11 +879,8 @@ class UpdateHandler:
                 response.raise_for_status()
                 if output_json:
                     if use_mirror:
-                        if re.search(CNB_REGEX_PATTERN, response.text):
-                            json_all = json.loads(re.search(CNB_REGEX_PATTERN, response.text).group(1))
-                            releases_list = json_all['props']['pageProps']['initialState']['slug']['repo']['releases']['list']['data']['releases']
-                            return releases_list
-                        return None
+                        releases_list = response.json()['releases']
+                        return releases_list
                     return response.json()
                 else:
                     return response
@@ -1238,7 +1233,7 @@ class CombinedUpdater:
                     return {
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                         "update_time": asset.get("updated_at") or asset.get("updatedAt"),
-                        "tag": release.get("tag_name") or release.get("tagRef").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
+                        "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
                         "description": update_description,
                         "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
                         "id": asset.get("id", "")                                               # 仅cnb
@@ -1256,7 +1251,7 @@ class CombinedUpdater:
                     return {
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                         "update_time": asset.get("updated_at") or asset.get("updatedAt"),
-                        "tag": release.get("tag_name") or release.get("tagRef").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
+                        "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
                         "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
                         "id": asset.get("id", "")                                               # 仅cnb
                     }
