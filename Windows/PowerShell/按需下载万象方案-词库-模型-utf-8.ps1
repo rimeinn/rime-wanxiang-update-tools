@@ -77,8 +77,9 @@ $KeyTable = @{
 }
 
 $UriHeader = @{
-    "accept"="application/vnd.cnb.web+json";
-    "cache-control"="no-cache";
+    "accept"="application/vnd.cnb.web+json"
+    "cache-control"="no-cache"
+    'Accept-Charset' = 'utf-8'
 }
 
 $SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
@@ -271,6 +272,26 @@ function Test-CnbGramSuffix {
     return $url -match $GramReleaseTag
 }
 
+function Invoke-FileUtf8 {
+    param(
+        [Parameter(Mandatory=$true)][string]$Uri,
+        [hashtable]$Headers
+    )
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $tmp
+        $bytes = [System.IO.File]::ReadAllBytes($tmp)
+        $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
+        return $text
+    } catch {
+        Write-Error "错误：下载或解析文件失败: $Uri"
+        Write-Error $_.Exception.Message
+        Exit-Tip 1
+    } finally {
+            Remove-Item $tmp -ErrorAction SilentlyContinue
+    }
+}
+
 function Get-CnbReleaseInfo {
     param(
         [string]$owner,
@@ -282,7 +303,8 @@ function Get-CnbReleaseInfo {
 
     try {
         Write-Host "正在从 CNB 页面获取信息: $apiUrl" -ForegroundColor Cyan
-        $jsonDataFormat = Invoke-WebRequest -Uri $apiUrl -Headers $UriHeader -UseBasicParsing | ConvertFrom-Json
+        $jsonDataTmp = Invoke-FileUtf8 -Uri $apiUrl -Headers $UriHeader
+        $jsonDataFormat = $jsonDataTmp | ConvertFrom-Json
       
         if ($jsonDataFormat.releases){
             $releaseData = $jsonDataFormat.releases
