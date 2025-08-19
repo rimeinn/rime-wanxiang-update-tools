@@ -17,7 +17,7 @@ CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
-FUZHU_LIST=("all" "base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
+FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 
@@ -102,20 +102,12 @@ get_info() {
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
-      jq -r --arg version "refs/tags/$version" --arg name "$name" \
-        '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
-          select( .tagRef == $version ) | .assets[] |
-          select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
+      jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases.[] |
+      select( .tag_ref == $version ) | .assets[] |
+      select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
     )
     echo "$info"
   fi
-}
-cache_cnb_api() {
-  if ! curl -sL --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.html"; then
-    error_exit "连接到 CNB 失败，您可能需要检查网络"
-  fi
-  awk 'BEGIN{RS="</script>"} /id="__NEXT_DATA__"/{gsub(/.*<script[^>]*>/,""); print; exit}' \
-    "$TEMP_DIR/cnb.html" >"$TEMP_DIR/cnb.json"
 }
 
 update_schema() {
@@ -123,13 +115,17 @@ update_schema() {
   # 缓存 API 响应
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
+        --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
         error_exit "连接到 GitHub API 失败，您可能需要检查网络"
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      cache_cnb_api
+      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
+        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
     fi
   fi
   # 获取本地版本号
@@ -148,7 +144,7 @@ update_schema() {
     )
   elif [[ "$mirror" == "cnb" ]]; then
     remote_version=$(
-      jq -r '.props.pageProps.initialState.slug.repo.releases.list.data.releases[].tagRef' \
+      jq -r '.releases.[].tag_ref' \
         "$TEMP_DIR/cnb.json" | grep -vE "model" | sort -rV | head -n 1
     )
     remote_version="${remote_version#"refs/tags/"}"
@@ -160,13 +156,12 @@ update_schema() {
     if [[ "$mirror" == "github" ]]; then
       changelog=$(
         jq -r --arg version "$remote_version" '.[] |
-      select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
+        select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
       )
     elif [[ "$mirror" == "cnb" ]]; then
       changelog=$(
-        jq -r --arg version "refs/tags/$remote_version" \
-          '.props.pageProps.initialState.slug.repo.releases.list.data.releases[] |
-          select( .tagRef == $version ) | .body' "$TEMP_DIR/cnb.json"
+        jq -r --arg version "refs/tags/$remote_version" '.releases.[] |
+        select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb.json"
       )
     fi
     echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
@@ -186,7 +181,7 @@ update_schema() {
     if [[ "$mirror" == "github" ]]; then
       remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.sizeInByte')
+      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size_in_byte')
     fi
     if [[ "$local_size" != "$remote_size" ]]; then
       log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
@@ -226,13 +221,17 @@ update_dict() {
   # 缓存 API 响应
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
+        --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
         error_exit "连接到 GitHub API 失败，您可能需要检查网络"
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      cache_cnb_api
+      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
+        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
     fi
   fi
   local local_date remote_date
@@ -244,7 +243,7 @@ update_dict() {
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at')
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updatedAt')
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updated_at')
   fi
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
@@ -264,7 +263,7 @@ update_dict() {
     if [[ "$mirror" == "github" ]]; then
       remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.sizeInByte')
+      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.size_in_byte')
     fi
     if [[ "$local_size" != "$remote_size" ]]; then
       log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
@@ -287,13 +286,17 @@ update_gram() {
   # 缓存 API 响应
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_gram.json" ]]; then
-      if ! curl -sL --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_gram.json"; then
+      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
+        --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_gram.json"; then
         error_exit "连接到 GitHub API 失败，您可能需要检查网络"
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      cache_cnb_api
+      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
+        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        error_exit "连接到 CNB 失败，您可能需要检查网络"
+      fi
     fi
   fi
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
@@ -305,7 +308,7 @@ update_gram() {
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updatedAt')
+    remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updated_at')
   fi
   remote_date=$(date -d "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
@@ -323,7 +326,7 @@ update_gram() {
     if [[ "$mirror" == "github" ]]; then
       remote_size=$(get_info "$mirror" "LTS" "gram" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.sizeInByte')
+      remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.size_in_byte')
     fi
     if [[ "$local_size" != "$remote_size" ]]; then
       log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
@@ -445,12 +448,16 @@ main() {
     error_exit "请设置部署目录！"
   fi
   # 排除项目列表文件是否存在
-  if [[ ! -f "$DEPLOY_DIR/user_exclude_file.txt" ]]; then
+  if [[ -f "$DEPLOY_DIR/user_exclude_file.txt" ]]; then
+    mv "$DEPLOY_DIR/user_exclude_file.txt" "$DEPLOY_DIR/custom/user_exclude_file.txt"
+    sed -i 's/user_exclude_file\.txt/custom\/user_exclude_file\.txt/g' \
+      "$DEPLOY_DIR/custom/user_exclude_file.txt"
+  fi
+  if [[ ! -f "$DEPLOY_DIR/custom/user_exclude_file.txt" ]]; then
     log WARN "您没有设置排除项目列表！"
-    log WARN "您需要创建的文件为 $DEPLOY_DIR/user_exclude_file.txt"
+    log WARN "您需要创建的文件为 $DEPLOY_DIR/custom/user_exclude_file.txt"
     log WARN "请在该文件中写入您需要排除的项目，每行一个"
-    log WARN "如果您确实不需要排除任何文件，请创建一个空文件来抑制该警告"
-    error_exit "$DEPLOY_DIR/user_exclude_file.txt 文件不存在"
+    error_exit "$DEPLOY_DIR/custom/user_exclude_file.txt 文件不存在"
   fi
   # 检查 schema 和 fuzhu 是否同时存在
   if [[ -n "$schema" && -z "$fuzhu" ]]; then
