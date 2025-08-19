@@ -76,6 +76,11 @@ $KeyTable = @{
     "6" = "zrm";
 }
 
+$UriHeader = @{
+    "accept"="application/vnd.cnb.web+json";
+    "cache-control"="no-cache";
+}
+
 $SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
@@ -272,31 +277,23 @@ function Get-CnbReleaseInfo {
         [string]$repo
     )
 
-    $apiUrl = "https://cnb.cool/$owner/$repo/-/releases"
+    # https://cnb.cool/amzxyz/rime-wanxiang/-/releases?page=1&page_size=20&query=
+    $apiUrl = "https://cnb.cool/$owner/$repo/-/releases?page=1&page_size=100&query="
 
     try {
         Write-Host "正在从 CNB 页面获取信息: $apiUrl" -ForegroundColor Cyan
-        $htmlContent = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing | Select-Object -ExpandProperty Content
+        $jsonDataFormat = Invoke-WebRequest -Uri $apiUrl -Headers $UriHeader -UseBasicParsing | ConvertFrom-Json
       
-        # 使用正则表达式匹配<script id="__NEXT_DATA__">标签内的内容
-        $regex = '(?s)<script id="__NEXT_DATA__"[^>]*>(.*?)</script>'
-        if ($htmlContent -match $regex) {
-            $jsonData = $matches[1]
-            $jsonDataFormat = $jsonData | ConvertFrom-Json
-            if ($jsonDataFormat.props.pageProps.initialState.slug.repo.releases.list.data.releases){
-                $releaseData = $jsonDataFormat.props.pageProps.initialState.slug.repo.releases.list.data.releases
-                Write-Host "成功获取 CNB release 版本信息" -ForegroundColor Green
-                if ($releaseData.assets.Count -eq 0) {
-                    Write-Error "CNB release 版本没有可下载资源"
-                    Exit-Tip 1
-                }
-                return $releaseData
-            } else {
-                Write-Error "错误：在页面中未找到 'release' 数据。"
+        if ($jsonDataFormat.releases){
+            $releaseData = $jsonDataFormat.releases
+            Write-Host "成功获取 CNB release 版本信息" -ForegroundColor Green
+            if ($jsonDataFormat.release_count -eq 0) {
+                Write-Error "CNB release 版本没有可下载资源"
                 Exit-Tip 1
             }
+            return $releaseData
         } else {
-            Write-Error "错误：在页面中未找到 '__NEXT_DATA__' JSON 数据。"
+            Write-Error "错误：在页面中未找到 'release' 数据。"
             Exit-Tip 1
         }
     }
@@ -404,7 +401,7 @@ function Get-ReleaseTagName {
         [object]$release
     )
     if ($UseCnbMirrorSource) {
-        $tag_name = $release.tagRef
+        $tag_name = $release.tag_ref
     } else {
         $tag_name = $release.tag_name
     }
@@ -454,7 +451,7 @@ if (-not $UseCnbMirrorSource) {
     Write-Host "方案更新日志: " -ForegroundColor Yellow
     Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
 } else {
-    Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tagRef)"
+    Write-Host "方案最新的版本为：$($SelectedSchemaRelease.tag_ref)"
     Write-Host "方案更新日志: " -ForegroundColor Yellow
     Write-Host $SelectedSchemaRelease.body -ForegroundColor Yellow
 }
@@ -600,7 +597,7 @@ function Save-TimeRecord {
             Write-Host "警告：无法读取时间记录文件，将创建新的记录" -ForegroundColor Yellow
         }
     }
-0
+
     $timeData[$key] = $value
     
     try {
@@ -750,7 +747,7 @@ function Download-Files {
         Write-Host "下载完成" -ForegroundColor Green
         if ($UseCnbMirrorSource) {
             # 校验文件大小
-            $expectedSize = [int64]$assetInfo.sizeInByte
+            $expectedSize = [int64]$assetInfo.size_in_byte
             $actualSize = (Get-Item $outFilePath).Length
             if ($expectedSize -ne $actualSize) {
                 Write-Host "文件大小校验失败，删除文件" -ForegroundColor Red
@@ -840,11 +837,7 @@ function Get-UpdateAtObj {
     param (
         [object]$assetInfo
     )
-    if ($UseCnbMirrorSource) {
-        return $assetInfo.updatedAt
-    } else {
-        return $assetInfo.updated_at
-    }
+    return $assetInfo.updated_at
 }
 
 $UpdateFlag = $false
@@ -988,7 +981,7 @@ if ($InputGramModel -eq "0") {
     } elseif (Test-Path -Path $filePath) {
         if ($UseCnbMirrorSource) {
             # 校验文件大小
-            $expectedSize = [int64]$ExpectedGramTypeInfo.sizeInByte
+            $expectedSize = [int64]$ExpectedGramTypeInfo.size_in_byte
             $actualSize = (Get-Item $filePath).Length
             if ($expectedSize -ne $actualSize) {
                 Write-Host "文件大小校验失败，需要更新" -ForegroundColor Red
