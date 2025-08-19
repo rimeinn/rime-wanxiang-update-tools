@@ -1232,7 +1232,7 @@ class CombinedUpdater:
                     update_description = release.get("body", "无更新说明")
                     return {
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
-                        "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                        "update_time": asset.get("updated_at"),
                         "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
                         "description": update_description,
                         "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
@@ -1250,7 +1250,7 @@ class CombinedUpdater:
                 if asset["name"] == self.dict_updater.dict_file:
                     return {
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
-                        "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                        "update_time": asset.get("updated_at"),
                         "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
                         "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
                         "id": asset.get("id", "")                                               # 仅cnb
@@ -1530,7 +1530,7 @@ class ModelUpdater(UpdateHandler):
                 return {
                     "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                     # 使用asset的更新时间
-                    "update_time": asset.get("updated_at") or asset.get("updatedAt"),
+                    "update_time": asset.get("updated_at"),
                     "size": asset.get("size") or asset.get("sizeInByte"),
                     "sha256": asset.get("digest").split(':')[-1] if asset.get("digest") else "",
                     "id": asset.get("id")
