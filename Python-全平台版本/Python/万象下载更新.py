@@ -14,7 +14,6 @@ import re
 from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
-
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 # ====================== 全局配置 ======================
 # 仓库信息
@@ -1780,9 +1779,6 @@ class ZipPackager(UpdateHandler):
                     print_success("已找到自定义词库文件")
                 else:
                     print_error("未找到自定义词库文件,请检查" + self.custom_pro)
-            else:
-                # print_warning("wanxiang_pro.custom.yaml未配置自定义词库")
-                return False
         else:
             print_warning("检测到缺少yaml包,如果在wanxiang_pro.custom.yaml配置了custom_phrase/user_dict选项请使用pip install pyyaml安装,若没有配置请忽略本提示")
 
