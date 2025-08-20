@@ -204,7 +204,7 @@ update_schema() {
           cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
         fi
       fi
-    done <"$DEPLOY_DIR/user_exclude_file.txt"
+    done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
     # 单独处理语法模型
     [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
       "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
