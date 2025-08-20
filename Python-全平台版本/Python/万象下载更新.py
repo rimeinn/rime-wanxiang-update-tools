@@ -1819,13 +1819,13 @@ class ZipPackager(UpdateHandler):
             print_warning("未找齐custom文件,请阅读:https://github.com/amzxyz/rime_wanxiang 中的①快速运行")
         # 复制模型文件
         shutil.copy(self.model_path, os.path.join(self.rime_path, 'wanxiang-lts-zh-hans.gram'))
+        # 复制自定义词库文件如果有
+        if self.custom_phrase_file:
+            shutil.copy(self.custom_phrase_file, os.path.join(self.rime_path, self.scheme_zip_file_name))
         # 完整复制  
         if self.choice == '1': 
-            # 复制自定义词库文件如果有
-            if self.custom_phrase_file:
-                shutil.copy(self.custom_phrase_file, os.path.join(self.rime_path, self.scheme_zip_file_name))
             self.terminate_processes() # 停止服务
-            # 复制用户词库和sequence.userdb
+            # 复制zc.userdb和sequence.userdb
             shutil.copytree(self.zc_userdb, os.path.join(self.rime_path, 'zc.userdb'))
             shutil.copytree(self.sequence_userdb, self.sequence_userdb_target)
             self.deploy_weasel() # 启动服务        
@@ -1854,7 +1854,7 @@ class ZipPackager(UpdateHandler):
             return 0
         # print(f"{COLOR['OKCYAN']}[i] 先更新,再打包{COLOR['ENDC']}")
         print(f"{COLOR['OKCYAN']}[i] 完整版:复制所有文件包括用户词库zc.userdb,排序数据库sequence.userdb,自定义custom_phrase/user_dict文件(如果有){COLOR['ENDC']}")
-        print(f"{COLOR['OKCYAN']}[i] 纯净版:仅复制方案,词库和模型{COLOR['ENDC']}")
+        print(f"{COLOR['OKCYAN']}[i] 纯净版:仅复制方案,词库和模型,自定义custom_phrase/user_dict文件(如果有){COLOR['ENDC']}")
         print("[1] 完整版\n[2] 纯净版\n[3] 主菜单 ")
         self.choice = input("请输入选择（1-3，单独按回车键默认选择全部复制）: ").strip() or '1'
         if self.choice == '3':
