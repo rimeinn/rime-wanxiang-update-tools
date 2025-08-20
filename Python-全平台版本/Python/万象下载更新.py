@@ -1846,7 +1846,7 @@ class ZipPackager(UpdateHandler):
         if self.scheme_type != 'pro':
             print_warning("仅在PRO版测试,普通版自行测试~")
         print(f"{COLOR['OKCYAN']}[i] 1. 检查必要文件...{COLOR['ENDC']}") 
-        if self.check_prerequisites():
+        if not self.check_prerequisites():
             return 0
         # print(f"{COLOR['OKCYAN']}[i] 先更新,再打包{COLOR['ENDC']}")
         print(f"{COLOR['OKCYAN']}[i] 完整版:复制所有文件包括用户词库zc.userdb,排序数据库sequence.userdb,自定义custom_phrase/user_dict文件(如果有){COLOR['ENDC']}")
@@ -1860,6 +1860,7 @@ class ZipPackager(UpdateHandler):
         print(f"{COLOR['OKCYAN']}[i] 2. 开始压缩ZIP...{COLOR['ENDC']}")
         self.copy_files()
         print(f"{COLOR['OKCYAN']}[i] 3. 打开文件夹{COLOR['ENDC']}")
+        print_success('ZIP:' + self.rime_zip_file)
         os.startfile(self.custom_dir) # 打开文件夹
         return 1
 
