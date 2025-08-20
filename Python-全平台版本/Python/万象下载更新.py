@@ -15,7 +15,7 @@ from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
 
-UPDATE_TOOLS_VERSION = "v5.0.0"
+UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 # ====================== 全局配置 ======================
 # 仓库信息
 OWNER = "amzxyz"
@@ -1710,7 +1710,7 @@ class ZipPackager(UpdateHandler):
         self.zc_userdb = os.path.join(self.rime_user_dir, "zc.userdb")
         self.sequence_userdb = os.path.join(self.rime_user_dir, "lua\\sequence.userdb")
         self.sequence_userdb_target = os.path.join(self.rime_path, "lua\\sequence.userdb")
-        self.choice = 1
+        self.choice = "1"
 
     def zip_folder(self, src_dir, dst_zip):
         """
