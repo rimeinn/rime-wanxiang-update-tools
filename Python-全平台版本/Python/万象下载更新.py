@@ -667,7 +667,6 @@ class FileChecker:
         headers = CNB_HEADERS
         url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
         response = requests.get(url=url, headers=headers)
-        json_all = json.loads(regex_res.group(1)) if regex_res else {}
         if response.status_code == 200:
             releases_all = response.json()
             releases_list = releases_all['releases']
