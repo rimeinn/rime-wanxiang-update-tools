@@ -14,7 +14,8 @@ import re
 from typing import Tuple, Optional, List, Dict
 from tqdm import tqdm
 
-UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
+
+UPDATE_TOOLS_VERSION = "v5.0.0"
 # ====================== 全局配置 ======================
 # 仓库信息
 OWNER = "amzxyz"
@@ -1677,6 +1678,196 @@ class ScriptUpdater(UpdateHandler):
         else:
             return False
 
+# ====================== 打包ZIP ======================
+class ZipPackager(UpdateHandler):
+    """打包ZIP给超越输入法导入使用"""
+    def __init__(self, config_manager):
+        super().__init__(config_manager)
+        # 词库zip文件
+        self.dict_zip_file = ''
+        # 方案zip文件
+        self.scheme_zip_file = ''
+        self.scheme_zip_file_name = ''
+        # 自定义词库文件
+        self.custom_phrase_file = ''
+        # 压缩包
+        self.rime_zip_file = os.path.join(self.custom_dir, "rime.zip")
+        # 用户文件夹目录
+        self.rime_user_dir = self.config_manager.detect_installation_paths(show=False)['rime_user_dir']
+        self.rime_path = os.path.join(self.custom_dir, "rime")
+        for file in os.listdir(self.custom_dir):
+            if "dicts" in file:
+                self.dict_zip_file = os.path.join(self.custom_dir, file)
+            elif "wanxiang" in file:
+                self.scheme_zip_file = os.path.join(self.custom_dir, file)
+        self.custom_pro = os.path.join(self.rime_user_dir, "wanxiang_pro.custom.yaml")
+        self.custom_en = os.path.join(self.rime_user_dir, "wanxiang_en.custom.yaml")
+        self.custom_radical = os.path.join(self.rime_user_dir, "wanxiang_radical.custom.yaml")
+        self.custom_mixedcode = os.path.join(self.rime_user_dir, "wanxiang_mixedcode.custom.yaml")
+        self.custom_reverse = os.path.join(self.rime_user_dir, "wanxiang_reverse.custom.yaml")
+        self.model_path = os.path.join( self.rime_user_dir, "wanxiang-lts-zh-hans.gram")
+        self.scheme_type = self.config_manager.load_config()[1]
+        self.zc_userdb = os.path.join(self.rime_user_dir, "zc.userdb")
+        self.sequence_userdb = os.path.join(self.rime_user_dir, "lua\\sequence.userdb")
+        self.sequence_userdb_target = os.path.join(self.rime_path, "lua\\sequence.userdb")
+        self.choice = 1
+
+    def zip_folder(self, src_dir, dst_zip):
+        """
+        使用文件数量作为进度条（适用于少量文件）
+        :param src_dir: 要压缩的文件夹路径
+        :param dst_zip: 输出的 ZIP 文件路径
+        """
+        # 获取所有文件路径
+        file_paths = []
+        for root, _, files in os.walk(src_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_paths.append(file_path)
+        
+        # 创建 ZIP 文件并添加文件（带进度条）
+        with zipfile.ZipFile(dst_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            with tqdm(total=len(file_paths), desc=f"压缩 {os.path.basename(src_dir)}", unit="file") as pbar:
+                for file in file_paths:
+                    arcname = os.path.relpath(file, os.path.dirname(src_dir))
+                    zipf.write(file, arcname)
+                    pbar.update(1)  # 每处理一个文件，进度条 +1
+    # 自定义词库文件
+    def find_custom_phrase(self):
+        import yaml
+        if os.path.exists(self.custom_pro):
+            with open(self.custom_pro, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                try:
+                    self.scheme_zip_file_name = config["patch"]["custom_phrase/user_dict"] + 'txt'
+                    return os.path.join(self.rime_user_dir, (config["patch"]["custom_phrase/user_dict"] + 'txt'))
+                except KeyError:
+                    print_warning("wanxiang_pro.custom.yaml未配置自定义词库")
+                    return None 
+        else:
+            return None
+
+    def check_prerequisites(self):
+        """
+        检查所需文件
+        """
+        # 必要文件
+        if self.dict_zip_file != '':
+            print_success("已找到词库zip文件")
+        else:
+            print_error("未找到词库zip文件, 请尝试更新一次或手动下载词库文件放置在:" + self.custom_dir)
+            return False
+        if self.scheme_zip_file != '':
+            print_success("已找到方案zip文件")
+        else:
+            print_error("未找到方案zip文件, 请尝试更新一次或手动下载方案文件放置在:" + self.custom_dir)
+            return False
+        if os.path.exists(self.custom_pro) and os.path.exists(self.custom_en) and os.path.exists(self.custom_radical) and os.path.exists(self.custom_mixedcode) and os.path.exists(self.custom_mixedcode):
+            print_success("已找到5个custom文件")
+        else:
+            print_warning("未找齐custom文件,请阅读:https://github.com/amzxyz/rime_wanxiang 中的①快速运行")
+            # return False
+        if os.path.exists(self.model_path):
+            print_success("已找到模型文件")
+        else:
+            print_error("未找到模型文件,请尝试更新一次或手动下载方案文件放置在:" + self.rime_user_dir)
+            return False
+        # 自定义词库文件相关检查
+        if self.check_yaml_package(): # 检查yaml包
+            self.custom_phrase_file = self.find_custom_phrase() # 搜索wanxiang_pro.custom.yaml
+            if self.custom_phrase_file:
+                if os.path.exists(self.custom_phrase_file):
+                    print_success("已找到自定义词库文件")
+                else:
+                    print_error("未找到自定义词库文件,请检查" + self.custom_pro)
+            else:
+                # print_warning("wanxiang_pro.custom.yaml未配置自定义词库")
+                return False
+        else:
+            print_warning("检测到缺少yaml包,如果在wanxiang_pro.custom.yaml配置了custom_phrase/user_dict选项请使用pip install pyyaml安装,若没有配置请忽略本提示")
+
+
+        return True
+    
+    def copy_files(self):
+        # 删除旧文件/zip
+        if os.path.isdir(self.rime_path):
+            shutil.rmtree(self.rime_path)
+        if os.path.exists(self.rime_zip_file):
+            os.remove(self.rime_zip_file)
+        # 新建文件夹
+        os.makedirs(self.rime_path, exist_ok=True)
+        # 超越所需
+        os.makedirs(os.path.join(self.rime_path, 'cn_dicts'), exist_ok=True)
+        os.makedirs(os.path.join(self.rime_path, 'en_dicts'), exist_ok=True)
+        # 解压方案和词库
+        self.extract_zip(self.scheme_zip_file, self.rime_path, False)
+        # 删除方案里的词库
+        old_dict_files = os.path.join(self.rime_path, 'dicts')
+        shutil.rmtree(old_dict_files)
+        os.makedirs(old_dict_files)
+        # 解压方案和词库
+        self.extract_zip(self.dict_zip_file, old_dict_files, False)
+        # 复制custom相关文件
+        if os.path.exists(self.custom_pro) and os.path.exists(self.custom_en) and os.path.exists(self.custom_radical) and os.path.exists(self.custom_mixedcode) and os.path.exists(self.custom_mixedcode):
+            shutil.copy(self.custom_pro, os.path.join(self.rime_path, 'wanxiang_pro.custom.yaml'))
+            shutil.copy(self.custom_en, os.path.join(self.rime_path, 'wanxiang_en.custom.yaml'))
+            shutil.copy(self.custom_radical, os.path.join(self.rime_path, 'wanxiang_radical.custom.yaml'))
+            shutil.copy(self.custom_mixedcode, os.path.join(self.rime_path, 'wanxiang_mixedcode.custom.yaml'))
+            shutil.copy(self.custom_reverse, os.path.join(self.rime_path, 'wanxiang_reverse.custom.yaml'))
+        else:
+            print_warning("未找齐custom文件,请阅读:https://github.com/amzxyz/rime_wanxiang 中的①快速运行")
+        # 复制模型文件
+        shutil.copy(self.model_path, os.path.join(self.rime_path, 'wanxiang-lts-zh-hans.gram'))
+        # 完整复制  
+        if self.choice == '1': 
+            # 复制自定义词库文件如果有
+            if self.custom_phrase_file:
+                shutil.copy(self.custom_phrase_file, os.path.join(self.rime_path, self.scheme_zip_file_name))
+            self.terminate_processes() # 停止服务
+            # 复制用户词库和sequence.userdb
+            shutil.copytree(self.zc_userdb, os.path.join(self.rime_path, 'zc.userdb'))
+            shutil.copytree(self.sequence_userdb, self.sequence_userdb_target)
+            self.deploy_weasel() # 启动服务        
+        print_success("文件复制完毕")
+        # 压缩文件夹
+        self.zip_folder(self.rime_path, self.rime_zip_file)
+        print_success("文件压缩完毕")
+
+    def clear_screen(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def check_yaml_package(self):
+        try:
+            import yaml
+            return True
+        except ImportError:
+            return False
+
+    def run(self):
+        self.clear_screen()
+        print_header("打包ZIP给超越输入法导入使用")
+        if self.scheme_type != 'pro':
+            print_warning("仅在PRO版测试,普通版自行测试~")
+        print(f"{COLOR['OKCYAN']}[i] 1. 检查必要文件...{COLOR['ENDC']}") 
+        if self.check_prerequisites():
+            return 0
+        # print(f"{COLOR['OKCYAN']}[i] 先更新,再打包{COLOR['ENDC']}")
+        print(f"{COLOR['OKCYAN']}[i] 完整版:复制所有文件包括用户词库zc.userdb,排序数据库sequence.userdb,自定义custom_phrase/user_dict文件(如果有){COLOR['ENDC']}")
+        print(f"{COLOR['OKCYAN']}[i] 纯净版:仅复制方案,词库和模型{COLOR['ENDC']}")
+        print("[1] 完整版\n[2] 纯净版\n[3] 主菜单 ")
+        self.choice = input("请输入选择（1-3，单独按回车键默认选择全部复制）: ").strip() or '1'
+        if self.choice == '3':
+            self.clear_screen()
+            return 0
+        print_subheader("* 准备打包ZIP文件 *")
+        print(f"{COLOR['OKCYAN']}[i] 2. 开始压缩ZIP...{COLOR['ENDC']}")
+        self.copy_files()
+        print(f"{COLOR['OKCYAN']}[i] 3. 打开文件夹{COLOR['ENDC']}")
+        os.startfile(self.custom_dir) # 打开文件夹
+        return 1
+
+
 # ====================== 工具函数 ======================
 def calculate_sha256(file_path) -> Optional[str]:
     """
@@ -1949,7 +2140,10 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
-            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            if SYSTEM_TYPE == 'windows':
+                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序\n[8] 超越ZIP")
+            else:
+                print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
             
             if choice == '6':
@@ -1970,6 +2164,13 @@ def main():
                     break
             elif choice == '7':
                 break
+            elif choice == '8' and SYSTEM_TYPE == 'windows':
+                zip_packager = ZipPackager(config_manager)
+                if zip_packager.run() == 1:
+                    break
+                else:
+                    time.sleep(1)
+                    continue
             elif choice == '5':
                 # 脚本更新
                 script_updater = ScriptUpdater(config_manager)
