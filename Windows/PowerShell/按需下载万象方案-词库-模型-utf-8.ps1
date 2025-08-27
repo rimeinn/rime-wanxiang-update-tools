@@ -385,7 +385,12 @@ function Get-ReleaseInfo {
     if ($UseCnbMirrorSource){
         return Get-CnbReleaseInfo -owner $owner -repo $repo
     } else {
-        return Get-GithubReleaseInfo -owner $owner -repo $repo
+        $result = Get-GithubReleaseInfo -owner $owner -repo $repo
+        if ($null -eq $result) {
+            Write-Error "错误：无法获取仓库 '$owner/$repo' 的发布版本信息。" -ForegroundColor Cyan
+            Exit-Tip 1 # 对于非自身更新的 GitHub 资源获取失败，仍旧退出脚本
+        }
+        return $result
     }
 }
 
