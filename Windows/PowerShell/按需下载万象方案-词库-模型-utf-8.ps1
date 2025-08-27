@@ -355,13 +355,13 @@ function Get-GithubReleaseInfo {
         else {
             Write-Error "API请求失败 [$statusCode]：$_"
         }
-        Exit-Tip 1
+        return $null
     }
 
     # 检查是否有可下载资源
     if ($response.assets.Count -eq 0) {
         Write-Error "该版本没有可下载资源"
-        Exit-Tip 1
+        return $null
     }
     return $response
 }
@@ -374,7 +374,13 @@ function Get-ReleaseInfo {
     )
     # 构建API请求URL
     if ($updateToolFlag) {
-        return Get-GithubReleaseInfo -owner $owner -repo $repo
+        Write-Host "正在尝试获取更新工具自身版本信息..." -ForegroundColor Cyan
+        $result = Get-GithubReleaseInfo -owner $owner -repo $repo
+        if ($null -eq $result) {
+            Write-Host "获取更新工具版本信息失败，将跳过自身更新检查。" -ForegroundColor Cyan
+            return @() # 如果自身更新信息获取失败，返回空数组，不终止脚本
+        }
+        return $result
     }
     if ($UseCnbMirrorSource){
         return Get-CnbReleaseInfo -owner $owner -repo $repo
@@ -384,25 +390,30 @@ function Get-ReleaseInfo {
 }
 
 $UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo -updateToolFlag $true
-
-# 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
-# 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本,
-# UpdateToolsVersion
-if ($UpdateTollsResponse.Count -eq 0) {
-    Write-Host "没有找到更新工具的版本信息，请检查网络连接或仓库是否存在" -ForegroundColor Red
-    Exit-Tip 1
+# 检测是否需要跳过自身更新检查
+$SkipSelfUpdateCheck = $false
+if ($null -eq $UpdateTollsResponse -or $UpdateTollsResponse.Count -eq 0) {
+    $SkipSelfUpdateCheck = $true
+    $UpdateTollsResponse = @() 
 }
 
-$StableUpdateToolsReleases = $UpdateTollsResponse
-if ($StableUpdateToolsReleases.Count -eq 0) {
-    Write-Host "没有找到稳定版的更新工具版本信息" -ForegroundColor Yellow
-} else {
-    $LatestUpdateToolsRelease = $StableUpdateToolsReleases | Select-Object -First 1
-    if ($LatestUpdateToolsRelease.tag_name -ne $UpdateToolsVersion) {
-        Write-Host "发现新版本的更新工具: $($LatestUpdateToolsRelease.tag_name)" -ForegroundColor Yellow
-        Write-Host "如需更新,请访问 https://github.com/expoli/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
-        Write-Host "当前版本: $UpdateToolsVersion" -ForegroundColor Yellow
-        Write-Host "更新日志: $($LatestUpdateToolsRelease.body)" -ForegroundColor Yellow
+# 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
+# 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本
+if (-not $SkipSelfUpdateCheck) {
+    $StableUpdateToolsReleases = $UpdateTollsResponse 
+    
+    if ($StableUpdateToolsReleases.Count -eq 0) {
+        Write-Host "没有找到稳定版的更新工具版本信息，跳过自身更新检查。" -ForegroundColor Yellow
+    } else {
+        $LatestUpdateToolsRelease = $StableUpdateToolsReleases | Select-Object -First 1
+        if ($LatestUpdateToolsRelease.tag_name -ne $UpdateToolsVersion) {
+            Write-Host "发现新版本的更新工具: $($LatestUpdateToolsRelease.tag_name)" -ForegroundColor Yellow
+            Write-Host "如需更新,请访问 https://github.com/expoli/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
+            Write-Host "当前版本: $UpdateToolsVersion" -ForegroundColor Yellow
+            Write-Host "更新日志: $($LatestUpdateToolsRelease.body)" -ForegroundColor Yellow
+        } else {
+            Write-Host "脚本工具已是最新版本：$UpdateToolsVersion" -ForegroundColor Green
+        }
     }
 }
 
