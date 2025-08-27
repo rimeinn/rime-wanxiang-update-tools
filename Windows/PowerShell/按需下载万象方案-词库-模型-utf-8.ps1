@@ -385,7 +385,12 @@ function Get-ReleaseInfo {
     if ($UseCnbMirrorSource){
         return Get-CnbReleaseInfo -owner $owner -repo $repo
     } else {
-        return Get-GithubReleaseInfo -owner $owner -repo $repo
+        $result = Get-GithubReleaseInfo -owner $owner -repo $repo
+        if ($null -eq $result) {
+            Write-Error "错误：无法获取仓库 '$owner/$repo' 的发布版本信息。" -ForegroundColor Cyan
+            Exit-Tip 1 # 对于非自身更新的 GitHub 资源获取失败，仍旧退出脚本
+        }
+        return $result
     }
 }
 
@@ -500,9 +505,9 @@ if (-not $Debug) {
     if ($AutoUpdate) {
         Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
         Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
-        # 方案号只支持0-7
-        if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 7) {
-            Write-Error "错误：方案号只能是0-7"
+        # 方案号只支持0-6
+        if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
+            Write-Error "错误：方案号只能是0-6"
             Exit-Tip 1
         }
         $InputAllUpdate = "0"
@@ -523,7 +528,7 @@ if (-not $Debug) {
         }
     }
 } else {
-    $InputSchemaType = "7"
+    $InputSchemaType = "6"
     $InputSchemaDown = "0"
     $InputGramModel = "0"
     $InputDictDown = "0"
