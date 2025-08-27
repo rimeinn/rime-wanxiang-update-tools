@@ -34,13 +34,13 @@ $Debug = $false;
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
-    Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
+    Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/rimeinn/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
 } else {
     Write-Host "当前更新工具版本：$UpdateToolsVersion" -ForegroundColor Yellow;
 }
 
 # 设置仓库所有者和名称
-$UpdateToolsOwner = "expoli"
+$UpdateToolsOwner = "rimeinn"
 $UpdateToolsRepo = "rime-wanxiang-update-tools"
 # 定义临时文件路径
 $tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
@@ -413,7 +413,7 @@ if (-not $SkipSelfUpdateCheck) {
         $LatestUpdateToolsRelease = $StableUpdateToolsReleases | Select-Object -First 1
         if ($LatestUpdateToolsRelease.tag_name -ne $UpdateToolsVersion) {
             Write-Host "发现新版本的更新工具: $($LatestUpdateToolsRelease.tag_name)" -ForegroundColor Yellow
-            Write-Host "如需更新,请访问 https://github.com/expoli/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
+            Write-Host "如需更新,请访问 https://github.com/rimeinn/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
             Write-Host "当前版本: $UpdateToolsVersion" -ForegroundColor Yellow
             Write-Host "更新日志: $($LatestUpdateToolsRelease.body)" -ForegroundColor Yellow
         } else {

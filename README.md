@@ -15,7 +15,7 @@
 ### Python-全平台版本
 
 - [x] [Python版本](./Python-全平台版本/README.md)
-  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
 ### Windows版本
 
@@ -26,15 +26,15 @@
     - Python 版本支持 GitHub 镜像加速
 
 - [x] [PowerShell版本](./Windows/PowerShell/README.md)
-  - 下载链接：[按需下载万象方案-词库-模型(GBK版本：文件名：**rime-wanxiang-update-windows.ps1**)](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows.ps1)
-  - 下载链接：[按需下载万象方案-词库-模型(UTF-8版本：文件名：**rime-wanxiang-update-windows-utf-8.ps1**](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-utf-8.ps1)
+  - 下载链接：[按需下载万象方案-词库-模型(GBK版本：文件名：**rime-wanxiang-update-windows.ps1**)](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows.ps1)
+  - 下载链接：[按需下载万象方案-词库-模型(UTF-8版本：文件名：**rime-wanxiang-update-windows-utf-8.ps1**](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows-utf-8.ps1)
 - [x] [Python版本](./Python-全平台版本/README.md)
-  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
 ### Linux版本
 
 - [x] [Shell版本](./Linux/Shell/README.md)
-  - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
+  - 下载链接：[Linux/Shell/wanxiang-update](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/linux-wanxiang-update)
 
 ### Mac版本
 

@@ -14,7 +14,7 @@ ENGINE=""
 CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
-TOOLS_API="https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases"
+TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
 FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -112,7 +112,7 @@ script_check() {
     )
     if [[ "$remote_version" > "$local_version" ]]; then
       log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-macos.sh"
+      log WARN "https://github.com/rimeinn/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-macos.sh"
     else
       log INFO "工具已是最新版本"
     fi
@@ -470,7 +470,7 @@ main() {
     *)
       log WARN "您可能错误的使用了该脚本"
       log WARN "请前往 GitHub 页面阅读 Readme"
-      log WARN "https://github.com/expoli/rime-wanxiang-update-tools/blob/main/Mac/Shell/README.md"
+      log WARN "https://github.com/rimeinn/rime-wanxiang-update-tools/blob/main/Mac/Shell/README.md"
       error_exit "参数输入错误: $1"
       ;;
     esac

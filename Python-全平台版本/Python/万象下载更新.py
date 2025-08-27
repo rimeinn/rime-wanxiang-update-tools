@@ -1625,7 +1625,7 @@ class ScriptUpdater(UpdateHandler):
         self.script_path = os.path.abspath(__file__)
 
     def check_update(self) -> Optional[Dict]:
-        releases = self.remote_api_request("https://api.github.com/repos/expoli/rime-wanxiang-update-tools/releases")
+        releases = self.remote_api_request("https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases")
         if not releases:
             return None
         
@@ -1921,7 +1921,7 @@ def open_config_file(config_path) -> None:
 def main():
     print(f"\n{COLOR['OKCYAN']}[i] 当前系统为：{SYSTEM_TYPE} {COLOR['ENDC']}")
     if UPDATE_TOOLS_VERSION.startswith("DEFAULT"):
-        print(f"{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/expoli/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
+        print(f"{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/rimeinn/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
     else:
         print(f"{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
 

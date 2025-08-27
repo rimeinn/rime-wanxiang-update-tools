@@ -2,7 +2,7 @@
 
 **合并Windows、Mac、iOS端的Python脚本，支持万象基础版和Pro版**
 
-- 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/expoli/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
+- 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 
 ## 使用须知
 
