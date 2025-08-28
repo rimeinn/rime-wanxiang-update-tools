@@ -34,18 +34,12 @@ chmod +x rime-wanxiang-update-linux
 user_exclude_file.txt
 # 用户数据库
 lua/sequence.userdb
-user_flypyzc.userdb
+zc.userdb
 # custom 文件
 default.custom.yaml
 wanxiang_pro.custom.yaml
 wanxiang_reverse.custom.yaml
 wanxiang_mixedcode.custom.yaml
-# 萌娘百科词库
-dicts/moegirl.pro.dict.yaml
-wanxiang_pro.dict.yaml
-# 自定义 lua
-lua/shijian.lua
-lua/super_comment.lua
 ```
 
 ### 使用适当的参数运行脚本

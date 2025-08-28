@@ -20,6 +20,7 @@ TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/relea
 FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
+NEEDED_DEPLOY="false"
 
 # 日志与错误处理
 log() {
@@ -60,7 +61,7 @@ fuzhu_check() {
 script_check() {
   local mirror="$1"
   if [[ "$UPDATE_TOOLS_VERSION" =~ ^"DEFAULT" ]]; then
-    log WARN "您似乎正在使用源文件！"
+    log WARN "您似乎正在使用错误的文件！"
     log WARN "请从 Release 页面下载正式版！"
     error_exit "终止操作"
   fi
@@ -109,15 +110,20 @@ get_info() {
     echo "$info"
   fi
 }
-
-update_schema() {
-  local mirror="$1" fuzhu="$2" gram="$3"
-  # 缓存 API 响应
+cache_api() {
+  local mirror="$1" fuzhu="$2"
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
-      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
-        --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
-        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+      if [[ "$fuzhu" != "gram" ]]; then
+        if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
+          --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+          error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+        fi
+      else
+        if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
+          --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_$fuzhu.json"; then
+          error_exit "连接到 GitHub API 失败，您可能需要检查网络"
+        fi
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
@@ -128,6 +134,12 @@ update_schema() {
       fi
     fi
   fi
+}
+
+update_schema() {
+  local mirror="$1" fuzhu="$2" gram="$3"
+  # 缓存 API 响应
+  cache_api "$mirror" "$fuzhu"
   # 获取本地版本号
   local local_version remote_version
   if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
@@ -189,7 +201,10 @@ update_schema() {
     fi
     log INFO "验证成功，开始更新方案文件"
     unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
-    for _file in "简纯+.trime.yaml" "custom_phrase.txt" "squirrel.yaml" "weasel.yaml"; do
+    local delete_file=("简纯+.trime.yaml" "squirrel.yaml" "weasel.yaml"
+      "README.md" "CHANGELOG.md" "version.txt" "custom_phrase.txt"
+      "lua/tips/tips_user.txt预留的自定义文件")
+    for _file in "${delete_file[@]}"; do
       if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
         rm -r "$TEMP_DIR/${schemaname%.zip}/${_file:?}"
       fi
@@ -210,6 +225,7 @@ update_schema() {
       "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
     rm -rf "${DEPLOY_DIR:?}"
     cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+    NEEDED_DEPLOY="true"
     log INFO "方案文件更新成功"
   else
     log INFO "远程方案文件版本号为 $remote_version"
@@ -219,21 +235,7 @@ update_schema() {
 update_dict() {
   local mirror="$1" fuzhu="$2"
   # 缓存 API 响应
-  if [[ "$mirror" == "github" ]]; then
-    if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
-      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
-        --connect-timeout 10 "$SCHEMA_API" >"$TEMP_DIR/github_$fuzhu.json"; then
-        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
-      fi
-    fi
-  elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
-        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
-    fi
-  fi
+  cache_api "$mirror" "$fuzhu"
   local local_date remote_date
   if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
     local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/chengyu.txt")
@@ -273,6 +275,7 @@ update_dict() {
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
     dictname="${dictname:2}" && dictname="${dictname%.zip}"
     cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+    NEEDED_DEPLOY="true"
     log INFO "词典文件更新成功"
   else
     remote_date=$(date -d "@$remote_date" +"%Y-%m-%d %H:%M:%S")
@@ -284,21 +287,7 @@ update_dict() {
 update_gram() {
   local mirror="$1"
   # 缓存 API 响应
-  if [[ "$mirror" == "github" ]]; then
-    if [[ ! -f "$TEMP_DIR/github_gram.json" ]]; then
-      if ! curl -sL -H "Accept: application/vnd.github.v3+json" \
-        --connect-timeout 10 "$GRAM_API" >"$TEMP_DIR/github_gram.json"; then
-        error_exit "连接到 GitHub API 失败，您可能需要检查网络"
-      fi
-    fi
-  elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
-        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
-    fi
-  fi
+  cache_api "$mirror" "gram"
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
     local_date=$(stat -c %Z "$DEPLOY_DIR/$gramname")
@@ -334,6 +323,7 @@ update_gram() {
     fi
     log INFO "验证成功，开始更新语法模型"
     cp -rf "$TEMP_DIR/$gramname" "${DEPLOY_DIR}/$gramname"
+    NEEDED_DEPLOY="true"
     log INFO "语法模型更新成功"
   else
     remote_date=$(date -d "@$remote_date" +"%Y-%m-%d %H:%M:%S")
@@ -452,7 +442,7 @@ main() {
     mv "$DEPLOY_DIR/user_exclude_file.txt" "$DEPLOY_DIR/custom/user_exclude_file.txt"
     sed -i 's/user_exclude_file\.txt/custom\/user_exclude_file\.txt/g' \
       "$DEPLOY_DIR/custom/user_exclude_file.txt"
-  fi
+  fi # 处理旧版文件
   if [[ ! -f "$DEPLOY_DIR/custom/user_exclude_file.txt" ]]; then
     log WARN "您没有设置排除项目列表！"
     log WARN "您需要创建的文件为 $DEPLOY_DIR/custom/user_exclude_file.txt"
@@ -475,12 +465,11 @@ main() {
   # 脚本自检
   script_check "$mirror"
   # 开始更新
-  local needed_deploy="false"
-  [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram" && needed_deploy="true"
-  [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu" && needed_deploy="true"
-  [[ "$gram" == "false" ]] || update_gram "$mirror" && needed_deploy="true"
+  [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram"
+  [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu"
+  [[ "$gram" == "false" ]] || update_gram "$mirror"
   # 自动部署
-  if [[ "$needed_deploy" == "true" ]]; then
+  if [[ "$NEEDED_DEPLOY" == "true" ]]; then
     if [[ "$inputime" == "fcitx5" ]]; then
       if command -v qdbus6 >/dev/null; then
         log INFO "更新完成。已检测到 Fcitx5 守护进程，正在自动部署"
