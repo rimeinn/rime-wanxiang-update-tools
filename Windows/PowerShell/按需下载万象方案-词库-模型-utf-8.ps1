@@ -321,7 +321,7 @@ function Get-CnbReleaseInfo {
         }
     }
     catch {
-        Write-Error "错误：下载或解析CNB页面失败: $pageUrl"
+        Write-Error "错误：下载或解析CNB页面失败: $apiUrl"
         Write-Error $_.Exception.Message
         Exit-Tip 1
     }
