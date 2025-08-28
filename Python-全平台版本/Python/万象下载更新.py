@@ -1662,7 +1662,7 @@ class ScriptUpdater(UpdateHandler):
         return False
     
     def run(self):
-        remote_info = self.check_update()
+        remote_info = self.update_info
         if not remote_info:
             print_warning("未找到脚本更新信息")
             return False
@@ -1990,8 +1990,6 @@ def main():
                     continue
                 else:
                     print_success(COLOR['OKGREEN'] + "自动更新完成" + COLOR['ENDC'])
-                    print("\n" + COLOR['OKGREEN'] + "4秒后自动退出..." + COLOR['ENDC'])
-                    time.sleep(4)
                     sys.exit(0)
             else:
                 # 执行其他更新操作,确保有更新器实例
