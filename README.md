@@ -39,11 +39,14 @@
 ### Mac版本
 
 - [x] [Python版本](./Python-全平台版本/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 - [x] [Shell版本](./Mac/Shell/README.md)
+  - 下载链接：[rime-wanxiang-update-macos.sh](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-macos.sh)
 
 ### iOS版本
 
 - [x] [Python版本](./Python-全平台版本/README.md)
+  - 下载链接：[rime-wanxiang-update-win-mac-ios-android.py](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-win-mac-ios-android.py)
 - [x] [Shortcuts版本](./iOS/Shortcuts/README.md)
 
 ## 使用说明
