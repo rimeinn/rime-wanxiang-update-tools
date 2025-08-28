@@ -295,11 +295,12 @@ function Invoke-FileUtf8 {
 function Get-CnbReleaseInfo {
     param(
         [string]$owner,
-        [string]$repo
+        [string]$repo,
+        [string]$query
     )
 
     # https://cnb.cool/amzxyz/rime-wanxiang/-/releases?page=1&page_size=20&query=
-    $apiUrl = "https://cnb.cool/$owner/$repo/-/releases?page=1&page_size=100&query="
+    $apiUrl = "https://cnb.cool/$owner/$repo/-/releases?page=1&page_size=100&query=$query"
 
     try {
         Write-Host "正在从 CNB 页面获取信息: $apiUrl" -ForegroundColor Cyan
@@ -370,7 +371,8 @@ function Get-ReleaseInfo {
     param(
         [string]$owner,
         [string]$repo,
-        [bool]$updateToolFlag = $false
+        [bool]$updateToolFlag = $false,
+        [string]$query
     )
     # 构建API请求URL
     if ($updateToolFlag) {
@@ -383,7 +385,7 @@ function Get-ReleaseInfo {
         return $result
     }
     if ($UseCnbMirrorSource){
-        return Get-CnbReleaseInfo -owner $owner -repo $repo
+        return Get-CnbReleaseInfo -owner $owner -repo $repo -query $query
     } else {
         $result = Get-GithubReleaseInfo -owner $owner -repo $repo
         if ($null -eq $result) {
@@ -425,7 +427,7 @@ if (-not $SkipSelfUpdateCheck) {
 # 获取最新的版本信息
 $SchemaResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $SchemaRepo
 if ($UseCnbMirrorSource) {
-    $GramResponse = $SchemaResponse
+    $GramResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $SchemaRepo -query "model"
 } else {
     $GramResponse = Get-ReleaseInfo -owner $SchemaOwner -repo $GramRepo
 }
