@@ -1,3 +1,53 @@
+#本项目地址： https://github.com/rimeinn/rime-wanxiang-update-tools
+# ======= 命令行参数定义，必须放在脚本最顶部 =======
+param(
+    [string]$schemaType,
+    [switch]$noSchema,
+    [switch]$noDict,
+    [switch]$noModel,
+    [switch]$auto,
+    [string]$skipFiles,
+    [switch]$help
+)
+
+function Exit-Tip {
+    param(
+        [string]$exitCode = 0
+    )
+    Write-Host '按任意键退出...'
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    exit $exitCode
+}
+
+if ($auto -and (-not $schemaType -or $schemaType -notmatch '^[0-6]$')) {
+    Write-Host "错误：自动模式下必须通过 -schemaType 指定方案类型编号（0-6），如 -schemaType 6" -ForegroundColor Red
+    Exit-Tip 1
+}
+
+if ($help -or $args -contains '-h' -or $args -contains '--help') {
+    # 仅在非 help 模式下强制要求 schemaType
+    if (-not $help -and -not ($args -contains '-h') -and -not ($args -contains '--help')) {
+        if (-not $schemaType) {
+            Write-Host "错误：-schemaType 参数为必填项，请指定方案类型编号（0-6）。" -ForegroundColor Red
+            Write-Host "示例：pwsh -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 6"
+            Exit-Tip 1
+        }
+    }
+    Write-Host "Rime 万象 PowerShell 更新工具 - 命令行参数说明" -ForegroundColor Cyan
+    Write-Host "---------------------------------------------"
+    Write-Host "-schemaType <编号>    方案类型编号，0-6 (如 6 表示自然码)"
+    Write-Host "-noSchema            不更新方案"
+    Write-Host "-noDict              不更新词库"
+    Write-Host "-noModel             不更新模型"
+    Write-Host "-auto                启用自动更新模式"
+    Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
+    Write-Host "-h, --help           显示本帮助信息"
+    Write-Host "\n示例："
+    Write-Host "pwsh -ExecutionPolicy Bypass -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 6 -auto -noModel"
+    Write-Host "pwsh -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 1 -skipFiles 'wanxiang_en.dict.yaml,tone_fallback.lua'"
+    Exit-Tip 0
+}
+
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 $AutoUpdate = $false;
 
@@ -29,6 +79,28 @@ $InputSchemaType = "6";
 # $env:GITHUB_TOKEN = "填入这里你的token字符串"    #打开链接https://github.com/settings/tokens，注册一个token# (Public repositories) 
 
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
+
+# 支持命令行参数覆盖关键选项
+# 通过命令行参数覆盖配置
+if ($PSBoundParameters.ContainsKey('schemaType')) {
+    $InputSchemaType = $schemaType
+}
+if ($PSBoundParameters.ContainsKey('auto')) {
+    $AutoUpdate = $true
+}
+if ($PSBoundParameters.ContainsKey('noSchema')) {
+    $IsUpdateSchemaDown = $false
+}
+if ($PSBoundParameters.ContainsKey('noDict')) {
+    $IsUpdateDictDown = $false
+}
+if ($PSBoundParameters.ContainsKey('noModel')) {
+    $IsUpdateModel = $false
+}
+if ($PSBoundParameters.ContainsKey('skipFiles')) {
+    $SkipFiles = $skipFiles -split ','
+}
+
 
 $Debug = $false;
 
@@ -99,15 +171,6 @@ $DictFileSaveDirTableIndex = "base";
 
 # 设置安全协议为TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-function Exit-Tip {
-    param(
-        [string]$exitCode = 0
-    )
-    Write-Host '按任意键退出...'
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    exit $exitCode
-}
 
 # 获取 Weasel 用户目录路径
 function Get-RegistryValue {
