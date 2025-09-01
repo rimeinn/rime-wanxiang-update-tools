@@ -5,6 +5,7 @@ param(
     [switch]$noSchema,
     [switch]$noDict,
     [switch]$noModel,
+    [switch]$disableCNB,
     [switch]$auto,
     [string]$skipFiles,
     [switch]$help
@@ -40,6 +41,7 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-noDict              不更新词库"
     Write-Host "-noModel             不更新模型"
     Write-Host "-auto                启用自动更新模式"
+    Write-Host "-disableCNB          不使用 CNB 镜像源"
     Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
     Write-Host "-h, --help           显示本帮助信息"
     Write-Host "\n示例："
@@ -87,6 +89,9 @@ if ($PSBoundParameters.ContainsKey('schemaType')) {
 }
 if ($PSBoundParameters.ContainsKey('auto')) {
     $AutoUpdate = $true
+}
+if ($PSBoundParameters.ContainsKey('disableCNB')) {
+    $UseCnbMirrorSource = $false
 }
 if ($PSBoundParameters.ContainsKey('noSchema')) {
     $IsUpdateSchemaDown = $false
@@ -832,7 +837,7 @@ function Test-FileSHA256 {
 }
 
 # 下载函数
-function Download-Files {
+function Save-Asset {
     param(
         [Object]$assetInfo,
         [string]$outFilePath
@@ -956,7 +961,7 @@ if ($InputSchemaDown -eq "0") {
     if (Compare-UpdateTime -localTime $SchemaUpdateTime -remoteTime $SchemaRemoteTime) {
         $UpdateFlag = $true
         Write-Host "正在下载方案..." -ForegroundColor Green
-        Download-Files -assetInfo $ExpectedSchemaTypeInfo -outFilePath $tempSchemaZip
+        Save-Asset -assetInfo $ExpectedSchemaTypeInfo -outFilePath $tempSchemaZip
         Write-Host "正在解压方案..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempSchemaZip -destinationPath $SchemaExtractPath
         Write-Host "正在复制文件..." -ForegroundColor Green
@@ -1016,7 +1021,7 @@ if ($InputDictDown -eq "0") {
     if (Compare-UpdateTime -localTime $DictUpdateTime -remoteTime $DictRemoteTime) {
         $UpdateFlag = $true
         Write-Host "正在下载词库..." -ForegroundColor Green
-        Download-Files -assetInfo $ExpectedDictTypeInfo -outFilePath $tempDictZip
+        Save-Asset -assetInfo $ExpectedDictTypeInfo -outFilePath $tempDictZip
         Write-Host "正在解压词库..." -ForegroundColor Green
         Expand-ZipFile -zipFilePath $tempDictZip -destinationPath $DictExtractPath
         Write-Host "正在复制文件..." -ForegroundColor Green
@@ -1052,7 +1057,7 @@ if ($InputDictDown -eq "0") {
 
 function Update-GramModel {
     Write-Host "正在下载模型..." -ForegroundColor Green
-    Download-Files -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
+    Save-Asset -assetInfo $ExpectedGramTypeInfo -outFilePath $tempGram
     Write-Host "正在复制文件..." -ForegroundColor Green
 
     Stop-WeaselServer
