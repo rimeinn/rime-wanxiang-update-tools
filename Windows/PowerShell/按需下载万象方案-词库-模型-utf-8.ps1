@@ -7,6 +7,7 @@ param(
     [switch]$noModel,
     [switch]$disableCNB,
     [switch]$auto,
+    [switch]$useCurl,
     [string]$skipFiles,
     [switch]$help
 )
@@ -41,6 +42,7 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-noDict              不更新词库"
     Write-Host "-noModel             不更新模型"
     Write-Host "-auto                启用自动更新模式"
+    Write-Host "-useCurl             使用curl.exe提升下载速度并减少中断"
     Write-Host "-disableCNB          不使用 CNB 镜像源"
     Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
     Write-Host "-h, --help           显示本帮助信息"
@@ -55,6 +57,9 @@ $AutoUpdate = $false;
 
 # 是否使用 CNB 镜像源，如果设置为 $true，则从 CNB 获取资源；否则从 GitHub 获取。
 $UseCnbMirrorSource = $true
+
+# 是否使用 curl.exe 代替 Invoke-WebRequest，提升下载速度，并减少下载中断
+$UseCurl = $false
 
 # 设置自动更新时，是否更新方案、词库、模型，不想更新某项就改成false
 $IsUpdateSchemaDown = $true
@@ -92,6 +97,9 @@ if ($PSBoundParameters.ContainsKey('auto')) {
 }
 if ($PSBoundParameters.ContainsKey('disableCNB')) {
     $UseCnbMirrorSource = $false
+}
+if ($PSBoundParameters.ContainsKey('useCurl')) {
+    $UseCurl = $true
 }
 if ($PSBoundParameters.ContainsKey('noSchema')) {
     $IsUpdateSchemaDown = $false
@@ -851,8 +859,14 @@ function Save-Asset {
         }
         
         Write-Host "正在下载文件:$($assetInfo.name)..." -ForegroundColor Green
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
+
+        if ($UseCurl) {
+            curl.exe -L -o $outFilePath --progress-bar $downloadUrl
+        } else {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $outFilePath -UseBasicParsing
+        }
         Write-Host "下载完成" -ForegroundColor Green
+
         if ($UseCnbMirrorSource) {
             # 校验文件大小
             $expectedSize = [int64]$assetInfo.size_in_byte
