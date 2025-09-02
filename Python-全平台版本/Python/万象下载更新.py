@@ -152,6 +152,7 @@ class ConfigManager:
         self.zh_dicts_dir = ''
         self.reload_flag = False
         self.auto_update = False
+        self.change_config = False
         self._ensure_config_exists()
 
     def detect_installation_paths(self, show=False):
@@ -326,6 +327,7 @@ class ConfigManager:
                 os.remove(self.config_path)  # 删除配置文件
                 self.reload_flag = True
                 self._ensure_config_exists()  # 重新创建配置文件
+                self.change_config = True
                 break
             elif choice == 'm':
                 if SYSTEM_TYPE == 'ios':
@@ -339,6 +341,7 @@ class ConfigManager:
                 input("按任意键继续...")
                 self._try_load_config()  # 再次尝试加载配置
                 self._print_config_info()
+                self.change_config = True
                 break
             else:
                 print_error("无效的输入，请重新输入。")
@@ -714,6 +717,8 @@ class UpdateHandler:
         if not self.update_info:
             return False
         
+        if self.config_manager.change_config and not isinstance(self, ModelUpdater):
+            return True
         remote_time = datetime.strptime(self.update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         local_time = self.get_local_time()
         
@@ -1230,6 +1235,7 @@ class CombinedUpdater:
                 if asset["name"] == self.scheme_updater.scheme_file:
                     update_description = release.get("body", "无更新说明")
                     return {
+                        "scheme_name" : asset["name"],
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                         "update_time": asset.get("updated_at"),
                         "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
@@ -1248,6 +1254,7 @@ class CombinedUpdater:
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
                     return {
+                        "dict_name" : asset["name"],
                         "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
                         "update_time": asset.get("updated_at"),
                         "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
@@ -1276,19 +1283,6 @@ class SchemeUpdater(UpdateHandler):
         # 使用缓存信息而不是重复API调用
         remote_info = self.update_info
         
-        # 如果没有缓存的更新信息或者本地比远程新，不需要更新
-        if not remote_info or not self.has_update():
-            print_warning("未找到可用更新")
-            return 0
-
-        # 时间比较
-        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = self.get_local_time()
-        
-        if local_time and remote_time <= local_time:
-            print_success("当前已是最新方案")
-            return 0  # 没有更新
-
         target_file = os.path.join(self.custom_dir, self.scheme_file)
         # 校验本地文件和远端文件sha256
         if remote_info['sha256']:
@@ -1310,12 +1304,12 @@ class SchemeUpdater(UpdateHandler):
             return -1
             
         # 方案变更时清除旧文件
-        self.clean_old_schema()
-        # 获取上次下载的压缩包的内容
-        old_files, old_dirs = self.get_old_file_list(target_file, temp_file)
-        if old_files or old_dirs:
-            self._delete_old_files(old_files, old_dirs)
-            print_warning("已移除上个版本的方案文件及残余文件夹")
+        if not self.clean_old_schema():
+            # 获取上次下载的压缩包的内容
+            old_files, old_dirs = self.get_old_file_list(target_file, temp_file)
+            if old_files or old_dirs:
+                self._delete_old_files(old_files, old_dirs)
+                print_warning("已移除上个版本的方案文件及残余文件夹")
 
 
         # 应用更新
@@ -1368,14 +1362,16 @@ class SchemeUpdater(UpdateHandler):
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
             
-    def clean_old_schema(self) -> None:
+    def clean_old_schema(self) -> bool:
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'rime-wanxiang' in file and file != self.scheme_file:
-                old_schema_files, old_schema_dirs = self.get_old_file_list(file, None)
+                old_schema_files, old_schema_dirs = self.get_old_file_list(os.path.join(self.custom_dir, file), None)
                 self._delete_old_files(old_schema_files, old_schema_dirs)
+                print_warning("已删除旧方案文件")
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧方案zip文件")
+        return True
             
 
 # ====================== 词库更新 ======================
@@ -1439,19 +1435,7 @@ class DictUpdater(UpdateHandler):
         print_header("词库更新流程")
         # 使用缓存信息而不是重复API调用
         remote_info = self.update_info
-        # 如果没有缓存的更新信息或者本地比远程新，不需要更新
-        if not remote_info or not self.has_update():
-            print_warning("未找到可用更新")
-            return 0
-
-        # 时间比对（精确到秒）
-        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = self.get_local_time()
         
-        if local_time and remote_time <= local_time:
-            print_success("当前已是最新词库")
-            return 0
-
         target_file = os.path.join(self.custom_dir, self.dict_file)
         # 校验本地文件和远端文件sha256
         if remote_info['sha256']:
@@ -1473,12 +1457,12 @@ class DictUpdater(UpdateHandler):
             return -1
         
         # 方案变更时清除旧文件
-        self.clean_old_dict()
-        # 获取上次下载的压缩包的内容
-        old_files, _ = self.get_old_file_list(target_file, temp_file, is_dict=True)
-        if old_files:
-            self._delete_old_files(old_files, _)
-            print_warning("已移除上个版本的词库文件")
+        if not self.clean_old_dict():
+            # 获取上次下载的压缩包的内容
+            old_files, _ = self.get_old_file_list(target_file, temp_file, is_dict=True)
+            if old_files:
+                self._delete_old_files(old_files, _)
+                print_warning("已移除上个版本的词库文件")
         
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
@@ -1495,10 +1479,12 @@ class DictUpdater(UpdateHandler):
         """当变更所使用的方案时，删除旧文件"""
         for file in os.listdir(self.custom_dir):
             if 'dicts.zip' in file and file != self.dict_file:
-                old_dict_files, _ = self.get_old_file_list(file, None, is_dict=True)
+                old_dict_files, _ = self.get_old_file_list(os.path.join(self.custom_dir, file), None, is_dict=True)
                 self._delete_old_files(old_dict_files, _)
+                print_warning("已删除旧词库文件")
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧词库zip文件")
+        return True
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
@@ -1547,17 +1533,6 @@ class ModelUpdater(UpdateHandler):
         print_header("模型更新流程")
         # 使用缓存信息而不是重复API调用
         remote_info = self.update_info
-        if not remote_info or not self.has_update():
-            print_warning("未找到模型更新信息")
-            return 0
-
-        # 时间比较（本地记录 vs 远程更新时间）
-        remote_time = datetime.strptime(remote_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)  # 修改字段
-        local_time = self.get_local_time()
-        
-        if local_time and remote_time <= local_time:
-            print_success("当前已是最新模型")
-            return 0
 
         # 无论是否有记录，都检查哈希是否匹配
         hash_matched = self._check_hash_match(remote_info)
