@@ -11,7 +11,7 @@ import zipfile
 import shutil
 import fnmatch
 import re
-from typing import Tuple, Optional, List, Dict
+from typing import Tuple, Optional, List, Dict, Union
 from tqdm import tqdm
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -861,7 +861,7 @@ class UpdateHandler:
             }, f)
         
 
-    def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Dict]:
+    def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Union[Dict,requests.Response]]:
         """
         带令牌认证的API请求
         Args:
@@ -1364,14 +1364,16 @@ class SchemeUpdater(UpdateHandler):
             
     def clean_old_schema(self) -> bool:
         """当变更所使用的方案时，删除旧文件"""
+        cleaned = False
         for file in os.listdir(self.custom_dir):
             if 'rime-wanxiang' in file and file != self.scheme_file:
-                old_schema_files, old_schema_dirs = self.get_old_file_list(os.path.join(self.custom_dir, file), None)
+                old_schema_files, old_schema_dirs = self.get_old_file_list(os.path.join(self.custom_dir, file), '')
                 self._delete_old_files(old_schema_files, old_schema_dirs)
                 print_warning("已删除旧方案文件")
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧方案zip文件")
-        return True
+                cleaned = True
+        return cleaned
             
 
 # ====================== 词库更新 ======================
@@ -1477,14 +1479,16 @@ class DictUpdater(UpdateHandler):
             
     def clean_old_dict(self) -> None:
         """当变更所使用的方案时，删除旧文件"""
+        cleaned = False
         for file in os.listdir(self.custom_dir):
             if 'dicts.zip' in file and file != self.dict_file:
-                old_dict_files, _ = self.get_old_file_list(os.path.join(self.custom_dir, file), None, is_dict=True)
+                old_dict_files, _ = self.get_old_file_list(os.path.join(self.custom_dir, file), '', is_dict=True)
                 self._delete_old_files(old_dict_files, _)
                 print_warning("已删除旧词库文件")
                 os.remove(os.path.join(self.custom_dir, file))
                 print_warning("已移除旧词库zip文件")
-        return True
+                cleaned = True
+        return cleaned
 
 # ====================== 模型更新 ======================
 class ModelUpdater(UpdateHandler):
