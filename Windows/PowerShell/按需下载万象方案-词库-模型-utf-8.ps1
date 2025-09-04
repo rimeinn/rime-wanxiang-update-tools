@@ -2,6 +2,7 @@
 # ======= 命令行参数定义，必须放在脚本最顶部 =======
 param(
     [string]$schemaType,
+    [string]$cliTargetFolder,
     [switch]$noSchema,
     [switch]$noDict,
     [switch]$noModel,
@@ -41,12 +42,13 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-noSchema            不更新方案"
     Write-Host "-noDict              不更新词库"
     Write-Host "-noModel             不更新模型"
+    Write-Host "-cliTargetFolder <路径>  指定目标安装目录，优先于注册表读取（如果提供，将对路径存在性和写权限进行检查）"
     Write-Host "-auto                启用自动更新模式"
     Write-Host "-useCurl             使用curl.exe提升下载速度并减少中断"
     Write-Host "-disableCNB          不使用 CNB 镜像源"
     Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
     Write-Host "-h, --help           显示本帮助信息"
-    Write-Host "\n示例："
+    Write-Host "示例："
     Write-Host "pwsh -ExecutionPolicy Bypass -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 6 -auto -noModel"
     Write-Host "pwsh -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 1 -skipFiles 'wanxiang_en.dict.yaml,tone_fallback.lua'"
     Exit-Tip 0
@@ -113,7 +115,33 @@ if ($PSBoundParameters.ContainsKey('noModel')) {
 if ($PSBoundParameters.ContainsKey('skipFiles')) {
     $SkipFiles = $skipFiles -split ','
 }
+# 如果命令行提供了 cliTargetFolder 参数，则优先使用并验证
+if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
+    try {
+        $resolvedPath = Resolve-Path -Path $cliTargetFolder -ErrorAction Stop
+        $resolvedPath = $resolvedPath.ProviderPath
+    }
+    catch {
+        Write-Host "错误：指定的目标文件夹不存在： $cliTargetFolder" -ForegroundColor Red
+        Exit-Tip 1
+    }
 
+    if (-not (Test-Path $resolvedPath -PathType Container)) {
+        Write-Host "错误：指定路径不是目录： $resolvedPath" -ForegroundColor Red
+        Exit-Tip 1
+    }
+
+    # 检查写权限：尝试创建并删除临时文件
+    try {
+        $permTestFile = Join-Path $resolvedPath ".wanxiang_perm_test_$([System.Guid]::NewGuid().ToString()).tmp"
+        New-Item -Path $permTestFile -ItemType File -Force -ErrorAction Stop | Out-Null
+        Remove-Item -Path $permTestFile -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+        Write-Host "错误：没有对目标目录的写入权限： $resolvedPath" -ForegroundColor Red
+        Exit-Tip 1
+    }
+}
 
 $Debug = $false;
 
@@ -282,30 +310,34 @@ function Stop-WeaselServer {
     if (-not $rimeServerExecutable) {
         Write-Host "警告：未找到Weasel服务端可执行程序，请确保已正确安装小狼毫输入法" -ForegroundColor Yellow
         Exit-Tip 1
+    } elseif (-not $SkipStopWeasel) {
+        Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q'
     }
-    Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q'
 }
 
 function Start-WeaselServer {
     if (-not $rimeServerExecutable) {
         Write-Host "警告：未找到Weasel服务端可执行程序，请确保已正确安装小狼毫输入法" -ForegroundColor Yellow
         Exit-Tip 1
+    } elseif (-not $SkipStopWeasel) {
+        Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable)
     }
-    Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable)
 }
 
 function Start-WeaselReDeploy{
     $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk"
     $backupEnglishShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Weasel\Weasel Deploy.lnk"
-    if (Test-Path -Path $defaultShortcutPath) {
-        Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
-        Invoke-Item -Path $defaultShortcutPath
-    } elseif (Test-Path -Path $backupEnglishShortcutPath) {
-        Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
-        Invoke-Item -Path $backupEnglishShortcutPath
-    } else {
-        Write-Host "未找到默认的【小狼毫】重新部署快捷方式，将尝试执行默认的重新部署命令" -ForegroundColor Yellow
-        Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+    if (-not $SkipStopWeasel) {
+        if (Test-Path -Path $defaultShortcutPath) {
+            Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
+            Invoke-Item -Path $defaultShortcutPath
+        } elseif (Test-Path -Path $backupEnglishShortcutPath) {
+            Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
+            Invoke-Item -Path $backupEnglishShortcutPath
+        } else {
+            Write-Host "未找到默认的【小狼毫】重新部署快捷方式，将尝试执行默认的重新部署命令" -ForegroundColor Yellow
+            Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+        }
     }
 }
 
@@ -314,8 +346,22 @@ if (-not $rimeUserDir -or -not $rimeInstallDir -or -not $rimeServerExecutable) {
     Write-Host "错误：无法获取Weasel必要路径，请检查输入法是否正确安装" -ForegroundColor Red
     Exit-Tip 1
 }
-Write-Host "Weasel用户目录路径为: $rimeUserDir"
-$targetDir = $rimeUserDir
+
+# 如果命令行提供了 cliTargetFolder 参数，则优先使用并验证
+if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
+    Write-Host "通过 cli 配置的目标文件夹为: $resolvedPath" -ForegroundColor Green
+    $targetDir = $resolvedPath
+} else {
+    Write-Host "Weasel用户目录路径为: $rimeUserDir" -ForegroundColor Green
+    $targetDir = $rimeUserDir
+}
+
+if ($targetDir -eq $rimeUserDir) {
+    $SkipStopWeasel = $false
+} else {
+    $SkipStopWeasel = $true
+}
+
 $TimeRecordFile = Join-Path $targetDir $ReleaseTimeRecordFile
 
 function Test-VersionSuffix {
@@ -946,7 +992,9 @@ function Expand-ZipFile {
     }
 }
 
-if ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq "0") {
+if ($SkipStopWeasel) {
+    Write-Host "所设置的部署目录与小狼毫配置的用户目录不同，跳过小狼毫服务停止操作" -ForegroundColor Red
+} elseif ($InputSchemaDown -eq "0" -or $InputDictDown -eq "0" -or $InputGramModel -eq "0") {
     # 开始更新词库，从现在开始不要操作键盘，直到更新完成，否则会触发小狼毫重启，文件更新告警，导致更新失败，请放心更新完成后会自动拉起小狼毫
     Write-Host "正在更新词库，请不要操作键盘，直到更新完成" -ForegroundColor Red
     Write-Host "更新完成后会自动拉起小狼毫" -ForegroundColor Red
@@ -1132,7 +1180,7 @@ if ($InputGramModel -eq "0") {
 
 Write-Host "操作已完成！文件已部署到 Weasel 配置目录:$($targetDir)" -ForegroundColor Green
 
-if ($UpdateFlag) {
+if ($UpdateFlag -and (-not $SkipStopWeasel)) {
     Start-WeaselServer
     # 等待1秒
     Start-Sleep -Seconds 1
