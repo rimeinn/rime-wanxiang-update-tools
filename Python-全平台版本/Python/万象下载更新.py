@@ -1927,7 +1927,7 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择") 
-            print("[1] 词库更新\n[2] 方案更新\n[3] 模型更新\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            print("[1] 词库下载\n[2] 方案下载\n[3] 模型下载\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
             
             if choice == '6':
@@ -1950,7 +1950,7 @@ def main():
                 break
             elif choice == '5':
                 # 脚本更新
-                script_updater = ScriptUpdater(config_manager)
+                script_updater = combined_updater.script_updater
                 script_updater.run()
                 continue
             elif choice == '4':  # 自动更新选项
