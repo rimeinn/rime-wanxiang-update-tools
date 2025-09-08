@@ -548,9 +548,17 @@ main() {
   if [[ ! -f "$DEPLOY_DIR/custom/user_exclude_file.txt" ]]; then
     log WARN "您没有设置排除项目列表！"
     log WARN "将为您自动创建包含部分排除项目列表文件： $DEPLOY_DIR/custom/user_exclude_file.txt"
-    log WARN "您还可以在该文件中写入您需要排除的项目，每行一个"
     # 生成排除文件
     create_exclude_file
+    log INFO "排除项目列表文件已创建"
+    log WARN "您还可以在该文件中写入您需要排除的项目，每行一个"
+    read -rp "按回车继续，M 键更改: " if_modify
+    if [ "$if_modify" == "M" ]; then
+    log WARN "请修改排除项目列表文件： $DEPLOY_DIR/custom/user_exclude_file.txt"
+    log WARN "保存后重新运行该脚本"
+    open "$DEPLOY_DIR/custom/user_exclude_file.txt"
+    exit
+    fi
   fi
   # 检查 schema 和 fuzhu 是否同时存在
   if [[ -n "$schema" && -z "$fuzhu" ]]; then
