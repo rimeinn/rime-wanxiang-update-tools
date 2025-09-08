@@ -803,13 +803,14 @@ class UpdateHandler:
                 path for path in (os.path.join(extract_path, name) for name in should_delete_members)
                 if check_func(path)
             ]
-    
+
             # 排除指定不删除文件
             if getattr(self, "exclude_files", []):
                 excluded = []
                 for ex in self.exclude_files:
                     excluded.extend([f for f in whole_old_file_paths if ex in f])
-    
+                    
+                excluded = set(excluded)  # 去重
                 if excluded:
                     print("以下为排除文件不删除：", ", ".join(excluded))
                     whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
