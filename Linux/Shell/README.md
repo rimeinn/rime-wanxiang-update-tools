@@ -28,10 +28,13 @@ chmod +x rime-wanxiang-update-linux
 在部署目录下创建名为 `user_exclude_file.txt` 的文件，以下是一个示例
 
 - 注释内容以 "#" 开头
+- 请务必添加文件本身!
+- 请务必添加文件本身!
+- 请务必添加文件本身!
 
 ```txt
 # 文件本身
-user_exclude_file.txt
+custom/user_exclude_file.txt
 # 用户数据库
 lua/sequence.userdb
 zc.userdb
