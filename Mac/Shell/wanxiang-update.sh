@@ -140,6 +140,43 @@ get_info() {
   fi
 }
 
+# 排除文件检查
+# 函数：检查文件是否存在，如果不存在则创建并写入指定内容
+create_exclude_file() {
+  local file="${DEPLOY_DIR}/custom/user_exclude_file.txt"
+
+  if [[ -z "$file" ]]; then
+    error_exit "错误：必须指定排除文件路径"
+  fi
+
+  if [[ -f "$file" ]]; then
+    echo "排除文件已存在：$file"
+  else
+    echo "排除文件不存在，正在创建：$file"
+    # 确保目录存在
+    mkdir -p "$(dirname "$file")"
+    # 创建并写入内容
+    cat > "$file" <<EOF
+# 排除文件本身（请勿删除）
+custom/user_exclude_file.txt
+# 用户数据库
+lua/sequence.userdb
+lua/sequence.txt
+lua/input_stats.lua
+zc.userdb
+# 同步
+installation.yaml
+user.yaml
+# custom文件
+default.custom.yaml
+wanxiang_pro.custom.yaml
+wanxiang_reverse.custom.yaml
+wanxiang_mixedcode.custom.yaml
+# ##############以上内容请在了解万象方案机制后自行更改，否则请不要更改##############
+EOF
+  fi
+}
+
 update_schema() {
   local mirror="$1" fuzhu="$2" gram="$3"
   # 缓存 API 响应
@@ -194,7 +231,7 @@ update_schema() {
         select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb.json"
       )
     fi
-    echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
+    echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | sed '$d'
     sleep 3
     log INFO "开始更新方案文件，正在下载文件"
     local schemaurl schemaname local_size remote_size
@@ -510,9 +547,10 @@ main() {
   fi
   if [[ ! -f "$DEPLOY_DIR/custom/user_exclude_file.txt" ]]; then
     log WARN "您没有设置排除项目列表！"
-    log WARN "您需要创建的文件为 $DEPLOY_DIR/custom/user_exclude_file.txt"
-    log WARN "请在该文件中写入您需要排除的项目，每行一个"
-    error_exit "$DEPLOY_DIR/custom/user_exclude_file.txt 文件不存在"
+    log WARN "将为您自动创建包含部分排除项目列表文件： $DEPLOY_DIR/custom/user_exclude_file.txt"
+    log WARN "您还可以在该文件中写入您需要排除的项目，每行一个"
+    # 生成排除文件
+    create_exclude_file
   fi
   # 检查 schema 和 fuzhu 是否同时存在
   if [[ -n "$schema" && -z "$fuzhu" ]]; then
