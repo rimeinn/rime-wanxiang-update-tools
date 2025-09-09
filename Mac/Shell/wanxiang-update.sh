@@ -526,7 +526,7 @@ main() {
     --gram)
       gram="true"
       ;;
-    -- help)
+    --help)
       show_help
       exit 0
       ;;
