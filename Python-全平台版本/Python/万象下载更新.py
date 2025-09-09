@@ -1146,6 +1146,15 @@ class UpdateHandler:
             else:
                 print_error("找不到可执行文件：{executable}")
                 return False
+    
+    if SYSTEM_TYPE == 'ios':
+        def deploy_for_hamster(self) -> None:
+            """Hamster跳转部署"""
+            import webbrowser
+            print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
+            time.sleep(3)
+            webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
+            print_success("已自动触发部署")
 
 
 # ====================== 组合更新器 ======================
@@ -1829,15 +1838,11 @@ def perform_auto_update(
         else:
             print_header("尝试跳转到Hamster重新部署输入法")
             if is_config_triggered:
-                # 配置触发的自动更新模式直接部署
-                webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
-                print_success("已自动触发部署")
+                deployer.deploy_for_hamster()
             else:
                 is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                 if is_deploy == 'y':
-                    print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
-                    time.sleep(3)
-                    webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
+                    deployer.deploy_for_hamster()
     else:
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
@@ -2002,13 +2007,10 @@ def main():
                     print_header("重新部署输入法")
                     deployer.deploy_for_mac()
                 elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
-                    import webbrowser
                     print_header("尝试跳转到Hamster重新部署输入法")
                     is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
                     if is_deploy == 'y':
-                        print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
-                        time.sleep(3)
-                        webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
+                        deployer.deploy_for_hamster()
                 else:
                     if deployer and updated == 1:
                         print_warning("请手动部署输入法")
