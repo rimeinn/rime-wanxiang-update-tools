@@ -791,7 +791,7 @@ class UpdateHandler:
     
             # 所有旧文件路径
             whole_old_file_paths = [
-                path for path in (os.path.join(extract_path, name) for name in old_members)
+                os.path.normpath(path.replace('/', os.sep)) for path in (os.path.join(extract_path, name) for name in old_members)
                 if is_file(path)
             ]
             
