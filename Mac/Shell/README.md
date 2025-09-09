@@ -23,7 +23,7 @@ chmod +x rime-wanxiang-update-macos.sh
 
 ### 创建排除列表文件
 
-在部署目录下创建名为 `user_exclude_file.txt` 的文件，以下是一个示例
+在部署目录的`custom`下创建名为 `user_exclude_file.txt` 的文件，以下是一个示例（如果未创建，在运行脚本时会自动创建包含部分排除内容的文件）
 
 - 注释内容以 "#" 开头
 
