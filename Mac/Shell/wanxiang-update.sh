@@ -433,6 +433,28 @@ deploy() {
     echo "请手动部署"
   fi
 }
+show_help() {
+  cat <<EOF
+Usage: $0 [OPTIONS]
+
+选项:
+  --mirror [github|cnb]        选择下载源 (默认: github)
+  --engine [fcitx5|squirrel]   设置输入法引擎 (必需，也可在脚本中设置对应变量)
+  --schema [base|pro]          更新方案类型
+  --fuzhu SCHEMA               更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm)
+  --dict                       更新词典
+  --gram                       更新语法模型
+  --help                       显示此帮助信息
+
+示例:
+  $0 --engine squirrel --schema base --fuzhu base --dict
+  $0 --mirror cnb --engine squirrel --schema pro --fuzhu flypy --gram
+
+注意:
+  必须至少指定一个更新项目: --schema, --dict 或 --gram
+  使用 --schema 或 --dict 时必须同时使用 --fuzhu
+EOF
+}
 main() {
   # 脚本退出清理临时目录
   trap cleanup EXIT
@@ -504,10 +526,13 @@ main() {
     --gram)
       gram="true"
       ;;
+    -- help)
+      show_help
+      exit 0
+      ;;
     *)
-      log WARN "您可能错误的使用了该脚本"
-      log WARN "请前往 GitHub 页面阅读 Readme"
-      log WARN "https://github.com/rimeinn/rime-wanxiang-update-tools/blob/main/Mac/Shell/README.md"
+      log WARN "未知参数: $1"
+      log WARN "使用 --help 查看帮助信息"
       error_exit "参数输入错误: $1"
       ;;
     esac
