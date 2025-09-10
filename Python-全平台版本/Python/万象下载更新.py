@@ -391,7 +391,7 @@ class ConfigManager:
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 self.config.set('Settings', 'scheme_file', scheme_file)
                 self.config.set('Settings', 'dict_file', dict_file)
-                print_success(f"已选择方案：万象基础版，方案文件: {scheme_file}，词库文件: {dict_file}")
+                print_success(f"已选择方案：万象基础版")
                 return True
             elif choice == '2':
                 self.scheme_type = 'pro'
@@ -465,7 +465,6 @@ class ConfigManager:
             # 获取文件名
             scheme_file = scheme_checker.get_latest_file()
             dict_file = dict_checker.get_latest_file()
-            print(scheme_file, dict_file)
             
             # 验证文件名是否有效
             if not scheme_file or not dict_file:
@@ -677,8 +676,9 @@ class FileChecker:
                 if self.tag:
                     if "词库" in release.get("title"):
                         return release # 词库
-                if "万象拼音输入方案" in release.get("title"):
-                    return release # 方案
+                else:
+                    if "万象拼音输入方案" in release.get("title"):
+                        return release # 方案
         return {}
         
 
