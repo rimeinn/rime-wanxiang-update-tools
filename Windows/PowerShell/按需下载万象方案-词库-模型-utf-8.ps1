@@ -69,7 +69,7 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+# [0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
 $InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
@@ -160,6 +160,7 @@ $tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
 $tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
 $tempGram = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram"
 $SchemaExtractPath = Join-Path $env:TEMP "wanxiang_schema_extract"
+$SchemaExtractPath = (Get-Item $SchemaExtractPath).FullName
 $DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
 
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
@@ -195,7 +196,7 @@ $UriHeader = @{
     'Accept-Charset' = 'utf-8'
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
+$SchemaDownloadTip = "[0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -1040,7 +1041,7 @@ if ($InputSchemaDown -eq "0") {
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
             if ($_.Name -notin $SkipFiles) {
-                $relativePath = $_.FullName.Substring($sourceDir.Length)
+                $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDirh -Relative
                 $destinationPath = Join-Path $targetDir $relativePath
                 $destinationDir = [System.IO.Path]::GetDirectoryName($destinationPath)
                 if (-not (Test-Path $destinationDir)) {
