@@ -815,8 +815,8 @@ class UpdateHandler:
                     print("以下为排除文件不删除：", ", ".join(excluded))
                     whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
     
-        except Exception as e:
-            print_warning(f"无法获取需要清理的旧文件或目录：{e}")
+        except Exception:
+            print_warning(f"无法获取需要清理的旧文件或目录，跳过清理")
     
         return whole_old_file_paths, should_delete_paths
 
