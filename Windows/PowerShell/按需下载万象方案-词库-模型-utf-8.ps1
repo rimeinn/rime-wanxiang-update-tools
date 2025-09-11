@@ -69,7 +69,7 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+# [0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
 $InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
@@ -143,7 +143,7 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
     }
 }
 
-$Debug = $false;
+$Debug = $true;
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
@@ -155,12 +155,8 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 # 设置仓库所有者和名称
 $UpdateToolsOwner = "rimeinn"
 $UpdateToolsRepo = "rime-wanxiang-update-tools"
-# 定义临时文件路径
-$tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
-$tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
-$tempGram = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram"
-$SchemaExtractPath = Join-Path $env:TEMP "wanxiang_schema_extract"
-$DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
+# 定义临时文件路径基准（具体临时文件路径在确定 $targetDir 后设置）
+$BaseTempPath = [System.IO.Path]::GetTempPath()
 
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
 $ReleaseTimeRecordFile = "release_time_record.json"
@@ -195,7 +191,7 @@ $UriHeader = @{
     'Accept-Charset' = 'utf-8'
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
+$SchemaDownloadTip = "[0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -354,6 +350,42 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
 } else {
     Write-Host "Weasel用户目录路径为: $rimeUserDir" -ForegroundColor Green
     $targetDir = $rimeUserDir
+}
+
+# 在目标用户目录下创建专用临时目录用于保存下载的zip等（保留zip，供后续检查）
+$WanxiangTempDir = Join-Path $targetDir 'wanxiang_temp'
+if (-not (Test-Path $WanxiangTempDir)) {
+    try {
+        New-Item -Path $WanxiangTempDir -ItemType Directory -Force | Out-Null
+        Write-Host "已创建临时目录: $WanxiangTempDir" -ForegroundColor Green
+    } catch {
+        Write-Host "警告：无法创建临时目录 $WanxiangTempDir，将使用系统临时目录" -ForegroundColor Yellow
+        $WanxiangTempDir = $BaseTempPath
+    }
+}
+# 将 schema 临时 zip 文件放置在用户目录下的专用临时目录中
+$tempSchemaZip = Join-Path $WanxiangTempDir "wanxiang_schema_temp.zip"
+# 将 dict 临时 zip 和 gram 临时文件也放在该目录
+$tempDictZip = Join-Path $WanxiangTempDir "wanxiang_dict_temp.zip"
+$tempGram = Join-Path $WanxiangTempDir "wanxiang-lts-zh-hans.gram"
+
+# 将解压目录也放在用户临时目录下的子目录，保持与 zip 存放在同一工作目录
+$SchemaExtractPath = Join-Path $WanxiangTempDir "wanxiang_schema_extract"
+$DictExtractPath = Join-Path $WanxiangTempDir "wanxiang_dict_extract"
+
+# 确保解压目录存在；如果无法创建则回退到系统临时目录
+foreach ($d in @($SchemaExtractPath, $DictExtractPath)) {
+    if (-not (Test-Path $d)) {
+        try {
+            New-Item -Path $d -ItemType Directory -Force | Out-Null
+        }
+        catch {
+            Write-Host "警告：无法创建解压目录 $d，将回退到系统临时目录" -ForegroundColor Yellow
+            $SchemaExtractPath = Join-Path $BaseTempPath "wanxiang_schema_extract"
+            $DictExtractPath = Join-Path $BaseTempPath "wanxiang_dict_extract"
+            break
+        }
+    }
 }
 
 if ($targetDir -eq $rimeUserDir) {
@@ -1031,7 +1063,7 @@ if ($InputSchemaDown -eq "0") {
         $sourceDir = $SchemaExtractPath
         if (-not (Test-Path $sourceDir)) {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
-            Remove-Item -Path $tempSchemaZip -Force
+            # 保留下载的 zip 以便后续检查或手动处理，仍然清理解压目录
             Remove-Item -Path $SchemaExtractPath -Recurse -Force
             Exit-Tip 1
         }
@@ -1040,24 +1072,24 @@ if ($InputSchemaDown -eq "0") {
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
             if ($_.Name -notin $SkipFiles) {
-                $relativePath = $_.FullName.Substring($sourceDir.Length)
+                $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDir -Relative
+                # 去掉可能的开头的 .\ 或 ./，否则 Join-Path 会产生包含 \\.\ 的路径
+                # 使用正则替换以避免 TrimStart 在传入 '\\' 时的类型错误
+                $relativePath = $relativePath -replace '^[.][\\/]+',''
                 $destinationPath = Join-Path $targetDir $relativePath
                 $destinationDir = [System.IO.Path]::GetDirectoryName($destinationPath)
                 if (-not (Test-Path $destinationDir)) {
                     New-Item -ItemType Directory -Path $destinationDir | Out-Null
                 }
                 if (Test-Path $_.FullName -PathType Container) {
-                    if ($Debug) {
-                        Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
-                    }
+                    
                 } elseif (Test-Path $_.FullName -PathType Leaf) {
                     Copy-Item -Path $_.FullName -Destination $destinationPath -Force
-                }
-
-                if ($Debug) {
-                    Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
-                    Write-Host "相对路径: $relativePath" -ForegroundColor Green
-                    Write-Host "目标路径: $destinationPath" -ForegroundColor Green
+                    if ($Debug) {
+                        Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+                        Write-Host "相对路径: $relativePath" -ForegroundColor Green
+                        Write-Host "目标路径: $destinationPath" -ForegroundColor Green
+                    }
                 }
             } else {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
@@ -1066,8 +1098,7 @@ if ($InputSchemaDown -eq "0") {
 
         # 将现在的本地时间记录到JSON文件
         Save-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey -value $SchemaRemoteTime
-        # 清理临时文件
-        Remove-Item -Path $tempSchemaZip -Force
+        # 清理解压目录（保留下载的 zip）
         Remove-Item -Path $SchemaExtractPath -Recurse -Force
     }
 }
