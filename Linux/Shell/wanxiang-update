@@ -15,7 +15,7 @@ DEPLOY_DIR=""
 # 全局常量
 readonly CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 readonly SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
-readonly GRAM_API="https://api1.github.com/repos/amzxyz/RIME-LMDG/releases"
+readonly GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 readonly TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
 readonly FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
 readonly DELETE_FILES=("简纯+.trime.yaml" "squirrel.yaml" "weasel.yaml"
@@ -157,8 +157,8 @@ Usage: $0 [OPTIONS]
   --mirror [github|cnb]     选择下载源 (默认: github)
   --depdir DIR              设置部署目录 (必需)
   --inputime [fcitx5|ibus]  设置输入法平台
-  --schema [base|pro]       更新方案类型
-  --fuzhu SCHEMA            更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm)
+  --schema [base|pure|pro]  更新方案类型
+  --fuzhu FUZHU             更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm)
   --dict                    更新词典
   --gram                    更新语法模型
   --no-color                禁用彩色输出
@@ -584,8 +584,8 @@ main() {
       else
         shift
       fi
-      if [[ "$1" != "base" && "$1" != "pro" ]]; then
-        error_exit "选项 schema 的参数只能为 base 或 pro"
+      if [[ "$1" != "base" && "$1" != "pure" && "$1" != "pro" ]]; then
+        error_exit "选项 schema 的参数只能为 base/pure/pro 之一"
       else
         schema="$1"
       fi
@@ -663,9 +663,11 @@ main() {
     error_exit "选项 dict 与选项 fuzhu 必须同时使用"
   fi
 
-  # 检查当 schema 为 base 时，fuzhu 是否也为 base
+  # 检查当 schema 为 base 或 pure 时，fuzhu 是否也为 base
   if [[ "$schema" == "base" && "$fuzhu" != "base" ]]; then
     error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
+  elif [[ "$schema" == "pure" && "$fuzhu" != "base" ]]; then
+    error_exit "当选项 schema 为 pure 时，选项 fuzhu 应为 base"
   fi
 
   [[ -n "$mirror" ]] || mirror="github"
