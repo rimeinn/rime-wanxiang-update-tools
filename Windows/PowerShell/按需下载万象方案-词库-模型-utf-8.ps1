@@ -7,6 +7,7 @@ param(
     [switch]$noDict,
     [switch]$noModel,
     [switch]$disableCNB,
+    [switch]$disableAutoReDeploy,
     [switch]$auto,
     [switch]$useCurl,
     [string]$skipFiles,
@@ -46,6 +47,7 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-auto                启用自动更新模式"
     Write-Host "-useCurl             使用curl.exe提升下载速度并减少中断"
     Write-Host "-disableCNB          不使用 CNB 镜像源"
+    Write-Host "-disableAutoReDeploy 不自动触发重新部署"
     Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
     Write-Host "-h, --help           显示本帮助信息"
     Write-Host "示例："
@@ -143,7 +145,7 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
     }
 }
 
-$Debug = $true;
+$Debug = $false;
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
@@ -323,7 +325,9 @@ function Start-WeaselServer {
 function Start-WeaselReDeploy{
     $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk"
     $backupEnglishShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Weasel\Weasel Deploy.lnk"
-    if (-not $SkipStopWeasel) {
+    if ($disableAutoReDeploy) {
+        Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+    } elseif (-not $SkipStopWeasel) {
         if (Test-Path -Path $defaultShortcutPath) {
             Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
             Invoke-Item -Path $defaultShortcutPath
@@ -1209,14 +1213,22 @@ if ($InputGramModel -eq "0") {
     }
 }
 
-Write-Host "操作已完成！文件已部署到 Weasel 配置目录:$($targetDir)" -ForegroundColor Green
+if ($UpdateFlag) {
+    if ($disableAutoReDeploy) {
+        Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+    } elseif (-not $SkipStopWeasel) {
+        Start-WeaselServer
+        # 等待1秒
+        Start-Sleep -Seconds 1
+        Write-Host "内容更新，触发小狼毫重新部署..." -ForegroundColor Green
+        Start-WeaselReDeploy
+    }
+}
 
-if ($UpdateFlag -and (-not $SkipStopWeasel)) {
-    Start-WeaselServer
-    # 等待1秒
-    Start-Sleep -Seconds 1
-    Write-Host "内容更新，触发小狼毫重新部署..." -ForegroundColor Green
-    Start-WeaselReDeploy
+if ($UpdateFlag) {
+    Write-Host "操作已完成！文件已部署到 Weasel 配置目录:$($targetDir)" -ForegroundColor Green
+} else {
+    Write-Host "操作已完成！恭喜你! 所有文件都是最新的不需要更新 " -ForegroundColor Green
 }
 
 Exit-Tip 0
