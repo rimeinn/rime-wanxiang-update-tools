@@ -75,11 +75,11 @@ $IsUpdateModel = $true
 $InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
-#$SkipFiles = @(
-#     "wanxiang_en.dict.yaml",
-#     "tone_fallback.lua",
-#     "custom_phrase.txt"
-#);
+# $SkipFiles = @(
+#     "wanxiang_symbols.yaml",
+#     "weasel.yaml",
+#     "others.txt"
+# );
 
 # 设置代理地址和端口，配置好后删除注释符号
 # $proxyAddress = "http://127.0.0.1:7897"
@@ -115,7 +115,17 @@ if ($PSBoundParameters.ContainsKey('noModel')) {
     $IsUpdateModel = $false
 }
 if ($PSBoundParameters.ContainsKey('skipFiles')) {
-    $SkipFiles = $skipFiles -split ','
+    Write-Host "重新赋值 SkipFiles"
+    # 支持以逗号或任意空白分隔的多项输入，例如:
+    # -skipFiles 'a.txt,b.txt' 或 -skipFiles 'a.txt b.txt' 或 -skipFiles 'a.txt, b.txt'
+    if ($skipFiles -is [string]) {
+        $items = $skipFiles -split '[,\s]+'
+    } else {
+        $items = $skipFiles
+    }
+    # 去除空项、两端空白并去重
+    $SkipFiles = $items | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+    Write-Host "最终 SkipFiles 内容：" $SkipFiles
 }
 # 如果命令行提供了 cliTargetFolder 参数，则优先使用并验证
 if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
@@ -296,7 +306,88 @@ function Test-SkipFile {
     param(
         [string]$filePath
     )
-    return $SkipFiles -contains $filePath
+    # 规范化输入
+    if (-not $filePath) { return $false }
+    $fullPath = [System.IO.Path]::GetFullPath($filePath) 2>$null
+    if (-not $fullPath) { $fullPath = $filePath }
+    $baseName = Get-FileNameWithoutExtension($filePath)
+    $fileName = Split-Path $filePath -Leaf
+
+    if ($Debug) {
+        Write-Host "Testing skip for file: $filePath" -ForegroundColor Cyan
+        Write-Host "Full path: $fullPath" -ForegroundColor Cyan
+        Write-Host "Base name: $baseName" -ForegroundColor Cyan
+        Write-Host "File name: $fileName" -ForegroundColor Cyan
+    }
+
+    # 确保 $SkipFiles 是数组
+    $skipList = @()
+    if ($null -ne $SkipFiles) {
+        if ($SkipFiles -is [string]) {
+            $skipList = @($SkipFiles)
+        } else {
+            $skipList = $SkipFiles
+        }
+    }
+
+    if ($Debug) {
+        Write-Host "Debug: checking skip list items (count=$($skipList.Count))" -ForegroundColor Cyan
+        $i = 0
+        foreach ($item in $skipList) {
+            if ($null -eq $item) { Write-Host "  [$i] <null>" -ForegroundColor Cyan }
+            else { Write-Host "  [$i] '$item' (len=$($item.Length))" -ForegroundColor Cyan }
+            $i++
+        }
+        Write-Host "Debug: fileName='$fileName' (len=$($fileName.Length)), baseName='$baseName' (len=$($baseName.Length)), fullPath='$fullPath'" -ForegroundColor Cyan
+    }
+
+    # 兜底：如果 skipList 仅有一项且该项内部含空格或逗号，可能来自旧格式的单字符串，拆分后使用
+    if ($skipList.Count -eq 1 -and $skipList[0] -match '[,\s]') {
+        if ($Debug) { Write-Host "Debug: single skipList item contains separators, splitting into multiple items" -ForegroundColor Cyan }
+        $splitItems = $skipList[0] -split '[,\s]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+        $skipList = $splitItems
+        if ($Debug) { Write-Host "Debug: new skip list count=$($skipList.Count)" -ForegroundColor Cyan }
+    }
+
+    foreach ($s in $skipList) {
+        if (-not $s) { continue }
+        $pattern = $s
+        $patternTrim = $pattern
+        if ($patternTrim) { $patternTrim = $patternTrim.Trim() }
+        # if ($Debug) { Write-Host "Checking pattern: '$pattern' (trimmed: '$patternTrim')" -ForegroundColor Cyan }
+        # 如果包含通配符，使用 -like 来匹配完整路径或文件名
+        if ($pattern -match '[\*\?]') {
+            if ($fullPath -like $patternTrim -or $fileName -like $patternTrim) {
+                if ($Debug) { Write-Host "Skip match (wildcard) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+        }
+        else {
+            # 精确匹配完整路径
+            try {
+                $resolvedSkip = [System.IO.Path]::GetFullPath($patternTrim) 2>$null
+            } catch { $resolvedSkip = $null }
+            if ($resolvedSkip -and ($resolvedSkip -eq $fullPath)) {
+                if ($Debug) { Write-Host "Skip match (fullpath) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+
+            # 精确匹配文件名
+            if ($patternTrim -ieq $fileName -or $patternTrim -ieq $baseName) {
+                if ($Debug) { Write-Host "Skip match (name) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+
+            # 支持以路径结尾匹配（例如 'subdir/file.txt' 与 完整路径结尾匹配）
+            if ($patternTrim -and $fullPath.EndsWith($patternTrim, [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($Debug) { Write-Host "Skip match (endswith) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+        }
+    }
+
+    if ($Debug) { Write-Host "No skip match for '$filePath'" -ForegroundColor Green }
+    return $false
 }
 
 # 调用函数并赋值给变量
@@ -1075,7 +1166,10 @@ if ($InputSchemaDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
-            if ($_.Name -notin $SkipFiles) {
+            # Write-Host "SkipFiles: $SkipFiles"
+            if (Test-SkipFile -filePath $_.Name) {
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+            } else {
                 $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDir -Relative
                 # 去掉可能的开头的 .\ 或 ./，否则 Join-Path 会产生包含 \\.\ 的路径
                 # 使用正则替换以避免 TrimStart 在传入 '\\' 时的类型错误
@@ -1095,8 +1189,6 @@ if ($InputSchemaDown -eq "0") {
                         Write-Host "目标路径: $destinationPath" -ForegroundColor Green
                     }
                 }
-            } else {
-                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             }
         }
 
