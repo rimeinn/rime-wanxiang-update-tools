@@ -391,7 +391,7 @@ class ConfigManager:
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 self.config.set('Settings', 'scheme_file', scheme_file)
                 self.config.set('Settings', 'dict_file', dict_file)
-                print_success(f"已选择方案：万象基础版，方案文件: {scheme_file}，词库文件: {dict_file}")
+                print_success(f"已选择方案：万象基础版")
                 return True
             elif choice == '2':
                 self.scheme_type = 'pro'
@@ -411,7 +411,7 @@ class ConfigManager:
             print("[4]-虎码 [5]-五笔 [6]-汉心")
         
             while True:
-                choice = input("请选择你的辅助码方案（1-7）: ").strip()
+                choice = input("请选择你的辅助码方案（1-6）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
                     
@@ -465,7 +465,6 @@ class ConfigManager:
             # 获取文件名
             scheme_file = scheme_checker.get_latest_file()
             dict_file = dict_checker.get_latest_file()
-            print(scheme_file, dict_file)
             
             # 验证文件名是否有效
             if not scheme_file or not dict_file:
@@ -677,8 +676,9 @@ class FileChecker:
                 if self.tag:
                     if "词库" in release.get("title"):
                         return release # 词库
-                if "万象拼音输入方案" in release.get("title"):
-                    return release # 方案
+                else:
+                    if "万象拼音输入方案" in release.get("title"):
+                        return release # 方案
         return {}
         
 
@@ -815,8 +815,8 @@ class UpdateHandler:
                     print("以下为排除文件不删除：", ", ".join(excluded))
                     whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
     
-        except Exception as e:
-            print_warning(f"无法获取需要清理的旧文件或目录：{e}")
+        except Exception:
+            print_warning(f"无法获取需要清理的旧文件或目录，跳过清理")
     
         return whole_old_file_paths, should_delete_paths
 
