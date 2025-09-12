@@ -411,7 +411,7 @@ class ConfigManager:
             print("[4]-虎码 [5]-五笔 [6]-汉心")
         
             while True:
-                choice = input("请选择你的辅助码方案（1-7）: ").strip()
+                choice = input("请选择你的辅助码方案（1-6）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
                     

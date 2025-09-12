@@ -23,7 +23,7 @@
   - **执行环境**: PowerShell 运行环境 Windows 10 自带，Python 需要自己安装 Python 环境
   - **运行方式**: PowerShell版本直接双击运行；Python版本需要命令行执行
   - **功能实现**: 两个版本功能相同，但Python版本更易于跨平台移植
-    - Python 版本支持 GitHub 镜像加速
+    - Python 版本支持从 CNB （直连）仓库下载
 
 - [x] [PowerShell版本](./Windows/PowerShell/README.md)
   - 下载链接：[按需下载万象方案-词库-模型(GBK版本：文件名：**rime-wanxiang-update-windows.ps1**)](https://github.com/rimeinn/rime-wanxiang-update-tools/releases/latest/download/rime-wanxiang-update-windows.ps1)
