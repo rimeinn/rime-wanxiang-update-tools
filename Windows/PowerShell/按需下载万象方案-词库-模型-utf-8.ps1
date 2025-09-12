@@ -7,10 +7,12 @@ param(
     [switch]$noDict,
     [switch]$noModel,
     [switch]$disableCNB,
+    [switch]$disableAutoReDeploy,
     [switch]$auto,
     [switch]$useCurl,
     [string]$skipFiles,
-    [switch]$help
+    [switch]$help,
+    [switch]$debug
 )
 
 function Exit-Tip {
@@ -44,8 +46,10 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-noModel             不更新模型"
     Write-Host "-cliTargetFolder <路径>  指定目标安装目录，优先于注册表读取（如果提供，将对路径存在性和写权限进行检查）"
     Write-Host "-auto                启用自动更新模式"
+    Write-Host "-debug               启用调试模式(输出更多调试信息)"
     Write-Host "-useCurl             使用curl.exe提升下载速度并减少中断"
     Write-Host "-disableCNB          不使用 CNB 镜像源"
+    Write-Host "-disableAutoReDeploy 不自动触发重新部署"
     Write-Host "-skipFiles <文件1,文件2,...>  跳过指定文件，逗号分隔"
     Write-Host "-h, --help           显示本帮助信息"
     Write-Host "示例："
@@ -69,15 +73,15 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+# [0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
 $InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
-#$SkipFiles = @(
-#     "wanxiang_en.dict.yaml",
-#     "tone_fallback.lua",
-#     "custom_phrase.txt"
-#);
+# $SkipFiles = @(
+#     "wanxiang_symbols.yaml",
+#     "weasel.yaml",
+#     "others.txt"
+# );
 
 # 设置代理地址和端口，配置好后删除注释符号
 # $proxyAddress = "http://127.0.0.1:7897"
@@ -88,6 +92,8 @@ $InputSchemaType = "6";
 # $env:GITHUB_TOKEN = "填入这里你的token字符串"    #打开链接https://github.com/settings/tokens，注册一个token# (Public repositories) 
 
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
+
+$Debug = $false;
 
 # 支持命令行参数覆盖关键选项
 # 通过命令行参数覆盖配置
@@ -112,8 +118,22 @@ if ($PSBoundParameters.ContainsKey('noDict')) {
 if ($PSBoundParameters.ContainsKey('noModel')) {
     $IsUpdateModel = $false
 }
+if ($PSBoundParameters.ContainsKey('debug')) {
+    Write-Host "启用 debug 模式"
+    $Debug = $true
+}
 if ($PSBoundParameters.ContainsKey('skipFiles')) {
-    $SkipFiles = $skipFiles -split ','
+    Write-Host "重新赋值 SkipFiles"
+    # 支持以逗号或任意空白分隔的多项输入，例如:
+    # -skipFiles 'a.txt,b.txt' 或 -skipFiles 'a.txt b.txt' 或 -skipFiles 'a.txt, b.txt'
+    if ($skipFiles -is [string]) {
+        $items = $skipFiles -split '[,\s]+'
+    } else {
+        $items = $skipFiles
+    }
+    # 去除空项、两端空白并去重
+    $SkipFiles = $items | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+    Write-Host "最终 SkipFiles 内容：" $SkipFiles
 }
 # 如果命令行提供了 cliTargetFolder 参数，则优先使用并验证
 if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
@@ -143,8 +163,6 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
     }
 }
 
-$Debug = $false;
-
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
     Write-Host "您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/rimeinn/rime-wanxiang-update-tools/releases" -ForegroundColor Yellow;
@@ -155,12 +173,8 @@ if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
 # 设置仓库所有者和名称
 $UpdateToolsOwner = "rimeinn"
 $UpdateToolsRepo = "rime-wanxiang-update-tools"
-# 定义临时文件路径
-$tempSchemaZip = Join-Path $env:TEMP "wanxiang_schema_temp.zip"
-$tempDictZip = Join-Path $env:TEMP "wanxiang_dict_temp.zip"
-$tempGram = Join-Path $env:TEMP "wanxiang-lts-zh-hans.gram"
-$SchemaExtractPath = Join-Path $env:TEMP "wanxiang_schema_extract"
-$DictExtractPath = Join-Path $env:TEMP "wanxiang_dict_extract"
+# 定义临时文件路径基准（具体临时文件路径在确定 $targetDir 后设置）
+$BaseTempPath = [System.IO.Path]::GetTempPath()
 
 $GramModelFileName = "wanxiang-lts-zh-hans.gram"
 $ReleaseTimeRecordFile = "release_time_record.json"
@@ -195,7 +209,7 @@ $UriHeader = @{
     'Accept-Charset' = 'utf-8'
 }
 
-$SchemaDownloadTip = "[0]-基础版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
+$SchemaDownloadTip = "[0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -298,7 +312,88 @@ function Test-SkipFile {
     param(
         [string]$filePath
     )
-    return $SkipFiles -contains $filePath
+    # 规范化输入
+    if (-not $filePath) { return $false }
+    $fullPath = [System.IO.Path]::GetFullPath($filePath) 2>$null
+    if (-not $fullPath) { $fullPath = $filePath }
+    $baseName = Get-FileNameWithoutExtension($filePath)
+    $fileName = Split-Path $filePath -Leaf
+
+    if ($Debug) {
+        Write-Host "Testing skip for file: $filePath" -ForegroundColor Cyan
+        Write-Host "Full path: $fullPath" -ForegroundColor Cyan
+        Write-Host "Base name: $baseName" -ForegroundColor Cyan
+        Write-Host "File name: $fileName" -ForegroundColor Cyan
+    }
+
+    # 确保 $SkipFiles 是数组
+    $skipList = @()
+    if ($null -ne $SkipFiles) {
+        if ($SkipFiles -is [string]) {
+            $skipList = @($SkipFiles)
+        } else {
+            $skipList = $SkipFiles
+        }
+    }
+
+    if ($Debug) {
+        Write-Host "Debug: checking skip list items (count=$($skipList.Count))" -ForegroundColor Cyan
+        $i = 0
+        foreach ($item in $skipList) {
+            if ($null -eq $item) { Write-Host "  [$i] <null>" -ForegroundColor Cyan }
+            else { Write-Host "  [$i] '$item' (len=$($item.Length))" -ForegroundColor Cyan }
+            $i++
+        }
+        Write-Host "Debug: fileName='$fileName' (len=$($fileName.Length)), baseName='$baseName' (len=$($baseName.Length)), fullPath='$fullPath'" -ForegroundColor Cyan
+    }
+
+    # 兜底：如果 skipList 仅有一项且该项内部含空格或逗号，可能来自旧格式的单字符串，拆分后使用
+    if ($skipList.Count -eq 1 -and $skipList[0] -match '[,\s]') {
+        if ($Debug) { Write-Host "Debug: single skipList item contains separators, splitting into multiple items" -ForegroundColor Cyan }
+        $splitItems = $skipList[0] -split '[,\s]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+        $skipList = $splitItems
+        if ($Debug) { Write-Host "Debug: new skip list count=$($skipList.Count)" -ForegroundColor Cyan }
+    }
+
+    foreach ($s in $skipList) {
+        if (-not $s) { continue }
+        $pattern = $s
+        $patternTrim = $pattern
+        if ($patternTrim) { $patternTrim = $patternTrim.Trim() }
+        # if ($Debug) { Write-Host "Checking pattern: '$pattern' (trimmed: '$patternTrim')" -ForegroundColor Cyan }
+        # 如果包含通配符，使用 -like 来匹配完整路径或文件名
+        if ($pattern -match '[\*\?]') {
+            if ($fullPath -like $patternTrim -or $fileName -like $patternTrim) {
+                if ($Debug) { Write-Host "Skip match (wildcard) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+        }
+        else {
+            # 精确匹配完整路径
+            try {
+                $resolvedSkip = [System.IO.Path]::GetFullPath($patternTrim) 2>$null
+            } catch { $resolvedSkip = $null }
+            if ($resolvedSkip -and ($resolvedSkip -eq $fullPath)) {
+                if ($Debug) { Write-Host "Skip match (fullpath) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+
+            # 精确匹配文件名
+            if ($patternTrim -ieq $fileName -or $patternTrim -ieq $baseName) {
+                if ($Debug) { Write-Host "Skip match (name) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+
+            # 支持以路径结尾匹配（例如 'subdir/file.txt' 与 完整路径结尾匹配）
+            if ($patternTrim -and $fullPath.EndsWith($patternTrim, [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($Debug) { Write-Host "Skip match (endswith) '$pattern' -> '$filePath'" -ForegroundColor Yellow }
+                return $true
+            }
+        }
+    }
+
+    if ($Debug) { Write-Host "No skip match for '$filePath'" -ForegroundColor Green }
+    return $false
 }
 
 # 调用函数并赋值给变量
@@ -327,7 +422,9 @@ function Start-WeaselServer {
 function Start-WeaselReDeploy{
     $defaultShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk"
     $backupEnglishShortcutPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Weasel\Weasel Deploy.lnk"
-    if (-not $SkipStopWeasel) {
+    if ($disableAutoReDeploy) {
+        Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+    } elseif (-not $SkipStopWeasel) {
         if (Test-Path -Path $defaultShortcutPath) {
             Write-Host "找到默认【小狼毫】重新部署快捷方式，将执行" -ForegroundColor Green
             Invoke-Item -Path $defaultShortcutPath
@@ -354,6 +451,42 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
 } else {
     Write-Host "Weasel用户目录路径为: $rimeUserDir" -ForegroundColor Green
     $targetDir = $rimeUserDir
+}
+
+# 在目标用户目录下创建专用临时目录用于保存下载的zip等（保留zip，供后续检查）
+$WanxiangTempDir = Join-Path $targetDir 'wanxiang_temp'
+if (-not (Test-Path $WanxiangTempDir)) {
+    try {
+        New-Item -Path $WanxiangTempDir -ItemType Directory -Force | Out-Null
+        Write-Host "已创建临时目录: $WanxiangTempDir" -ForegroundColor Green
+    } catch {
+        Write-Host "警告：无法创建临时目录 $WanxiangTempDir，将使用系统临时目录" -ForegroundColor Yellow
+        $WanxiangTempDir = $BaseTempPath
+    }
+}
+# 将 schema 临时 zip 文件放置在用户目录下的专用临时目录中
+$tempSchemaZip = Join-Path $WanxiangTempDir "wanxiang_schema_temp.zip"
+# 将 dict 临时 zip 和 gram 临时文件也放在该目录
+$tempDictZip = Join-Path $WanxiangTempDir "wanxiang_dict_temp.zip"
+$tempGram = Join-Path $WanxiangTempDir "wanxiang-lts-zh-hans.gram"
+
+# 将解压目录也放在用户临时目录下的子目录，保持与 zip 存放在同一工作目录
+$SchemaExtractPath = Join-Path $WanxiangTempDir "wanxiang_schema_extract"
+$DictExtractPath = Join-Path $WanxiangTempDir "wanxiang_dict_extract"
+
+# 确保解压目录存在；如果无法创建则回退到系统临时目录
+foreach ($d in @($SchemaExtractPath, $DictExtractPath)) {
+    if (-not (Test-Path $d)) {
+        try {
+            New-Item -Path $d -ItemType Directory -Force | Out-Null
+        }
+        catch {
+            Write-Host "警告：无法创建解压目录 $d，将回退到系统临时目录" -ForegroundColor Yellow
+            $SchemaExtractPath = Join-Path $BaseTempPath "wanxiang_schema_extract"
+            $DictExtractPath = Join-Path $BaseTempPath "wanxiang_dict_extract"
+            break
+        }
+    }
 }
 
 if ($targetDir -eq $rimeUserDir) {
@@ -625,37 +758,30 @@ $promptSchemaDown = "是否下载方案:`n[0]-下载; [1]-不下载"
 $promptGramModel = "是否下载模型:`n[0]-下载; [1]-不下载"
 $promptDictDown = "是否下载词库:`n[0]-下载; [1]-不下载"
 
-if (-not $Debug) {
-    if ($AutoUpdate) {
-        Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
-        Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
-        # 方案号只支持0-6
-        if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
-            Write-Error "错误：方案号只能是0-6"
-            Exit-Tip 1
-        }
-        $InputAllUpdate = "0"
-        $InputSchemaDown = if ($IsUpdateSchemaDown)  { "0" } else { "1" }
-        $InputGramModel = if ($IsUpdateModel)  { "0" } else { "1" }
-        $InputDictDown = if ($IsUpdateDictDown)  { "0" } else { "1" }
-    } else {
-        $InputSchemaType = Read-Host $promptSchemaType
-        $InputAllUpdate = Read-Host $promptAllUpdate
-        if ($InputAllUpdate -eq "0") {
-            $InputSchemaDown = "0"
-            $InputGramModel = "0"
-            $InputDictDown = "0"
-        } else {
-            $InputSchemaDown = Read-Host $promptSchemaDown
-            $InputGramModel = Read-Host $promptGramModel
-            $InputDictDown = Read-Host $promptDictDown
-        }
+if ($AutoUpdate) {
+    Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
+    Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
+    # 方案号只支持0-6
+    if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
+        Write-Error "错误：方案号只能是0-6"
+        Exit-Tip 1
     }
+    $InputAllUpdate = "0"
+    $InputSchemaDown = if ($IsUpdateSchemaDown)  { "0" } else { "1" }
+    $InputGramModel = if ($IsUpdateModel)  { "0" } else { "1" }
+    $InputDictDown = if ($IsUpdateDictDown)  { "0" } else { "1" }
 } else {
-    $InputSchemaType = "6"
-    $InputSchemaDown = "0"
-    $InputGramModel = "0"
-    $InputDictDown = "0"
+    $InputSchemaType = Read-Host $promptSchemaType
+    $InputAllUpdate = Read-Host $promptAllUpdate
+    if ($InputAllUpdate -eq "0") {
+        $InputSchemaDown = "0"
+        $InputGramModel = "0"
+        $InputDictDown = "0"
+    } else {
+        $InputSchemaDown = Read-Host $promptSchemaDown
+        $InputGramModel = Read-Host $promptGramModel
+        $InputDictDown = Read-Host $promptDictDown
+    }
 }
 
 if ($InputSchemaType -eq "0") {
@@ -1031,7 +1157,7 @@ if ($InputSchemaDown -eq "0") {
         $sourceDir = $SchemaExtractPath
         if (-not (Test-Path $sourceDir)) {
             Write-Host "错误：压缩包中未找到 $sourceDir 目录" -ForegroundColor Red
-            Remove-Item -Path $tempSchemaZip -Force
+            # 保留下载的 zip 以便后续检查或手动处理，仍然清理解压目录
             Remove-Item -Path $SchemaExtractPath -Recurse -Force
             Exit-Tip 1
         }
@@ -1039,35 +1165,35 @@ if ($InputSchemaDown -eq "0") {
         # 等待1秒
         Start-Sleep -Seconds 1
         Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
-            if ($_.Name -notin $SkipFiles) {
-                $relativePath = $_.FullName.Substring($sourceDir.Length)
+            # Write-Host "SkipFiles: $SkipFiles"
+            if (Test-SkipFile -filePath $_.Name) {
+                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
+            } else {
+                $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDir -Relative
+                # 去掉可能的开头的 .\ 或 ./，否则 Join-Path 会产生包含 \\.\ 的路径
+                # 使用正则替换以避免 TrimStart 在传入 '\\' 时的类型错误
+                $relativePath = $relativePath -replace '^[.][\\/]+',''
                 $destinationPath = Join-Path $targetDir $relativePath
                 $destinationDir = [System.IO.Path]::GetDirectoryName($destinationPath)
                 if (-not (Test-Path $destinationDir)) {
                     New-Item -ItemType Directory -Path $destinationDir | Out-Null
                 }
                 if (Test-Path $_.FullName -PathType Container) {
-                    if ($Debug) {
-                        Write-Host "跳过目录: $($_.Name)" -ForegroundColor Yellow
-                    }
+                    
                 } elseif (Test-Path $_.FullName -PathType Leaf) {
                     Copy-Item -Path $_.FullName -Destination $destinationPath -Force
+                    if ($Debug) {
+                        Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
+                        Write-Host "相对路径: $relativePath" -ForegroundColor Green
+                        Write-Host "目标路径: $destinationPath" -ForegroundColor Green
+                    }
                 }
-
-                if ($Debug) {
-                    Write-Host "正在复制文件: $($_.Name)" -ForegroundColor Green
-                    Write-Host "相对路径: $relativePath" -ForegroundColor Green
-                    Write-Host "目标路径: $destinationPath" -ForegroundColor Green
-                }
-            } else {
-                Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             }
         }
 
         # 将现在的本地时间记录到JSON文件
         Save-TimeRecord -filePath $TimeRecordFile -key $SchemaUpdateTimeKey -value $SchemaRemoteTime
-        # 清理临时文件
-        Remove-Item -Path $tempSchemaZip -Force
+        # 清理解压目录（保留下载的 zip）
         Remove-Item -Path $SchemaExtractPath -Recurse -Force
     }
 }
@@ -1178,14 +1304,22 @@ if ($InputGramModel -eq "0") {
     }
 }
 
-Write-Host "操作已完成！文件已部署到 Weasel 配置目录:$($targetDir)" -ForegroundColor Green
+if ($UpdateFlag) {
+    if ($disableAutoReDeploy) {
+        Write-Host "跳过触发重新部署" -ForegroundColor Yellow
+    } elseif (-not $SkipStopWeasel) {
+        Start-WeaselServer
+        # 等待1秒
+        Start-Sleep -Seconds 1
+        Write-Host "内容更新，触发小狼毫重新部署..." -ForegroundColor Green
+        Start-WeaselReDeploy
+    }
+}
 
-if ($UpdateFlag -and (-not $SkipStopWeasel)) {
-    Start-WeaselServer
-    # 等待1秒
-    Start-Sleep -Seconds 1
-    Write-Host "内容更新，触发小狼毫重新部署..." -ForegroundColor Green
-    Start-WeaselReDeploy
+if ($UpdateFlag) {
+    Write-Host "操作已完成！文件已部署到 Weasel 配置目录:$($targetDir)" -ForegroundColor Green
+} else {
+    Write-Host "操作已完成！恭喜你! 所有文件都是最新的不需要更新 " -ForegroundColor Green
 }
 
 Exit-Tip 0
