@@ -1169,7 +1169,8 @@ if ($InputSchemaDown -eq "0") {
             if (Test-SkipFile -filePath $_.Name) {
                 Write-Host "跳过文件: $($_.Name)" -ForegroundColor Yellow
             } else {
-                $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDir -Relative
+                # $relativePath = Resolve-Path -path $_.FullName -RelativeBasePath $sourceDir -Relative
+                $relativePath = $_.FullName.Substring($sourceDir.Length)
                 # 去掉可能的开头的 .\ 或 ./，否则 Join-Path 会产生包含 \\.\ 的路径
                 # 使用正则替换以避免 TrimStart 在传入 '\\' 时的类型错误
                 $relativePath = $relativePath -replace '^[.][\\/]+',''
