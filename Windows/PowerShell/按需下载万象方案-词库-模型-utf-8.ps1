@@ -11,7 +11,8 @@ param(
     [switch]$auto,
     [switch]$useCurl,
     [string]$skipFiles,
-    [switch]$help
+    [switch]$help,
+    [switch]$debug
 )
 
 function Exit-Tip {
@@ -45,6 +46,7 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     Write-Host "-noModel             不更新模型"
     Write-Host "-cliTargetFolder <路径>  指定目标安装目录，优先于注册表读取（如果提供，将对路径存在性和写权限进行检查）"
     Write-Host "-auto                启用自动更新模式"
+    Write-Host "-debug               启用调试模式(输出更多调试信息)"
     Write-Host "-useCurl             使用curl.exe提升下载速度并减少中断"
     Write-Host "-disableCNB          不使用 CNB 镜像源"
     Write-Host "-disableAutoReDeploy 不自动触发重新部署"
@@ -91,6 +93,8 @@ $InputSchemaType = "6";
 
 ############# 自动更新配置项，配置好后将 AutoUpdate 设置为 true 即可 #############
 
+$Debug = $false;
+
 # 支持命令行参数覆盖关键选项
 # 通过命令行参数覆盖配置
 if ($PSBoundParameters.ContainsKey('schemaType')) {
@@ -113,6 +117,10 @@ if ($PSBoundParameters.ContainsKey('noDict')) {
 }
 if ($PSBoundParameters.ContainsKey('noModel')) {
     $IsUpdateModel = $false
+}
+if ($PSBoundParameters.ContainsKey('debug')) {
+    Write-Host "启用 debug 模式"
+    $Debug = $true
 }
 if ($PSBoundParameters.ContainsKey('skipFiles')) {
     Write-Host "重新赋值 SkipFiles"
@@ -154,8 +162,6 @@ if ($PSBoundParameters.ContainsKey('cliTargetFolder') -and $cliTargetFolder) {
         Exit-Tip 1
     }
 }
-
-$Debug = $false;
 
 $UpdateToolsVersion = "DEFAULT_UPDATE_TOOLS_VERSION_TAG";
 if ($UpdateToolsVersion.StartsWith("DEFAULT")) {
@@ -752,37 +758,30 @@ $promptSchemaDown = "是否下载方案:`n[0]-下载; [1]-不下载"
 $promptGramModel = "是否下载模型:`n[0]-下载; [1]-不下载"
 $promptDictDown = "是否下载词库:`n[0]-下载; [1]-不下载"
 
-if (-not $Debug) {
-    if ($AutoUpdate) {
-        Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
-        Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
-        # 方案号只支持0-6
-        if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
-            Write-Error "错误：方案号只能是0-6"
-            Exit-Tip 1
-        }
-        $InputAllUpdate = "0"
-        $InputSchemaDown = if ($IsUpdateSchemaDown)  { "0" } else { "1" }
-        $InputGramModel = if ($IsUpdateModel)  { "0" } else { "1" }
-        $InputDictDown = if ($IsUpdateDictDown)  { "0" } else { "1" }
-    } else {
-        $InputSchemaType = Read-Host $promptSchemaType
-        $InputAllUpdate = Read-Host $promptAllUpdate
-        if ($InputAllUpdate -eq "0") {
-            $InputSchemaDown = "0"
-            $InputGramModel = "0"
-            $InputDictDown = "0"
-        } else {
-            $InputSchemaDown = Read-Host $promptSchemaDown
-            $InputGramModel = Read-Host $promptGramModel
-            $InputDictDown = Read-Host $promptDictDown
-        }
+if ($AutoUpdate) {
+    Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
+    Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
+    # 方案号只支持0-6
+    if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
+        Write-Error "错误：方案号只能是0-6"
+        Exit-Tip 1
     }
+    $InputAllUpdate = "0"
+    $InputSchemaDown = if ($IsUpdateSchemaDown)  { "0" } else { "1" }
+    $InputGramModel = if ($IsUpdateModel)  { "0" } else { "1" }
+    $InputDictDown = if ($IsUpdateDictDown)  { "0" } else { "1" }
 } else {
-    $InputSchemaType = "6"
-    $InputSchemaDown = "0"
-    $InputGramModel = "0"
-    $InputDictDown = "0"
+    $InputSchemaType = Read-Host $promptSchemaType
+    $InputAllUpdate = Read-Host $promptAllUpdate
+    if ($InputAllUpdate -eq "0") {
+        $InputSchemaDown = "0"
+        $InputGramModel = "0"
+        $InputDictDown = "0"
+    } else {
+        $InputSchemaDown = Read-Host $promptSchemaDown
+        $InputGramModel = Read-Host $promptGramModel
+        $InputDictDown = Read-Host $promptDictDown
+    }
 }
 
 if ($InputSchemaType -eq "0") {
