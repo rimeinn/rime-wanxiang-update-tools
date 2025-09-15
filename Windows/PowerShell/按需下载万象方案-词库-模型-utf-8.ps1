@@ -406,7 +406,37 @@ function Stop-WeaselServer {
         Write-Host "警告：未找到Weasel服务端可执行程序，请确保已正确安装小狼毫输入法" -ForegroundColor Yellow
         Exit-Tip 1
     } elseif (-not $SkipStopWeasel) {
-        Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q'
+        # 优先尝试按进程名强制结束（来自 get-rime.ps1 的 KillWeaselServer 逻辑）
+        $processName = 'WeaselServer'
+        try {
+            $proc = Get-Process -Name $processName -ErrorAction SilentlyContinue
+        } catch {
+            $proc = $null
+        }
+        if ($proc) {
+            while ($proc) {
+                try {
+                    Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+                } catch {
+                    # 忽略停止错误，继续尝试
+                }
+                Start-Sleep -Seconds 0.5
+                try {
+                    $proc = Get-Process -Name $processName -ErrorAction SilentlyContinue
+                } catch {
+                    $proc = $null
+                }
+            }
+            Write-Host "☑  $processName has been killed" -ForegroundColor Green
+        } else {
+            # 如果没有找到运行中的进程，尝试通过可执行文件的 /q 参数触发优雅停止（保留原行为作为兜底）
+            try {
+                Start-Process -FilePath (Join-Path $rimeInstallDir $rimeServerExecutable) -ArgumentList '/q' -ErrorAction SilentlyContinue | Out-Null
+                Write-Host "尝试使用可执行文件的 /q 参数触发停止（若支持）" -ForegroundColor Yellow
+            } catch {
+                Write-Host "无法触发可执行文件停止：$($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
     }
 }
 
