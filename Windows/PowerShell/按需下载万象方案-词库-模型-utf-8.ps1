@@ -40,7 +40,7 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     }
     Write-Host "Rime 万象 PowerShell 更新工具 - 命令行参数说明" -ForegroundColor Cyan
     Write-Host "---------------------------------------------"
-    Write-Host "-schemaType <编号>    方案类型编号，0-6 (如 6 表示自然码)"
+    Write-Host "-schemaType <编号>   方案类型编号，0-6 (如 6 表示自然码)"
     Write-Host "-noSchema            不更新方案"
     Write-Host "-noDict              不更新词库"
     Write-Host "-noModel             不更新模型"
@@ -500,21 +500,27 @@ $tempSchemaZip = Join-Path $WanxiangTempDir "wanxiang_schema_temp.zip"
 $tempDictZip = Join-Path $WanxiangTempDir "wanxiang_dict_temp.zip"
 $tempGram = Join-Path $WanxiangTempDir "wanxiang-lts-zh-hans.gram"
 
-# 将解压目录也放在用户临时目录下的子目录，保持与 zip 存放在同一工作目录
-$SchemaExtractPath = Join-Path $WanxiangTempDir "wanxiang_schema_extract"
-$DictExtractPath = Join-Path $WanxiangTempDir "wanxiang_dict_extract"
+# 仅为需要的更新项创建对应的解压目录
+$SchemaExtractPath = $null
+$DictExtractPath = $null
+$extractDirs = @()
+if ($IsUpdateSchemaDown) {
+    $SchemaExtractPath = Join-Path $WanxiangTempDir "wanxiang_schema_extract"
+    $extractDirs += $SchemaExtractPath
+}
+if ($IsUpdateDictDown) {
+    $DictExtractPath = Join-Path $WanxiangTempDir "wanxiang_dict_extract"
+    $extractDirs += $DictExtractPath
+}
 
-# 确保解压目录存在；如果无法创建则回退到系统临时目录
-foreach ($d in @($SchemaExtractPath, $DictExtractPath)) {
+foreach ($d in $extractDirs) {
     if (-not (Test-Path $d)) {
         try {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
         catch {
-            Write-Host "警告：无法创建解压目录 $d，将回退到系统临时目录" -ForegroundColor Yellow
-            $SchemaExtractPath = Join-Path $BaseTempPath "wanxiang_schema_extract"
-            $DictExtractPath = Join-Path $BaseTempPath "wanxiang_dict_extract"
-            break
+            Write-Host "错误：无法创建解压目录 $d, $($_.Exception.Message)" -ForegroundColor Red
+            Exit-Tip 1
         }
     }
 }
@@ -1333,6 +1339,19 @@ if ($InputGramModel -eq "0") {
     } else {
         Write-Host "模型不存在，需要更新" -ForegroundColor Red
         Update-GramModel
+    }
+}
+
+foreach ($d in $extractDirs) {
+    if (Test-Path $d) {
+        try {
+            Remove-Item -Path $d -Recurse -Force
+            Write-Host "已删除临时解压目录 $d" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "错误：无法删除临时解压目录 $d" -ForegroundColor Red
+            Exit-Tip 1
+        }
     }
 }
 
