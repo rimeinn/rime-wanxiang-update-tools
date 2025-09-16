@@ -427,7 +427,7 @@ function Stop-WeaselServer {
                     $proc = $null
                 }
             }
-            Write-Host "☑  $processName has been killed" -ForegroundColor Green
+            Write-Host "$processName has been killed" -ForegroundColor Green
         } else {
             # 如果没有找到运行中的进程，尝试通过可执行文件的 /q 参数触发优雅停止（保留原行为作为兜底）
             try {
