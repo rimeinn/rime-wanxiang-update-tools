@@ -596,19 +596,19 @@ function Get-CnbReleaseInfo {
             $releaseData = $jsonDataFormat.releases
             Write-Host "成功获取 CNB release 版本信息" -ForegroundColor Green
             if ($jsonDataFormat.release_count -eq 0) {
-                Write-Error "CNB release 版本没有可下载资源"
-                Exit-Tip 1
+                Write-Warning "CNB release 版本没有可下载资源"
+                return $null
             }
             return $releaseData
         } else {
-            Write-Error "错误：在页面中未找到 'release' 数据。"
-            Exit-Tip 1
+            Write-Warning "警告：在 CNB 页面中未找到 'releases' 数据。"
+            return $null
         }
     }
     catch {
-        Write-Error "错误：下载或解析CNB页面失败: $apiUrl"
-        Write-Error $_.Exception.Message
-        Exit-Tip 1
+        Write-Warning "错误：下载或解析CNB页面失败: $apiUrl"
+        Write-Warning $_.Exception.Message
+        return $null
     }
 }
 
@@ -659,29 +659,32 @@ function Get-ReleaseInfo {
         [bool]$updateToolFlag = $false,
         [string]$query
     )
-    # 构建API请求URL
-    if ($updateToolFlag) {
-        Write-Host "正在尝试获取更新工具自身版本信息..." -ForegroundColor Cyan
-        $result = Get-GithubReleaseInfo -owner $owner -repo $repo
-        if ($null -eq $result) {
-            Write-Host "获取更新工具版本信息失败，将跳过自身更新检查。" -ForegroundColor Cyan
-            return @() # 如果自身更新信息获取失败，返回空数组，不终止脚本
+    # 优先尝试 CNB（若启用），若 CNB 无数据或失败，则回退到 GitHub
+    if ($UseCnbMirrorSource) {
+        $cnbResult = Get-CnbReleaseInfo -owner $owner -repo $repo -query $query
+        if ($cnbResult) {
+            return $cnbResult
+        } else {
+            Write-Host "CNB 未返回有效数据，尝试回退到 GitHub 获取发布信息..." -ForegroundColor Yellow
+            $ghResult = Get-GithubReleaseInfo -owner $owner -repo $repo
+            if ($ghResult) {
+                return $ghResult
+            } else {
+                Write-Warning "无法从 CNB 或 GitHub 获取到 '$owner/$repo' 的发布信息。"
+                return $null
+            }
         }
-        return $result
-    }
-    if ($UseCnbMirrorSource){
-        return Get-CnbReleaseInfo -owner $owner -repo $repo -query $query
     } else {
         $result = Get-GithubReleaseInfo -owner $owner -repo $repo
         if ($null -eq $result) {
-            Write-Error "错误：无法获取仓库 '$owner/$repo' 的发布版本信息。" -ForegroundColor Cyan
-            Exit-Tip 1 # 对于非自身更新的 GitHub 资源获取失败，仍旧退出脚本
+            Write-Warning "无法获取仓库 '$owner/$repo' 的发布版本信息。"
+            return $null
         }
         return $result
     }
 }
 
-$UpdateToolsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo -updateToolFlag $true
+$UpdateToolsResponse = Get-GithubReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo
 # 检测是否需要跳过自身更新检查
 $SkipSelfUpdateCheck = $false
 if ($null -eq $UpdateToolsResponse -or $UpdateToolsResponse.Count -eq 0) {
@@ -690,14 +693,12 @@ if ($null -eq $UpdateToolsResponse -or $UpdateToolsResponse.Count -eq 0) {
 }
 
 # 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
-# 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本
+# 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1
 if (-not $SkipSelfUpdateCheck) {
-    $StableUpdateToolsReleases = $UpdateToolsResponse 
-    
-    if ($StableUpdateToolsReleases.Count -eq 0) {
-        Write-Host "没有找到稳定版的更新工具版本信息，跳过自身更新检查。" -ForegroundColor Yellow
+    if ($UpdateToolsResponse.Count -eq 0) {
+        Write-Host "没有找到更新工具版本信息，跳过自身更新检查。" -ForegroundColor Yellow
     } else {
-        $LatestUpdateToolsRelease = $StableUpdateToolsReleases | Select-Object -First 1
+        $LatestUpdateToolsRelease = $UpdateToolsResponse | Select-Object -First 1
         if ($LatestUpdateToolsRelease.tag_name -ne $UpdateToolsVersion) {
             Write-Host "发现新版本的更新工具: $($LatestUpdateToolsRelease.tag_name)" -ForegroundColor Yellow
             Write-Host "如需更新,请访问 https://github.com/rimeinn/rime-wanxiang-update-tools/releases 下载最新版本" -ForegroundColor Yellow
