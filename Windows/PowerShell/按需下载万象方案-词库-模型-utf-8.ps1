@@ -681,18 +681,18 @@ function Get-ReleaseInfo {
     }
 }
 
-$UpdateTollsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo -updateToolFlag $true
+$UpdateToolsResponse = Get-ReleaseInfo -owner $UpdateToolsOwner -repo $UpdateToolsRepo -updateToolFlag $true
 # 检测是否需要跳过自身更新检查
 $SkipSelfUpdateCheck = $false
-if ($null -eq $UpdateTollsResponse -or $UpdateTollsResponse.Count -eq 0) {
+if ($null -eq $UpdateToolsResponse -or $UpdateToolsResponse.Count -eq 0) {
     $SkipSelfUpdateCheck = $true
-    $UpdateTollsResponse = @() 
+    $UpdateToolsResponse = @() 
 }
 
 # 检查是否有新版本,如果获取的版本信息比现在的版本信息(UpdateToolsVersion)新，则提示用户更新
 # 版本格式:v3.4.0,v3.4.1,v3.4.1-rc1,不比较 rc 版本
 if (-not $SkipSelfUpdateCheck) {
-    $StableUpdateToolsReleases = $UpdateTollsResponse 
+    $StableUpdateToolsReleases = $UpdateToolsResponse 
     
     if ($StableUpdateToolsReleases.Count -eq 0) {
         Write-Host "没有找到稳定版的更新工具版本信息，跳过自身更新检查。" -ForegroundColor Yellow
