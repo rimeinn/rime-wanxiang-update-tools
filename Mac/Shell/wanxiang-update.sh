@@ -176,7 +176,28 @@ wanxiang_mixedcode.custom.yaml
 EOF
   fi
 }
-
+apply() {
+  local source_dir="$1"
+  local base_dir="${2:-$source_dir}"  # 基准目录，默认为第一个参数，$2和$source_dir哪个不为空就取哪个
+  
+  # 计算目标路径
+  local relative_path="${source_dir#$base_dir/}" # 从source_dir删除开头的base_dir部分
+  local target_path="$DEPLOY_DIR/${relative_path:+$relative_path/}" # relative_path不为空则使用relative_path，否则使用空值
+  
+  # 确保目标目录存在
+  mkdir -p "$target_path"
+  
+  # 处理当前目录的文件和子目录
+  for item in "$source_dir"/*; do
+    if [[ -f "$item" ]]; then
+	  # 复制解压出来的文件到目标路径
+      cp -f "$item" "$target_path"
+    elif [[ -d "$item" ]]; then
+      # 处理子目录
+      apply "$item" "$base_dir"
+    fi
+  done
+}
 update_schema() {
   local mirror="$1" fuzhu="$2" gram="$3"
   # 缓存 API 响应
@@ -265,18 +286,24 @@ update_schema() {
     while IFS= read -r _line; do
       if [[ "$_line" != \#* ]]; then
         exclude_file="$_line"
-        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-        else
-          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        # if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+        #   log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+        # else
+        #   cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        # fi
+        if [[ -e "$TEMP_DIR/$exclude_file" ]]; then
+          log WARN "项目 $TEMP_DIR/$exclude_file 为排除文件不更新"
+          rm -rf "$TEMP_DIR/$exclude_file"
         fi
       fi
     done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
     # 单独处理语法模型
-    [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
-      "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
-    rm -rf "${DEPLOY_DIR:?}"
-    cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+    # [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
+    #   "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
+    # rm -rf "${DEPLOY_DIR:?}"
+    # cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+    # 应用更新
+    apply "$TEMP_DIR/${schemaname%.zip}"
     log INFO "方案文件更新成功"
     return 0 
   else
