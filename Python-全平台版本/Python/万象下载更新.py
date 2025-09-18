@@ -1324,7 +1324,7 @@ class SchemeUpdater(UpdateHandler):
 
         # 应用更新
         self.apply_update(temp_file, target_file, remote_info)
-        # self.clean_build()
+        self.clean_build()
         print_success("方案更新完成")
         return 1
 
