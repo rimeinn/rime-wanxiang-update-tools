@@ -9,6 +9,7 @@
 ```bash
 pkg install python
 pip install requests
+pip install tqdm
 ```
 
 ## 逻辑说明
