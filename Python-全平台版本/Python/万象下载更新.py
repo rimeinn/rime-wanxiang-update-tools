@@ -12,7 +12,9 @@ import shutil
 import fnmatch
 import re
 from typing import Tuple, Optional, List, Dict, Union
+from math import ceil
 from tqdm import tqdm
+
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 # ====================== 全局配置 ======================
@@ -885,6 +887,13 @@ class UpdateHandler:
                 if output_json:
                     if use_mirror:
                         releases_list = response.json()['releases']
+                        # cnb会分页，请求最后一页以获取模型信息
+                        # 获取响应头
+                        total = response.headers.get("X-Cnb-Total")
+                        page_size = response.headers.get("X-Cnb-Page-Size")
+                        last_page = ceil(int(total) / int(page_size))
+                        last_page_res = requests.get(url, headers=headers, params={"page": last_page})
+                        releases_list.append(last_page_res.json()['releases'][-1])
                         return releases_list
                     return response.json()
                 else:
