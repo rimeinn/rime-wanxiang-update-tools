@@ -134,7 +134,7 @@ get_info() {
     info=$(
       jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases.[] |
       select( .tag_ref == $version ) | .assets[] |
-      select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
+      select( .name | test( $name ) )' "$TEMP_DIR/cnb_$name.json"
     )
     echo "$info"
   fi
@@ -209,9 +209,9 @@ update_schema() {
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb_$fuzhu.json" ]]; then
       if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
-        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb_$fuzhu.json"; then
         error_exit "连接到 CNB 失败，您可能需要检查网络"
       fi
     fi
@@ -233,7 +233,7 @@ update_schema() {
   elif [[ "$mirror" == "cnb" ]]; then
     remote_version=$(
       jq -r '.releases.[].tag_ref' \
-        "$TEMP_DIR/cnb.json" | grep -vE "model" | sort -rV | head -n 1
+        "$TEMP_DIR/cnb_$fuzhu.json" | grep -vE "model" | sort -rV | head -n 1
     )
     remote_version="${remote_version#"refs/tags/"}"
   fi
@@ -249,7 +249,7 @@ update_schema() {
     elif [[ "$mirror" == "cnb" ]]; then
       changelog=$(
         jq -r --arg version "refs/tags/$remote_version" '.releases.[] |
-        select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb.json"
+        select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb_$fuzhu.json"
       )
     fi
     echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | sed '$d'
@@ -323,9 +323,9 @@ update_dict() {
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
+    if [[ ! -f "$TEMP_DIR/cnb_$fuzhu.json" ]]; then
       if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
-        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
+        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb_$fuzhu.json"; then
         error_exit "连接到 CNB 失败，您可能需要检查网络"
       fi
     fi
@@ -390,11 +390,24 @@ update_gram() {
       fi
     fi
   elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      if ! curl -sL -H "accept: application/vnd.cnb.web+json" \
-        --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb.json"; then
-        error_exit "连接到 CNB 失败，您可能需要检查网络"
-      fi
+    if [[ ! -f "$TEMP_DIR/cnb_gram.json" ]]; then
+        headers=$(curl -sL -D - -o /dev/null -H "accept: application/vnd.cnb.web+json" "$CNB_API")
+        X_CNB_TOTAL=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Tt]otal:/ {gsub(/ /,"",$2); print $2}')
+        X_CNB_PAGE_SIZE=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Pp]age-[Ss]ize:/ {gsub(/ /,"",$2); print $2}')
+        # 防止为空
+        X_CNB_TOTAL=${X_CNB_TOTAL:-0}
+        X_CNB_PAGE_SIZE=${X_CNB_PAGE_SIZE:-1}
+        # 确保是数字
+        X_CNB_TOTAL=$(echo "$X_CNB_TOTAL" | tr -d -c 0-9)
+        X_CNB_PAGE_SIZE=$(echo "$X_CNB_PAGE_SIZE" | tr -d -c 0-9)
+        # 获取最后一页
+        last_page=$(( (X_CNB_TOTAL + X_CNB_PAGE_SIZE - 1) / X_CNB_PAGE_SIZE ))
+        
+        if ! curl -G -sL -H "accept: application/vnd.cnb.web+json" \
+            --data-urlencode "page=${last_page}" \
+            --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb_gram.json"; then
+            error_exit "连接到 CNB 失败，您可能需要检查网络"
+        fi
     fi
   fi
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
