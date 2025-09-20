@@ -15,7 +15,7 @@ python rime-wanxiang-update-win-mac-ios-android.py
 
 ## 逻辑说明
 
-安卓检测脚本同级目录下的 Rime/rime 子文件夹，没有就创建 Rime 子文件夹.
+安卓检测脚本同级目录下的 Rime或rime 子文件夹，没有就创建 Rime 子文件夹.
 
 ## 设置同文输入法
 
