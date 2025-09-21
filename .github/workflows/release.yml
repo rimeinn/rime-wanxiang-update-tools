@@ -47,7 +47,7 @@ jobs:
           iconv -f utf-8 -t gbk Windows/PowerShell/rime-wanxiang-update-windows-utf-8.ps1 > Windows/PowerShell/rime-wanxiang-update-windows.ps1
           mv Linux/Shell/wanxiang-update Linux/Shell/rime-wanxiang-update-linux
           mv Mac/Shell/wanxiang-update.sh Mac/Shell/rime-wanxiang-update-macos.sh
-          mv Python-全平台版本/Python/万象下载更新.py Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
+          mv Python-全平台版本/Python/rime-wanxiang-update-all.py Python-全平台版本/Python/rime-wanxiang-update-win-mac-ios-android.py
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
