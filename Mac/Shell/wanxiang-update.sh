@@ -34,22 +34,23 @@ log() {
 
 # 获取当前脚本名称
 script_name=$(basename $0)
+script_dir=$(pwd)
 
 engine_check() {
 # 输入法引擎检测
 if [ -z "$ENGINE" ]; then
   log ERROR "当前未配置输入法引擎"
   log WARN "如果使用Fcitx5（小企鹅）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"fcitx5\"/g' $script_name"
+  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"fcitx5\"/g' ${script_dir}/${script_name}"
   log WARN  "如果使用Squirrel（鼠须管）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"squirrel\"/g' $script_name"
+  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"squirrel\"/g' ${script_dir}/${script_name}"
   exit
 elif [ "$ENGINE" == "fcitx5" ]; then
   log INFO "当前使用Fcitx5（小企鹅）输入法"
   read -rp "按回车继续，M 键更改: " if_modify
   if [ "$if_modify" == "M" ]; then
   log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"fcitx5\"/ENGINE=\"squirrel\"/g' $script_name"
+  echo "sed -i '' 's/ENGINE=\"fcitx5\"/ENGINE=\"squirrel\"/g' ${script_dir}/${script_name}"
   exit
   fi
 elif [ "$ENGINE" == "squirrel" ]; then
@@ -57,7 +58,7 @@ elif [ "$ENGINE" == "squirrel" ]; then
   read -rp "按回车继续，M 键更改: " if_modify
   if [ "$if_modify" == "M" ]; then
   log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"squirrel\"/ENGINE=\"fcitx5\"/g' $script_name"
+  echo "sed -i '' 's/ENGINE=\"squirrel\"/ENGINE=\"fcitx5\"/g' ${script_dir}/${script_name}"
   exit
   fi
 fi
