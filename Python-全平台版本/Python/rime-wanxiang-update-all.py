@@ -211,12 +211,11 @@ class ConfigManager:
 
     def _check_hamster_path(self) -> Optional[str]:
         """检查脚本是否放置在正确的Hamster目录下"""
-        file_abs_dir = os.path.abspath(__file__)
-        file_dir = os.path.dirname(file_abs_dir)
+        file_dir = os.path.dirname(os.path.abspath(__file__))
         hamster_path_names = os.listdir(file_dir)
-        if 'RimeUserData' in file_abs_dir:
-            self.rime_dir = os.path.join(file_dir, 'wanxiang')
-            print_warning("当前使用元书输入法，配置文件夹为 wanxiang ，不存在将自动创建")
+        if 'RimeUserData' in hamster_path_names:
+            self.rime_dir = os.path.join(file_dir, 'RimeUserData', 'wanxiang')
+            print_warning("当前使用元书输入法，配置文件夹为 RimeUserData/wanxiang ，不存在将自动创建")
             os.makedirs(self.rime_dir, exist_ok=True)
             return '元书输入法'
 
