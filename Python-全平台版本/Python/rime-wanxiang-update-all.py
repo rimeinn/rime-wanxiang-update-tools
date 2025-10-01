@@ -1,3 +1,4 @@
+from cmath import e
 import time
 import subprocess
 import configparser
@@ -115,18 +116,18 @@ if SYSTEM_TYPE == 'windows':
 
     REG_PATHS = {
         'rime_user_dir': (
-            r"Software\Rime\Weasel", 
-            "RimeUserDir", 
+            r"Software\Rime\Weasel",
+            "RimeUserDir",
             winreg.HKEY_CURRENT_USER
         ),
         'weasel_root': (
-            r"SOFTWARE\WOW6432Node\Rime\Weasel", 
-            "WeaselRoot", 
+            r"SOFTWARE\WOW6432Node\Rime\Weasel",
+            "WeaselRoot",
             winreg.HKEY_LOCAL_MACHINE
         ),
         'server_exe': (
-            r"SOFTWARE\WOW6432Node\Rime\Weasel", 
-            "ServerExecutable", 
+            r"SOFTWARE\WOW6432Node\Rime\Weasel",
+            "ServerExecutable",
             winreg.HKEY_LOCAL_MACHINE
         )
     }
@@ -164,7 +165,7 @@ class ConfigManager:
             for key in REG_PATHS:
                 path, name, hive = REG_PATHS[key]
                 detected[key] = get_registry_value(path, name, hive)
-            
+
             # 智能路径处理
             if detected['weasel_root'] and detected['server_exe']:
                 detected['server_exe'] = os.path.join(detected['weasel_root'], detected['server_exe'])
@@ -177,7 +178,7 @@ class ConfigManager:
             defaults = {
                 'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime')
             }
-            
+
             if not detected["rime_user_dir"] or not os.path.exists(detected['rime_user_dir']):
                 detected["rime_user_dir"] = defaults["rime_user_dir"]
                 if not self.reload_flag and show:
@@ -204,26 +205,32 @@ class ConfigManager:
             else:
                 os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
                 detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
-            
+
         return detected
 
 
-    def _check_hamster_path(self) -> bool:
+    def _check_hamster_path(self) -> Optional[str]:
         """检查脚本是否放置在正确的Hamster目录下"""
         file_dir = os.path.dirname(os.path.abspath(__file__))
         hamster_path_names = os.listdir(file_dir)
+        if 'RimeUserData' in hamster_path_names:
+            self.rime_dir = os.path.join(file_dir, 'RimeUserData', 'wanxiang')
+            print_warning("当前使用元书输入法，配置文件夹为 RimeUserData/wanxiang ，不存在将自动创建")
+            os.makedirs(self.rime_dir, exist_ok=True)
+            return '元书输入法'
+
         if "RIME" in hamster_path_names:
             self.rime_dir = os.path.join(file_dir, 'RIME', 'Rime')
-            return True
+            return '仓输入法'
         elif "Rime" in hamster_path_names:
             self.rime_dir = os.path.join(file_dir, 'Rime')
-            return True
+            return '仓输入法'
         else:
             print_error('请将脚本放置到正确的位置（Hamster目录下）')
-            return False
-        
+            return None
+
     def _select_rime_engine(self) -> None:
-        """选择输入法引擎：鼠须管/小企鹅"""
+        """选择输入法引擎"""
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行引擎选择向导")
         print(f"{BORDER}")
@@ -261,11 +268,13 @@ class ConfigManager:
     def _ensure_config_exists(self) -> None:
         """确保配置文件存在，如果不存在则创建一个新的配置文件"""
         if SYSTEM_TYPE == 'ios':
-            if not self._check_hamster_path():
+            self.rime_engine = self._check_hamster_path()
+            if not self.rime_engine:
                 return
         if not os.path.exists(self.config_path):
             print_warning("正在创建一个新的配置文件。")
             self._init_empty_config()
+            self.config.set('Settings', 'engine', self.rime_engine)
             if SYSTEM_TYPE == 'macos':
                 self._select_rime_engine()  # mac首次运行选择引擎
             # self._guide_scheme_type_selection()  # 首次运行引导选择方案名称
@@ -371,7 +380,7 @@ class ConfigManager:
             'auto_update': 'false',
 
         }
-        
+
     def _write_config(self) -> None:
         """写入配置文件"""
         with open(self.config_path, 'w', encoding='utf-8') as f:
@@ -411,18 +420,18 @@ class ConfigManager:
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
             print("[1]-墨奇 [2]-小鹤 [3]-自然码")
             print("[4]-虎码 [5]-五笔 [6]-汉心")
-        
+
             while True:
                 choice = input("请选择你的辅助码方案（1-6）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
-                    
+
                     # 立即获取实际文件名
                     scheme_file, dict_file = self.get_actual_filenames(scheme_key)
-                    
+
                     self.config.set('Settings', 'scheme_file', scheme_file)
                     self.config.set('Settings', 'dict_file', dict_file)
-                    
+
                     print_success(f"已选择方案：{scheme_key.upper()}")
                     print(f"方案文件: {scheme_file}")
                     print(f"词库文件: {dict_file}")
@@ -432,7 +441,7 @@ class ConfigManager:
             print_success(f"基础版使用方案文件: {self.config.get('Settings', 'scheme_file')} 和词库文件: {self.config.get('Settings', 'dict_file')}")
             return True
 
-            
+
     def get_actual_filenames(self, scheme_key) -> Tuple[str, str]:
         """
         获取实际文件名（带网络请求）
@@ -448,7 +457,7 @@ class ConfigManager:
             else:
                 scheme_pattern = f"*{scheme_key}*fuzhu.zip"
                 dict_pattern = f"*{scheme_key}*dicts.zip"
-            
+
 
             scheme_checker = FileChecker(
                 owner=OWNER,
@@ -463,17 +472,17 @@ class ConfigManager:
                 use_mirror=self.config.getboolean('Settings', 'use_mirror'),
                 tag=DICT_TAG
             )
-            
+
             # 获取文件名
             scheme_file = scheme_checker.get_latest_file()
             dict_file = dict_checker.get_latest_file()
-            
+
             # 验证文件名是否有效
             if not scheme_file or not dict_file:
                 raise ValueError(f"未找到匹配的文件: {scheme_pattern} 或 {dict_pattern}")
-            
+
             return scheme_file, dict_file
-            
+
         except Exception as e:
             print_error(f"无法获取最新文件名: {str(e)}")
             print_error("请检查网络连接，或关闭代理后重试...")
@@ -485,16 +494,16 @@ class ConfigManager:
         print(f"\n{BORDER}")
         print(f"{INDENT}自动检测路径结果")
         print(f"{BORDER}")
-        
+
         self.config.read(self.config_path, encoding='utf-8')
         detected = self.detect_installation_paths()
         status_emoji = {True: "✅", False: "❌"}
         for key in detected:
             exists = os.path.exists(detected[key])
             print(f"{INDENT}{key.ljust(15)}: {status_emoji[exists]} {detected[key]}")
-        
+
         print(f"\n{INDENT}生成的配置文件路径: {self.config_path}")
-        
+
         self.display_config_instructions()
 
         if os.name == 'nt':
@@ -510,7 +519,7 @@ class ConfigManager:
         print_header("请检查配置文件路径,需用户修改")
         print("\n▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
         print("使用说明：\n")
-        
+
         path_display = [
             ("[engine]", "Mac端选择的输入法引擎", 'engine'),
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
@@ -521,17 +530,17 @@ class ConfigManager:
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
             ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
         ]
-        
+
         for item in path_display:
             print(f"    {item[0].ljust(25)}{item[1]}")
             print(f"        {self.config['Settings'][item[2]]}\n")
-        
-        print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
-        
 
-    def load_config(self, 
-                    system=SYSTEM_TYPE, 
-                    show=False, 
+        print("▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂")
+
+
+    def load_config(self,
+                    system=SYSTEM_TYPE,
+                    show=False,
                     first_download=False
                 ) -> Tuple[str, str, str, str, bool, str, list]:
         """
@@ -546,10 +555,10 @@ class ConfigManager:
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
         github_token = config.get('github_token', '')
-        
+
         # 读取排除文件配置
         exclude_files = [
-            pattern.strip() 
+            pattern.strip()
             for pattern in re.split(r',|，', self.config.get('Settings', 'exclude_files', fallback=''))  # 同时分割中英文逗号
             if pattern.strip()
         ]
@@ -604,16 +613,16 @@ class ConfigManager:
                     print(f"{INDENT}2. 自定义路径配置错误")
                 elif system == 'ios':
                     print(f"{INDENT}1. 该路径不存在")
-                    print(f"{INDENT}2. 没有将该脚本放置在Hamster路径下")
+                    print(f"{INDENT}2. 没有将该脚本放置在仓输入法或元书输入法正确路径下")
                 else:
                     print(f"{INDENT}1. 该路径不存在")
                     print(f"{INDENT}2. 没有将该脚本放置在正确路径下")
                 sys.exit(1)
-            
+
         if missing:
             self.ensure_directories(missing)
-            
-            
+
+
         return (
             config['engine'],
             config['scheme_type'],
@@ -623,7 +632,7 @@ class ConfigManager:
             github_token,
             exclude_files,
         )
-    
+
     def ensure_directories(self, dirs: List) -> None:
         """目录保障系统"""
         for dir in dirs:
@@ -661,12 +670,12 @@ class FileChecker:
         else:
             # 获取所有Release（按时间排序）
             url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases"
-        
+
         response = requests.get(url)
         response.raise_for_status()
         # 返回结果处理：指定标签时为单个Release，否则为列表
         return [response.json()] if self.tag else response.json()
-    
+
     def _get_cnb_releases(self) -> Dict:
         headers = CNB_HEADERS
         url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
@@ -682,7 +691,7 @@ class FileChecker:
                     if "万象拼音输入方案" in release.get("title"):
                         return release # 方案
         return {}
-        
+
 
 # ====================== 更新基类 ======================
 class UpdateHandler:
@@ -718,15 +727,15 @@ class UpdateHandler:
         # 如果没有更新信息或本地没有获取本地时间
         if not self.update_info:
             return False
-        
+
         if self.config_manager.change_config and not isinstance(self, ModelUpdater):
             return True
         remote_time = datetime.strptime(self.update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         local_time = self.get_local_time()
-        
+
         # 如果本地没有时间记录或有新更新
         return not local_time or remote_time > local_time
-    
+
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
         return None
@@ -737,21 +746,21 @@ class UpdateHandler:
         server = self.config_manager.detect_installation_paths().get('server_exe', '')
         zh_dicts_dir = self.config_manager.zh_dicts_dir
         return (
-            os.path.join(rime_user_dir, 'UpdateCache'), 
-            rime_user_dir, 
+            os.path.join(rime_user_dir, 'UpdateCache'),
+            rime_user_dir,
             os.path.join(rime_user_dir, zh_dicts_dir),
             server
         )
-    
+
     def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict: bool = False) -> Tuple[List[str], List[str]]:
         """
         获取旧版本压缩包中的文件路径（用于清理）
-        
+
         Args:
             old_exists_temp_zip: 旧版本 zip 压缩包路径
             new_temp_zip: 新版本 zip 压缩包路径
             is_dict: 是否是词库（词库路径不同，处理略有区别）
-    
+
         Returns:
             Tuple:
                 - 所有应删除的旧文件（非排除项）
@@ -759,10 +768,10 @@ class UpdateHandler:
         """
         def is_file(path): return os.path.isfile(path)
         def is_dir(path): return os.path.isdir(path)
-    
+
         whole_old_file_paths: List[str] = []
         should_delete_paths: List[str] = []
-        
+
         old_members = new_members = []
         try:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
@@ -771,7 +780,7 @@ class UpdateHandler:
                         old_members.append(i.encode('cp437').decode('utf-8'))
                     except:
                         old_members.append(i)
-    
+
             if new_temp_zip and os.path.isfile(new_temp_zip):
                 with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
                     for i in new_zip.namelist():
@@ -779,27 +788,27 @@ class UpdateHandler:
                             new_members.append(i.encode('cp437').decode('utf-8'))
                         except:
                             new_members.append(i)
-    
+
             # 处理词库情况下的路径差异
             if is_dict:
                 # 去除可能有的目录前缀
                 new_members = [m.split('/')[-1] for m in new_members if m.split('/')[-1]]
                 old_members = [m.split('/')[-1] for m in old_members if m.split('/')[-1]]
-    
+
             # 新版本中不再包含的旧文件
             should_delete_members = [m for m in old_members if m not in new_members]
-    
+
             extract_path = self.dict_extract_path if is_dict else self.extract_path
-    
+
             # 所有旧文件路径
             whole_old_file_paths = [
                 os.path.normpath(path.replace('/', os.sep)) for path in (os.path.join(extract_path, name) for name in old_members)
                 if is_file(path)
             ]
-            
+
             # 判断函数根据 is_dict 选择
             check_func = is_file if is_dict else is_dir
-            
+
             # 新版本中不再使用的文件/目录路径
             should_delete_paths = [
                 path for path in (os.path.join(extract_path, name) for name in should_delete_members)
@@ -811,18 +820,18 @@ class UpdateHandler:
                 excluded = []
                 for ex in self.exclude_files:
                     excluded.extend([f for f in whole_old_file_paths if ex in f])
-                    
+
                 excluded = set(excluded)  # 去重
                 if excluded:
                     print("以下为排除文件不删除：", ", ".join(excluded))
                     whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
-    
+
         except Exception:
             print_warning(f"无法获取需要清理的旧文件或目录，跳过清理")
-    
+
         return whole_old_file_paths, should_delete_paths
 
-            
+
     def _delete_old_files(self, old_file_list: List, old_dir_list: List) -> None:
         """
         获取旧的压缩包文件
@@ -841,8 +850,8 @@ class UpdateHandler:
             if os.path.exists(file):
                 os.remove(file)
 
-        
-    
+
+
     def save_record(self, record_file: str, property_type: str, property_name: str, info: dict) -> None:
         """
         保存更新记录
@@ -862,7 +871,7 @@ class UpdateHandler:
                 "sha256": info.get("sha256", ""),
                 "cnb_id": info.get("id", "")
             }, f)
-        
+
 
     def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Union[Dict,requests.Response]]:
         """
@@ -878,7 +887,7 @@ class UpdateHandler:
             headers = {"User-Agent": "RIME-Updater/1.0"}
             if self.github_token:
                 headers["Authorization"] = f"Bearer {self.github_token}"
-        
+
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
@@ -898,7 +907,7 @@ class UpdateHandler:
                     return response.json()
                 else:
                     return response
-                
+
             except requests.HTTPError as e:
                 if e.response.status_code == 401:
                     print_error("GitHub令牌无效或无权限")
@@ -916,7 +925,7 @@ class UpdateHandler:
             except requests.RequestException as e:
                 print_error(f"请求异常: {str(e)}")
                 return None
-        
+
         return None
 
 
@@ -943,16 +952,16 @@ class UpdateHandler:
             else:
                 downloaded = 0
             headers['Range'] = f'bytes={downloaded}-'
-            
+
             response = requests.get(url, headers=headers, stream=True)
             total_size = int(response.headers.get('content-length', 0)) + downloaded
             block_size = 8192
-            
+
             # 使用 tqdm 包装响应内容的迭代器
             with open(save_path, 'ab') as f:
                 # tqdm 的 total 参数设置为文件总大小，单位为字节
                 with tqdm(total=total_size, initial=downloaded, unit='B', unit_scale=True, desc="下载中") as pbar:
-                    for data in response.iter_content(block_size): 
+                    for data in response.iter_content(block_size):
                         f.write(data)
                         pbar.update(len(data))  # 更新进度条
             return True
@@ -982,22 +991,22 @@ class UpdateHandler:
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 exclude_patterns = self.exclude_files  # 获取排除模式
-                
+
                 members = []
                 info_map = {}  # 解码后名字 → ZipInfo 映射
-    
+
                 for info in zip_ref.infolist():
                     try:
                         decoded_name = info.filename.encode('cp437').decode('utf-8')
                     except:
                         decoded_name = info.filename
-    
+
                     if info.is_dir():
                         continue
-    
+
                     members.append(decoded_name)
                     info_map[decoded_name] = info
-    
+
                 # 计算实际需要解压的文件数量
                 valid_members = []
                 for member in members:
@@ -1006,7 +1015,7 @@ class UpdateHandler:
                     file_name = os.path.basename(normalized_path)
                     # 检查排除规则
                     exclude = any(
-                        fnmatch.fnmatch(normalized_path, pattern) or 
+                        fnmatch.fnmatch(normalized_path, pattern) or
                         fnmatch.fnmatch(file_name, pattern)
                         for pattern in exclude_patterns
                     )
@@ -1014,7 +1023,7 @@ class UpdateHandler:
                         valid_members.append(member)
                     else:
                         print_warning(f"跳过排除文件: {normalized_path}")
-    
+
                 # 使用有效文件数量作为进度条的总数
                 with tqdm(total=len(valid_members), desc="解压中") as pbar:
                     for member in valid_members:
@@ -1031,7 +1040,7 @@ class UpdateHandler:
                                 relative_path = member[len(base_dir):]
                             else:
                                 relative_path = member
-    
+
                         # 标准化路径
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
                         target_path = os.path.join(target_dir, normalized_path)
@@ -1040,7 +1049,7 @@ class UpdateHandler:
                         with zip_ref.open(info) as src, open(target_path, 'wb') as dst:
                             dst.write(src.read())
                         pbar.update(1)  # 更新进度条
-    
+
             return True
         except zipfile.BadZipFile:
             print_error("ZIP文件损坏")
@@ -1080,9 +1089,9 @@ class UpdateHandler:
             """强制终止保障"""
             print_subheader("强制终止残留进程")
             for _ in range(3):
-                subprocess.run(["taskkill", "/IM", "WeaselServer.exe", "/F"], 
+                subprocess.run(["taskkill", "/IM", "WeaselServer.exe", "/F"],
                             shell=True, stderr=subprocess.DEVNULL)
-                subprocess.run(["taskkill", "/IM", "WeaselDeployer.exe", "/F"], 
+                subprocess.run(["taskkill", "/IM", "WeaselDeployer.exe", "/F"],
                             shell=True, stderr=subprocess.DEVNULL)
                 time.sleep(0.5)
             print_success("进程清理完成")
@@ -1091,7 +1100,7 @@ class UpdateHandler:
             """智能部署引擎"""
             try:
                 self.terminate_processes()
-                
+
                 # 服务启动重试机制
                 for retry in range(3):
                     try:
@@ -1109,7 +1118,7 @@ class UpdateHandler:
                             raise
                         print_warning(f"服务启动失败，重试({retry+1}/3)...")
                         time.sleep(1)
-                
+
                 # 部署执行与验证
                 print_subheader("执行部署操作")
                 deployer = os.path.join(os.path.dirname(self.weasel_server), "WeaselDeployer.exe")
@@ -1122,16 +1131,16 @@ class UpdateHandler:
                     stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
-                
+
                 if result.returncode != 0:
                     raise Exception(f"部署失败: {result.stderr.strip()}")
-                    
+
                 # print_success("部署成功完成")
                 return True
             except Exception as e:
                 print_error(f"部署失败: {str(e)}")
                 return False
-    
+
     if SYSTEM_TYPE == 'macos':
         def deploy_for_mac(self) -> bool:
             """macOS自动部署"""
@@ -1155,14 +1164,20 @@ class UpdateHandler:
             else:
                 print_error("找不到可执行文件：{executable}")
                 return False
-    
+
     if SYSTEM_TYPE == 'ios':
-        def deploy_for_hamster(self) -> None:
-            """Hamster跳转部署"""
+        def deploy_for_ios(self) -> None:
+            """ios跳转部署"""
+            if self.engine == '仓输入法':
+                deploy_url = "hamster://dev.fuxiao.app.hamster/rime?deploy"
+                info_string = "将于3秒后跳转到仓输入法进行自动部署"
+            else:
+                deploy_url = "hamster3://dev.fuxiao.app.hamster3/rime?action=deploy"
+                info_string = "将于3秒后跳转到元书输入法进行自动部署"
             import webbrowser
-            print_warning("将于3秒后跳转到Hamster输入法进行自动部署")
+            print_warning(info_string)
             time.sleep(3)
-            webbrowser.open("hamster://dev.fuxiao.app.hamster/rime?deploy", new=1)
+            webbrowser.open(deploy_url, new=1)
             print_success("已自动触发部署")
 
 
@@ -1214,7 +1229,7 @@ class CombinedUpdater:
         # 获取新的实际文件名
         try:
             new_scheme_file, new_dict_file = self.config_manager.get_actual_filenames(scheme_key)
-            
+
             # 更新配置
             self.config_manager.config.set('Settings', 'scheme_file', new_scheme_file)
             self.config_manager.config.set('Settings', 'dict_file', new_dict_file)
@@ -1248,7 +1263,7 @@ class CombinedUpdater:
         """从仓库数据中提取方案更新"""
         if not self.shared_releases:
             return None
-            
+
         for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.scheme_updater.scheme_file:
@@ -1263,12 +1278,12 @@ class CombinedUpdater:
                         "id": asset.get("id", "")                                               # 仅cnb
                     }
         return None
-    
+
     def _extract_dict_update(self) -> Optional[Dict]:
         """从仓库数据中提取词库更新"""
         if not self.shared_releases:
             return None
-            
+
         for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
@@ -1289,7 +1304,7 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
-        
+
 
     def run(self) -> int:
         """
@@ -1301,7 +1316,7 @@ class SchemeUpdater(UpdateHandler):
         print_header("方案更新流程")
         # 使用缓存信息而不是重复API调用
         remote_info = self.update_info
-        
+
         target_file = os.path.join(self.custom_dir, self.scheme_file)
         # 校验本地文件和远端文件sha256
         if remote_info['sha256']:
@@ -1309,7 +1324,7 @@ class SchemeUpdater(UpdateHandler):
                 print_success("文件内容未变化，将更新本地保存的记录")
                 self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
                 return 0
-        
+
         # 下载更新
         _suffix = remote_info['sha256'] or remote_info['id']
         temp_file = os.path.join(self.custom_dir, f"temp_scheme_{_suffix}.zip")
@@ -1321,7 +1336,7 @@ class SchemeUpdater(UpdateHandler):
                 os.remove(os.path.join(self.custom_dir, old_should_drop))
         if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
-            
+
         # 方案变更时清除旧文件
         if not self.clean_old_schema():
             # 获取上次下载的压缩包的内容
@@ -1380,7 +1395,7 @@ class SchemeUpdater(UpdateHandler):
         if os.path.exists(build_dir):
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
-            
+
     def clean_old_schema(self) -> bool:
         """当变更所使用的方案时，删除旧文件"""
         cleaned = False
@@ -1393,7 +1408,7 @@ class SchemeUpdater(UpdateHandler):
                 print_warning("已移除旧方案zip文件")
                 cleaned = True
         return cleaned
-            
+
 
 # ====================== 词库更新 ======================
 class DictUpdater(UpdateHandler):
@@ -1436,7 +1451,7 @@ class DictUpdater(UpdateHandler):
                 is_dict=True
             ):
                 raise Exception("解压失败")
-        
+
             # 保存记录
             self.save_record(self.record_file, "dict_file", self.dict_file, info)
         except Exception as e:
@@ -1456,7 +1471,7 @@ class DictUpdater(UpdateHandler):
         print_header("词库更新流程")
         # 使用缓存信息而不是重复API调用
         remote_info = self.update_info
-        
+
         target_file = os.path.join(self.custom_dir, self.dict_file)
         # 校验本地文件和远端文件sha256
         if remote_info['sha256']:
@@ -1476,7 +1491,7 @@ class DictUpdater(UpdateHandler):
                 os.remove(os.path.join(self.custom_dir, old_should_drop))
         if not self.download_file(remote_info["url"], temp_file, is_continue):
             return -1
-        
+
         # 方案变更时清除旧文件
         if not self.clean_old_dict():
             # 获取上次下载的压缩包的内容
@@ -1484,7 +1499,7 @@ class DictUpdater(UpdateHandler):
             if old_files:
                 self._delete_old_files(old_files, _)
                 print_warning("已移除上个版本的词库文件")
-        
+
         try:
             self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
             print_success("词库更新完成")
@@ -1495,7 +1510,7 @@ class DictUpdater(UpdateHandler):
             if os.path.exists(temp_file):
                 os.remove(temp_file)
             return -1
-            
+
     def clean_old_dict(self) -> None:
         """当变更所使用的方案时，删除旧文件"""
         cleaned = False
@@ -1517,7 +1532,7 @@ class ModelUpdater(UpdateHandler):
         self.record_file = os.path.join(self.custom_dir, "model_record.json")
         # 模型固定配置
         self.model_file = "wanxiang-lts-zh-hans.gram"
-        self.target_path = os.path.join(self.extract_path, self.model_file) 
+        self.target_path = os.path.join(self.extract_path, self.model_file)
 
     def check_update(self) -> Optional[Dict]:
         """检查模型更新"""
@@ -1531,7 +1546,7 @@ class ModelUpdater(UpdateHandler):
         )
         if not release:
             return None
-            
+
         release = release[-1] if isinstance(release, list) else release
         for asset in release.get("assets", []):
             if asset["name"] == self.model_file:
@@ -1568,7 +1583,7 @@ class ModelUpdater(UpdateHandler):
 
         # 下载到临时文件
         _suffix = remote_info['sha256'] or remote_info['id']
-        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{_suffix}.tmp") 
+        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{_suffix}.tmp")
         if os.path.exists(temp_file):
             is_continue = True
         else:
@@ -1582,7 +1597,7 @@ class ModelUpdater(UpdateHandler):
         # 停止服务再覆盖
         if hasattr(self, 'terminate_processes'):
             self.terminate_processes()  # 复用终止进程逻辑
-        
+
         # 覆盖目标文件
         try:
             if os.path.exists(self.target_path):
@@ -1592,7 +1607,7 @@ class ModelUpdater(UpdateHandler):
         except Exception as e:
             print_error(f"模型文件替换失败: {str(e)}")
             return -1
-        
+
         # 返回更新成功状态
         print_success("模型更新完成")
         return 1
@@ -1626,7 +1641,7 @@ class ScriptUpdater(UpdateHandler):
         releases = self.remote_api_request("https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases")
         if not releases:
             return None
-        
+
         remote_version = releases[0].get("tag_name", "DEFAULT")
         if not self.compare_version(UPDATE_TOOLS_VERSION, remote_version):
             return None
@@ -1639,7 +1654,7 @@ class ScriptUpdater(UpdateHandler):
                     "tag": remote_version,
                     "description": update_info
                 }
-            
+
     def update_script(self, url: str) -> bool:
         """更新脚本"""
         res = self.remote_api_request(url=url, output_json=False)
@@ -1651,20 +1666,20 @@ class ScriptUpdater(UpdateHandler):
         else:
             print_error("脚本更新失败，请检查网络连接或手动下载最新脚本")
             return False
-        
+
     def compare_version(self, local_version: str, remote_version: str) -> bool:
         if not local_version.startswith('v'):
             return False
         if local_version != remote_version:
             return True
         return False
-    
+
     def run(self):
         remote_info = self.update_info
         if not remote_info:
             print_warning("未找到脚本更新信息")
             return False
-        
+
         remote_version = remote_info.get("tag", "DEFAULT")
         user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
         if user_choose.lower() == 'y':
@@ -1692,7 +1707,7 @@ def calculate_sha256(file_path) -> Optional[str]:
     except Exception as e:
         print_error(f"计算哈希失败: {str(e)}")
         return None
-    
+
 def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
@@ -1700,7 +1715,7 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
-    
+
     # 脚本更新提示
     if has_script_update:
         print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
@@ -1712,21 +1727,21 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         scheme_update_info = scheme_updater.update_info
         remote_time = datetime.strptime(scheme_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         scheme_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-        
+
         print(f"\n{COLOR['WARNING']}==== 方案更新可用 ===={COLOR['ENDC']}")
         print(f"{COLOR['WARNING']}版本: {scheme_update_info.get('tag', '未知版本')}{COLOR['ENDC']}")
         print(f"发布时间: {scheme_local}")
-        
+
         raw_description = scheme_update_info.get('description', '无更新说明')
 
         try:
             update_cache_dir = scheme_updater.custom_dir
             os.makedirs(update_cache_dir, exist_ok=True)
-                    
+
             # 创建文件名（包含版本和时间）
             version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
             date_str = remote_time.strftime("%Y%m%d")
-            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")   
+            filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")
 
             # 移除已有的md文件
             for update_cache_file in os.listdir(update_cache_dir):
@@ -1740,11 +1755,11 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
                     md_file.write(f"**发布时间**: {scheme_local}\n\n")
                     md_file.write("## 更新内容\n\n")
                     md_file.write(raw_description)
-            
+
                 print_success(f"更新说明已保存到: {filename}")
         except Exception as e:
             print_error(f"保存更新说明失败: {str(e)}")
-            
+
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
         dict_update_info = dict_updater.update_info
@@ -1753,7 +1768,7 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         print(f"\n{COLOR['WARNING']}==== 词库更新可用 ===={COLOR['ENDC']}")
         print(f"版本: {dict_update_info.get('tag', '未知版本')}")
         print(f"发布时间: {dict_local}")
-        
+
     # 模型更新提示(仅当有更新时显示)
     if has_model_update:
         model_update_info = model_updater.update_info
@@ -1761,20 +1776,20 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
         model_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{COLOR['WARNING']}==== 模型更新可用 ===={COLOR['ENDC']}")
         print(f"发布时间: {model_local}")
-        
+
     # 如果没有更新显示提示
     if not (has_scheme_update or has_dict_update or has_model_update):
         print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
 
 def perform_auto_update(
-    config_manager: ConfigManager, 
+    config_manager: ConfigManager,
     combined_updater: Optional[CombinedUpdater] = None,
     is_config_triggered: bool = False
 ) -> Optional[List[int]]:
     """执行自动更新流程"""
     if not is_config_triggered:
         print_header("智能更新检测中...")
-    
+
     # 创建或使用已有的组合更新器
     if combined_updater is None:
         # 只有在配置触发模式下才显示更新检查信息
@@ -1782,12 +1797,12 @@ def perform_auto_update(
             print_subheader("正在检查可用更新...")
             use_mirror = config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
             if use_mirror:
-                request_target = "cnb.cool" 
+                request_target = "cnb.cool"
                 print(f"{COLOR['WARNING']}脚本更新依然使用api.github.com，请保持网络畅通...{COLOR['ENDC']}")
             else:
                 request_target = "api.github.com"
             print(f"{COLOR['BLUE']}请求 {request_target} 中...{COLOR['ENDC']}")
-        
+
         combined_updater = CombinedUpdater(config_manager)
         combined_updater.fetch_all_updates()
     # 获取各个更新器的实例
@@ -1802,7 +1817,7 @@ def perform_auto_update(
     # 脚本更新检查（仅当有实际更新时才提示）
     if script_updater.update_info:
         script_updater.run()
-        
+
     # 初始化更新状态
     scheme_updated = 0
     dict_updated = 0
@@ -1845,13 +1860,13 @@ def perform_auto_update(
         elif updated == [0,0,0]  and deployer:
             print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
         else:
-            print_header("尝试跳转到Hamster重新部署输入法")
+            print_header("尝试跳转到输入法App重新部署")
             if is_config_triggered:
-                deployer.deploy_for_hamster()
+                deployer.deploy_for_ios()
             else:
-                is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
+                is_deploy = input("是否跳转到输入法App进行部署(y/n)? ").strip().lower()
                 if is_deploy == 'y':
-                    deployer.deploy_for_hamster()
+                    deployer.deploy_for_ios()
     else:
         if -1 in updated and deployer:
             print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
@@ -1877,21 +1892,21 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
         use_mirror = config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
         if use_mirror:
             print(f"{COLOR['WARNING']}脚本更新依然使用api.github.com，请保持网络畅通...{COLOR['ENDC']}")
-            request_target = "cnb.cool" 
+            request_target = "cnb.cool"
         else:
             request_target = "api.github.com"
         print(f"{COLOR['BLUE']}请求 {request_target} 中...{COLOR['ENDC']}")
-    
+
     # 创建组合更新器并获取所有更新信息
     combined_updater = CombinedUpdater(config_manager)
     combined_updater.fetch_all_updates()
-    
+
     # 获取各个更新器的实例
     script_updater = combined_updater.script_updater
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
-    
+
     # 使用函数打印更新状态
     if show:
         print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
@@ -1917,12 +1932,12 @@ def main():
     if UPDATE_TOOLS_VERSION.startswith("DEFAULT"):
         print(f"{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/rimeinn/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
     else:
-        print(f"{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")    
+        print(f"{COLOR['OKCYAN']}[i] 当前更新工具版本：{UPDATE_TOOLS_VERSION}{COLOR['ENDC']}")
 
     try:
         config_manager = ConfigManager()
         combined_updater = None  # 初始化组合更新器
-        
+
         # 检查是否启用了自动更新
         auto_update = config_manager.config.getboolean('Settings', 'auto_update', fallback=False)
         if auto_update:
@@ -1930,8 +1945,8 @@ def main():
             combined_updater = create_and_show_updates(config_manager, show=False)
             # 执行自动更新并退出
             perform_auto_update(
-                config_manager, 
-                combined_updater=combined_updater, 
+                config_manager,
+                combined_updater=combined_updater,
                 is_config_triggered=True
             )
         # 非自动更新模式下显示更新状态
@@ -1941,10 +1956,10 @@ def main():
         # 主菜单循环
         while True:
             # 选择更新类型
-            print_header("更新类型选择") 
+            print_header("更新类型选择")
             print("[1] 词库下载\n[2] 方案下载\n[3] 模型下载\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
-            
+
             if choice == '6':
                 # 修改配置
                 config_manager.display_config_instructions()
@@ -1974,8 +1989,8 @@ def main():
                     combined_updater = create_and_show_updates(config_manager)
                 # 执行自动更新
                 updated = perform_auto_update(
-                    config_manager, 
-                    combined_updater=combined_updater, 
+                    config_manager,
+                    combined_updater=combined_updater,
                     is_config_triggered=False
                 )
                 # 处理更新结果
@@ -2016,10 +2031,10 @@ def main():
                     print_header("重新部署输入法")
                     deployer.deploy_for_mac()
                 elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
-                    print_header("尝试跳转到Hamster重新部署输入法")
-                    is_deploy = input("是否跳转到Hamster进行部署(y/n)? ").strip().lower()
+                    print_header("尝试跳转到输入法App重新部署")
+                    is_deploy = input("是否跳转到输入法App进行部署(y/n)? ").strip().lower()
                     if is_deploy == 'y':
-                        deployer.deploy_for_hamster()
+                        deployer.deploy_for_ios()
                 else:
                     if deployer and updated == 1:
                         print_warning("请手动部署输入法")

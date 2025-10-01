@@ -180,14 +180,14 @@ EOF
 apply() {
   local source_dir="$1"
   local base_dir="${2:-$source_dir}"  # 基准目录，默认为第一个参数，$2和$source_dir哪个不为空就取哪个
-  
+
   # 计算目标路径
-  local relative_path="${source_dir#$base_dir/}" # 从source_dir删除开头的base_dir部分
+  local relative_path="${source_dir#$base_dir}" # 从source_dir删除开头的base_dir部分
   local target_path="$DEPLOY_DIR/${relative_path:+$relative_path/}" # relative_path不为空则使用relative_path，否则使用空值
-  
+
   # 确保目标目录存在
   mkdir -p "$target_path"
-  
+
   # 处理当前目录的文件和子目录
   for item in "$source_dir"/*; do
     if [[ -f "$item" ]]; then
@@ -306,7 +306,7 @@ update_schema() {
     # 应用更新
     apply "$TEMP_DIR/${schemaname%.zip}"
     log INFO "方案文件更新成功"
-    return 0 
+    return 0
   else
     log INFO "远程方案文件版本号为 $remote_version"
     log INFO "本地方案文件版本号为 $local_version, 您目前无需更新它"
@@ -403,7 +403,7 @@ update_gram() {
         X_CNB_PAGE_SIZE=$(echo "$X_CNB_PAGE_SIZE" | tr -d -c 0-9)
         # 获取最后一页
         last_page=$(( (X_CNB_TOTAL + X_CNB_PAGE_SIZE - 1) / X_CNB_PAGE_SIZE ))
-        
+
         if ! curl -G -sL -H "accept: application/vnd.cnb.web+json" \
             --data-urlencode "page=${last_page}" \
             --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb_gram.json"; then
@@ -579,7 +579,7 @@ main() {
     esac
     shift
   done
-  
+
   engine_check
   # 获取输入法配置路径
   if [ "$ENGINE" = "fcitx5" ]; then
@@ -587,7 +587,7 @@ main() {
   else
     DEPLOY_DIR="$HOME/Library/Rime"
   fi
-  
+
   # 判断是否设置了部署目录
   if [[ -n "$DEPLOY_DIR" ]]; then
     if [[ ! -d "$DEPLOY_DIR" ]]; then
