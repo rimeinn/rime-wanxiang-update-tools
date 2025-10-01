@@ -401,7 +401,7 @@ update_schema() {
         if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
           log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
         else
-          mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$exclude_file")"
+          # mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$exclude_file")"
           cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
         fi
       fi
