@@ -368,7 +368,7 @@ update_dict() {
     fi
     log INFO "验证成功，开始更新词典文件"
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-    dictname="${dictname:2}" && dictname="${dictname%.zip}"
+    dictname="${dictname%.zip}"
     cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
     log INFO "词典文件更新成功"
     return 0
