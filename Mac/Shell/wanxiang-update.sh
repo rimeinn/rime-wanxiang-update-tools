@@ -482,7 +482,7 @@ Usage: $0 [OPTIONS]
   --mirror [github|cnb]        选择下载源 (默认: github)
   --engine [fcitx5|squirrel]   设置输入法引擎 (必需，也可在脚本中设置对应变量)
   --schema [base|pro]          更新方案类型
-  --fuzhu SCHEMA               更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm)
+  --fuzhu SCHEMA               更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm|shouyou)
   --dict                       更新词典
   --gram                       更新语法模型
   --help                       显示此帮助信息
