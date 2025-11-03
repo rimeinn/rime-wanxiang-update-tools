@@ -17,7 +17,7 @@ readonly CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 readonly SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 readonly GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 readonly TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
-readonly FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
+readonly FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm" "shouyou")
 readonly DELETE_FILES=("简纯+.trime.yaml" "squirrel.yaml" "weasel.yaml"
   "README.md" "CHANGELOG.md" "version.txt"
   "custom_phrase.txt" "lua/tips/tips_user.txt预留的自定义文件")
@@ -158,7 +158,7 @@ Usage: $0 [OPTIONS]
   --depdir DIR              设置部署目录 (必需)
   --inputime [fcitx5|ibus]  设置输入法平台
   --schema [base|pure|pro]  更新方案类型
-  --fuzhu FUZHU             更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm)
+  --fuzhu FUZHU             更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm|shouyou)
   --dict                    更新词典
   --gram                    更新语法模型
   --no-color                禁用彩色输出
