@@ -42,7 +42,8 @@ SCHEME_MAP = {
     '3': 'zrm',
     '4': 'tiger',
     '5': 'wubi',
-    '6': 'hanxin'
+    '6': 'hanxin',
+    '7': 'shouyou'
 }
 
 # ====================== 系统检测函数 ===========================
@@ -418,10 +419,10 @@ class ConfigManager:
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
             print("[1]-墨奇 [2]-小鹤 [3]-自然码")
-            print("[4]-虎码 [5]-五笔 [6]-汉心")
+            print("[4]-虎码 [5]-五笔 [6]-汉心 [7]-首右")
 
             while True:
-                choice = input("请选择你的辅助码方案（1-6）: ").strip()
+                choice = input("请选择你的辅助码方案（1-7）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
 

@@ -15,7 +15,7 @@ CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
-FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm")
+FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm" "shouyou")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 
