@@ -249,7 +249,8 @@ script_check() {
         jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
     )
 
-    if [[ "$remote_version" > "$local_version" ]]; then
+    if printf "%s\n" "$remote_version" "$local_version" |
+      sort -V | head -n1 | grep -q "$remote_version$"; then
       log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
       log WARN "下载地址: https://github.com/rimeinn/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-linux"
     else
@@ -350,7 +351,8 @@ update_schema() {
 
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
 
-  if [[ "$remote_version" > "$local_version" ]]; then
+  if printf "%s\n" "$remote_version" "$local_version" |
+    sort -V | head -n1 | grep -q "$remote_version$"; then
     log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
     local changelog
     if [[ "$mirror" == "github" ]]; then
