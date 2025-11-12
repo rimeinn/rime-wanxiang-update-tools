@@ -199,6 +199,10 @@ apply() {
     fi
   done
 }
+# 获取更新的版本号
+get_newer() {
+    echo "$1 $2" | tr ' ' '\n' | sed 's/^v//' | sort -V | tail -n1 | sed 's/^/v/'
+}
 update_schema() {
   local mirror="$1" fuzhu="$2" gram="$3"
   # 缓存 API 响应
@@ -239,7 +243,8 @@ update_schema() {
     remote_version="${remote_version#"refs/tags/"}"
   fi
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
-  if [[ "$remote_version" > "$local_version" ]]; then
+  newer=$(get_newer $remote_date $local_version)
+  if [[ "$local_version" != "$newer" ]]; then
     log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
     local changelog
     if [[ "$mirror" == "github" ]]; then
@@ -287,22 +292,13 @@ update_schema() {
     while IFS= read -r _line; do
       if [[ "$_line" != \#* ]]; then
         exclude_file="$_line"
-        # if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-        #   log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-        # else
-        #   cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
-        # fi
         if [[ -e "$TEMP_DIR/$exclude_file" ]]; then
           log WARN "项目 $TEMP_DIR/$exclude_file 为排除文件不更新"
           rm -rf "$TEMP_DIR/$exclude_file"
         fi
       fi
     done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
-    # 单独处理语法模型
-    # [[ "$gram" == "true" ]] || cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
-    #   "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
-    # rm -rf "${DEPLOY_DIR:?}"
-    # cp -rf "$TEMP_DIR/${schemaname%.zip}" "$DEPLOY_DIR"
+
     # 应用更新
     apply "$TEMP_DIR/${schemaname%.zip}"
     log INFO "方案文件更新成功"
