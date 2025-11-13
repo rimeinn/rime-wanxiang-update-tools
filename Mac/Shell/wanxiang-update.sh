@@ -243,7 +243,7 @@ update_schema() {
     remote_version="${remote_version#"refs/tags/"}"
   fi
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
-  newer=$(get_newer $remote_date $local_version)
+  newer=$(get_newer $remote_version $local_version)
   if [[ "$local_version" != "$newer" ]]; then
     log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
     local changelog
