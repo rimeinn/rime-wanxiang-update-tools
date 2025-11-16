@@ -478,8 +478,10 @@ class ConfigManager:
             dict_file = dict_checker.get_latest_file()
 
             # 验证文件名是否有效
-            if not scheme_file or not dict_file:
-                raise ValueError(f"未找到匹配的文件: {scheme_pattern} 或 {dict_pattern}")
+            if not scheme_file:
+                raise ValueError(f"未找到匹配的文件: {scheme_pattern}")
+            if not dict_file:
+                raise ValueError(f"未找到匹配的文件: {dict_pattern}")
 
             return scheme_file, dict_file
 
