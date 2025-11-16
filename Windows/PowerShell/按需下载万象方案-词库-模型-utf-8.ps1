@@ -24,8 +24,8 @@ function Exit-Tip {
     exit $exitCode
 }
 
-if ($auto -and (-not $schemaType -or $schemaType -notmatch '^[0-6]$')) {
-    Write-Host "错误：自动模式下必须通过 -schemaType 指定方案类型编号（0-6），如 -schemaType 6" -ForegroundColor Red
+if ($auto -and (-not $schemaType -or $schemaType -notmatch '^[0-7]$')) {
+    Write-Host "错误：自动模式下必须通过 -schemaType 指定方案类型编号（0-7），如 -schemaType 6" -ForegroundColor Red
     Exit-Tip 1
 }
 
@@ -33,14 +33,14 @@ if ($help -or $args -contains '-h' -or $args -contains '--help') {
     # 仅在非 help 模式下强制要求 schemaType
     if (-not $help -and -not ($args -contains '-h') -and -not ($args -contains '--help')) {
         if (-not $schemaType) {
-            Write-Host "错误：-schemaType 参数为必填项，请指定方案类型编号（0-6）。" -ForegroundColor Red
+            Write-Host "错误：-schemaType 参数为必填项，请指定方案类型编号（0-7）。" -ForegroundColor Red
             Write-Host "示例：pwsh -File .\\按需下载万象方案-词库-模型-utf-8.ps1 -schemaType 6"
             Exit-Tip 1
         }
     }
     Write-Host "Rime 万象 PowerShell 更新工具 - 命令行参数说明" -ForegroundColor Cyan
     Write-Host "---------------------------------------------"
-    Write-Host "-schemaType <编号>   方案类型编号，0-6 (如 6 表示自然码)"
+    Write-Host "-schemaType <编号>   方案类型编号，0-7 (如 6 表示自然码)"
     Write-Host "-noSchema            不更新方案"
     Write-Host "-noDict              不更新词库"
     Write-Host "-noModel             不更新模型"
@@ -73,7 +73,7 @@ $IsUpdateDictDown = $true
 $IsUpdateModel = $true
 
 # 设置自动更新时选择的方案，注意必须包含双引号，例如：$InputSchemaType = "0";
-# [0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码"
+# [0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码; [7]-首右"
 $InputSchemaType = "6";
 
 # 设置自动更新时要跳过的文件列表，配置好后删除注释符号
@@ -201,6 +201,7 @@ $KeyTable = @{
     "4" = "tiger";
     "5" = "wubi";
     "6" = "zrm";
+    "7" = "shouyou"
 }
 
 $UriHeader = @{
@@ -209,7 +210,7 @@ $UriHeader = @{
     'Accept-Charset' = 'utf-8'
 }
 
-$SchemaDownloadTip = "[0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码";
+$SchemaDownloadTip = "[0]-标准版; [1]-小鹤; [2]-汉心; [3]-墨奇; [4]-虎码; [5]-五笔; [6]-自然码; [7]-首右";
 
 $GramKeyTable = @{
     "0" = "zh-hans.gram";
@@ -798,9 +799,9 @@ $promptDictDown = "是否下载词库:`n[0]-下载; [1]-不下载"
 if ($AutoUpdate) {
     Write-Host "自动更新模式，将自动下载最新的版本" -ForegroundColor Green
     Write-Host "你配置的方案号为：$InputSchemaType" -ForegroundColor Green
-    # 方案号只支持0-6
-    if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 6) {
-        Write-Error "错误：方案号只能是0-6"
+    # 方案号只支持0-7
+    if ($InputSchemaType -lt 0 -or $InputSchemaType -gt 7) {
+        Write-Error "错误：方案号只能是0-7"
         Exit-Tip 1
     }
     $InputAllUpdate = "0"
