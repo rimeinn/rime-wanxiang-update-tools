@@ -1,7 +1,7 @@
 # Rime 万象更新工具 - iOS 版本 
 **需下载Hamster仓输入法或元书输入法和Pythonista 3或a-shell或pyto或Code App**
 
-[Hamster](https://apps.apple.com/us/app/%E4%BB%93%E8%BE%93%E5%85%A5%E6%B3%95/id6446617683)
+[Hamster](https://apps.apple.com/us/app/%E4%BB%93%E8%BE%93%E5%85%A5%E6%B3%95/id6446617683) /
 [元书输入法](https://apps.apple.com/us/app/%E5%85%83%E4%B9%A6%E8%BE%93%E5%85%A5%E6%B3%95/id6744464701)
 
 [Pythonista 3](https://apps.apple.com/us/app/pythonista-3/id1085978097) / [a-shell](https://apps.apple.com/us/app/a-shell/id1473805438) / [pyto](https://apps.apple.com/us/app/pyto-ide/id1436650069) / [Code App](https://apps.apple.com/us/app/code-app/id1512938504)
