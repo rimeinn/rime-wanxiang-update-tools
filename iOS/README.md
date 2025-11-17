@@ -8,7 +8,7 @@
 
 ## 项目简介
 
-本工具用于在iOS系统上自动更新Rime输入法（Hamster）的万象方案、词库和模型。
+本工具用于在iOS系统上自动更新Rime输入法（Hamster仓输入法或Hamster3元书输入法）的万象方案、词库和模型。
 
 ## 版本列表
 
@@ -19,11 +19,11 @@
 
 ### Python版本
 
-1. 将脚本放在Hamster输入法路径下
+1. 将脚本放在Hamster（仓输入法）或Hamster3（元书输入法）路径下
 2. 运行脚本，选择对应的版本
 3. 按照说明文档进行操作
 4. 工具将自动完成更新
-5. 更新完成后需手动打开Hamster输入法重新部署
+5. 更新完成后会自动跳转相应输入法重新部署
 
 **注意：**
 若使用[a-shell](https://apps.apple.com/us/app/a-shell/id1473805438)，则打开a-shell后，先下载所需包
@@ -32,7 +32,7 @@
 pip install requests tqdm
 ```
 
-然后输入`pickFolder`，选择Hamster输入法的文件夹（也是脚本所在的文件夹），运行：
+然后输入`pickFolder`，选择Hamster（仓输入法）或Hamster3（元书输入法）的文件夹（也是脚本所在的文件夹），运行：
 
 ```shell
 python rime-wanxiang-update-win-mac-ios-android.py
