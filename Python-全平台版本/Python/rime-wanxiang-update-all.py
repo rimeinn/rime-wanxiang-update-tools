@@ -14,6 +14,7 @@ import re
 from typing import Tuple, Optional, List, Dict, Union
 from math import ceil
 from tqdm import tqdm
+import argparse
 
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -1786,7 +1787,8 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
 def perform_auto_update(
     config_manager: ConfigManager,
     combined_updater: Optional[CombinedUpdater] = None,
-    is_config_triggered: bool = False
+    is_config_triggered: bool = False,
+    include_script:bool = False
 ) -> Optional[List[int]]:
     """执行自动更新流程"""
     if not is_config_triggered:
@@ -1817,7 +1819,7 @@ def perform_auto_update(
         print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
 
     # 脚本更新检查（仅当有实际更新时才提示）
-    if script_updater.update_info:
+    if script_updater.update_info and include_script:
         script_updater.run()
 
     # 初始化更新状态
@@ -1930,6 +1932,10 @@ def open_config_file(config_path) -> None:
 
 # ====================== 主程序 ======================
 def main():
+    parser = argparse.ArgumentParser(description="选择是否更新脚本本身")
+    parser.add_argument('-s', '--script', help='更新脚本', action='store_true')
+    args = parser.parse_args()
+
     print(f"\n{COLOR['OKCYAN']}[i] 当前系统为：{SYSTEM_TYPE} {COLOR['ENDC']}")
     if UPDATE_TOOLS_VERSION.startswith("DEFAULT"):
         print(f"{COLOR['WARNING']}[!] 您下载的是非发行版脚本，请勿直接使用，请去 releases 页面下载最新版本：https://github.com/rimeinn/rime-wanxiang-update-tools/releases{COLOR['ENDC']}")
@@ -1949,7 +1955,8 @@ def main():
             perform_auto_update(
                 config_manager,
                 combined_updater=combined_updater,
-                is_config_triggered=True
+                is_config_triggered=True,
+                include_script=args.script
             )
         # 非自动更新模式下显示更新状态
         if not auto_update:
@@ -1993,7 +2000,8 @@ def main():
                 updated = perform_auto_update(
                     config_manager,
                     combined_updater=combined_updater,
-                    is_config_triggered=False
+                    is_config_triggered=False,
+                    include_script=True
                 )
                 # 处理更新结果
                 if -1 in updated:
