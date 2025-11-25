@@ -19,8 +19,10 @@ function Exit-Tip {
     param(
         [string]$exitCode = 0
     )
-    Write-Host '按任意键退出...'
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    if (-not $auto) {
+        Write-Host '按任意键退出...'
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    }
     exit $exitCode
 }
 
