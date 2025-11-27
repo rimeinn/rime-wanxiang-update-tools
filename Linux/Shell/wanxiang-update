@@ -248,10 +248,12 @@ script_check() {
         jq -r '.[].tag_name' | grep -vE "rc" | sort -rV | head -n 1
     )
 
-    if printf "%s\n" "$remote_version" "$local_version" |
-      sort -V | head -n1 | grep -q "$local_version$"; then
-      log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
-      log WARN "下载地址: https://github.com/rimeinn/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-linux"
+    if [[ "$remote_version" != "$local_version" ]]; then
+      if printf "%s\n" "$remote_version" "$local_version" |
+        sort -V | head -n1 | grep -q "$local_version$"; then
+        log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
+        log WARN "下载地址: https://github.com/rimeinn/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-linux"
+      fi
     else
       log INFO "工具已是最新版本"
     fi
@@ -350,78 +352,80 @@ update_schema() {
 
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
 
-  if printf "%s\n" "$remote_version" "$local_version" |
-    sort -V | head -n1 | grep -q "$local_version$"; then
-    log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
-    local changelog
-    if [[ "$mirror" == "github" ]]; then
-      changelog=$(
-        jq -r --arg version "$remote_version" '.[] |
-        select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
-      )
-    elif [[ "$mirror" == "cnb" ]]; then
-      changelog=$(
-        jq -r --arg version "refs/tags/$remote_version" '.releases[] |
-        select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb.json"
-      )
-    fi
-
-    echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
-    sleep 3
-
-    log INFO "开始更新方案文件"
-    local schemaurl schemaname remote_size
-    if [[ "$mirror" == "github" ]]; then
-      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.browser_download_url')
-      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size')
-    elif [[ "$mirror" == "cnb" ]]; then
-      schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.path')
-      schemaurl="https://cnb.cool$schemaurl"
-      remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size_in_byte')
-    fi
-
-    schemaname=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.name')
-
-    download_and_verify "$schemaurl" "$TEMP_DIR/$schemaname" "$remote_size" "方案文件"
-
-    log INFO "验证成功，开始更新方案文件"
-    unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
-
-    # 删除不需要的文件
-    for _file in "${DELETE_FILES[@]}"; do
-      if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
-        rm -rf "${TEMP_DIR:?}/${schemaname%.zip}/${_file:?}"
+  if [[ "$remote_version" != "$local_version" ]]; then
+    if printf "%s\n" "$remote_version" "$local_version" |
+      sort -V | head -n1 | grep -q "$local_version$"; then
+      log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
+      local changelog
+      if [[ "$mirror" == "github" ]]; then
+        changelog=$(
+          jq -r --arg version "$remote_version" '.[] |
+          select( .tag_name == $version ) | .body' "$TEMP_DIR/github_$fuzhu.json"
+        )
+      elif [[ "$mirror" == "cnb" ]]; then
+        changelog=$(
+          jq -r --arg version "refs/tags/$remote_version" '.releases[] |
+          select( .tag_ref == $version ) | .body' "$TEMP_DIR/cnb.json"
+        )
       fi
-    done
 
-    # 备份排除文件
-    local exclude_file
-    while IFS= read -r _line; do
-      if [[ "$_line" != \#* && -n "$_line" ]]; then
-        exclude_file="$_line"
-        if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-          log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-        else
-          # mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$exclude_file")"
-          cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+      echo -e "$changelog" | sed -n '/## 📝 更新日志/,/## 🚀 下载引导/p' | head -n -1
+      sleep 3
+
+      log INFO "开始更新方案文件"
+      local schemaurl schemaname remote_size
+      if [[ "$mirror" == "github" ]]; then
+        schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.browser_download_url')
+        remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size')
+      elif [[ "$mirror" == "cnb" ]]; then
+        schemaurl=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.path')
+        schemaurl="https://cnb.cool$schemaurl"
+        remote_size=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.size_in_byte')
+      fi
+
+      schemaname=$(get_info "$mirror" "$remote_version" "$fuzhu" | jq -r '.name')
+
+      download_and_verify "$schemaurl" "$TEMP_DIR/$schemaname" "$remote_size" "方案文件"
+
+      log INFO "验证成功，开始更新方案文件"
+      unzip -q "$TEMP_DIR/$schemaname" -d "$TEMP_DIR/${schemaname%.zip}"
+
+      # 删除不需要的文件
+      for _file in "${DELETE_FILES[@]}"; do
+        if [[ -f "$TEMP_DIR/${schemaname%.zip}/$_file" ]]; then
+          rm -rf "${TEMP_DIR:?}/${schemaname%.zip}/${_file:?}"
         fi
+      done
+
+      # 备份排除文件
+      local exclude_file
+      while IFS= read -r _line; do
+        if [[ "$_line" != \#* && -n "$_line" ]]; then
+          exclude_file="$_line"
+          if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
+            log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
+          else
+            # mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$exclude_file")"
+            cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+          fi
+        fi
+      done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
+
+      # 单独处理语法模型
+      if [[ "$gram" != "true" && -f "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" ]]; then
+        cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
+          "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
       fi
-    done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
 
-    # 单独处理语法模型
-    if [[ "$gram" != "true" && -f "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" ]]; then
-      cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
-        "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
+      # 安全删除并复制文件
+      if [[ -d "$DEPLOY_DIR" ]]; then
+        rm -rf "${DEPLOY_DIR:?}"/*
+      fi
+      cp -rf "$TEMP_DIR/${schemaname%.zip}"/* "$DEPLOY_DIR/"
+
+      NEEDED_DEPLOY="true"
+      log INFO "方案文件更新成功"
     fi
-
-    # 安全删除并复制文件
-    if [[ -d "$DEPLOY_DIR" ]]; then
-      rm -rf "${DEPLOY_DIR:?}"/*
-    fi
-    cp -rf "$TEMP_DIR/${schemaname%.zip}"/* "$DEPLOY_DIR/"
-
-    NEEDED_DEPLOY="true"
-    log INFO "方案文件更新成功"
   else
     log INFO "远程方案文件版本号为 $remote_version"
     log INFO "本地方案文件版本号为 $local_version, 您目前无需更新它"
