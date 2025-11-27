@@ -19,8 +19,7 @@ readonly GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 readonly TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
 readonly FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm" "shouyou")
 readonly DELETE_FILES=("简纯+.trime.yaml" "squirrel.yaml" "weasel.yaml"
-  "README.md" "CHANGELOG.md" "version.txt"
-  "custom_phrase.txt" "lua/tips/tips_user.txt预留的自定义文件")
+  "README.md" "CHANGELOG.md" "version.txt" "custom_phrase.txt")
 readonly UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
 readonly CONNECTION_TIMEOUT="10"
 readonly MAX_RETRIES="3"
@@ -250,7 +249,7 @@ script_check() {
     )
 
     if printf "%s\n" "$remote_version" "$local_version" |
-      sort -V | head -n1 | grep -q "$remote_version$"; then
+      sort -V | head -n1 | grep -q "$local_version$"; then
       log WARN "检测到工具最新版本为: $remote_version, 建议更新后继续"
       log WARN "下载地址: https://github.com/rimeinn/rime-wanxiang-update-tools/releases/download/$remote_version/rime-wanxiang-update-linux"
     else
@@ -352,7 +351,7 @@ update_schema() {
   [[ "$remote_version" == v* ]] || remote_version="v$remote_version"
 
   if printf "%s\n" "$remote_version" "$local_version" |
-    sort -V | head -n1 | grep -q "$remote_version$"; then
+    sort -V | head -n1 | grep -q "$local_version$"; then
     log INFO "远程方案文件版本号为 $remote_version, 以下内容为更新日志"
     local changelog
     if [[ "$mirror" == "github" ]]; then
