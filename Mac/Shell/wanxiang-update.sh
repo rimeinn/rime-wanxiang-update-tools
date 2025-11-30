@@ -329,7 +329,7 @@ update_dict() {
   fi
   local local_date remote_date
   if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
-    local_date=$(stat -f %c "$DEPLOY_DIR/dicts/chengyu.txt")
+    local_date=$(stat -f %m "$DEPLOY_DIR/dicts/chengyu.txt")
   else
     local_date=0
   fi
@@ -409,7 +409,7 @@ update_gram() {
   fi
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
-    local_date=$(stat -f %c "$DEPLOY_DIR/$gramname")
+    local_date=$(stat -f %m "$DEPLOY_DIR/$gramname")
   else
     local_date=0
   fi
