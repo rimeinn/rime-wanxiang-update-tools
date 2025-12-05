@@ -468,11 +468,10 @@ update_dict() {
     download_and_verify "$dicturl" "$TEMP_DIR/$dictname" "$remote_size" "词典文件"
 
     log INFO "验证成功，开始更新词典文件"
-    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-    dictname="${dictname%.zip}"
+    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR/${dictname%.zip}"
 
     mkdir -p "$DEPLOY_DIR/dicts"
-    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+    cp -rf "$TEMP_DIR/${dictname%.zip}"/* "$DEPLOY_DIR/dicts"
 
     NEEDED_DEPLOY="true"
     log INFO "词典文件更新成功"
