@@ -363,9 +363,9 @@ update_dict() {
       error_exit "词典文件下载出错，请重试！"
     fi
     log INFO "验证成功，开始更新词典文件"
-    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR"
-    dictname="${dictname%.zip}"
-    cp -rf "$TEMP_DIR/$dictname"/* "$DEPLOY_DIR/dicts"
+    unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR/${dictname%.zip}"
+    mkdir -p "$DEPLOY_DIR/dicts"
+    cp -rf "$TEMP_DIR/${dictname%.zip}" "$DEPLOY_DIR/dicts"
     log INFO "词典文件更新成功"
     return 0
   else
