@@ -264,8 +264,8 @@ function Get-DictExtractedFolderPath {
     )
     $folders = Get-ChildItem -Path $extractPath -Directory
     if ($folders.Count -eq 0) {
-        Write-Host "错误：解压后的目录中没有找到任何文件夹" -ForegroundColor Red
-        Exit-Tip 1
+        Write-Host "警告：解压后的目录中没有找到任何文件夹，直接复制目录中的所有文件" -ForegroundColor Yellow
+        return $extractPath
     } elseif ($folders.Count -gt 1) {
         Write-Host "警告：解压后的目录中有多个文件夹，将使用第一个文件夹" -ForegroundColor Yellow
         Write-Host "文件夹名称: $($folders[0].Name)" -ForegroundColor Green
