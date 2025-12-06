@@ -365,7 +365,12 @@ update_dict() {
     log INFO "验证成功，开始更新词典文件"
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR/${dictname%.zip}"
     mkdir -p "$DEPLOY_DIR/dicts"
-    cp -rf "$TEMP_DIR/${dictname%.zip}" "$DEPLOY_DIR/dicts"
+    # cnb解压后多一层文件夹，因此做如下处理
+    if [[ -e "$TEMP_DIR/${dictname%.zip}/${dictname%.zip}" ]]; then
+      cp -rf "$TEMP_DIR/${dictname%.zip}/${dictname%.zip}/"* "$DEPLOY_DIR/dicts/"
+    else
+      cp -rf "$TEMP_DIR/${dictname%.zip}/"* "$DEPLOY_DIR/dicts/"
+    fi
     log INFO "词典文件更新成功"
     return 0
   else
