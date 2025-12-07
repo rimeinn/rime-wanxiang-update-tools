@@ -289,7 +289,7 @@ cache_api() {
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
       local api_url
-      if [[ "$fuzhu" != "gram" ]]; then
+      if [[ "$fuzhu" != "lts" ]]; then
         api_url="$SCHEMA_API"
       else
         api_url="$GRAM_API"
@@ -486,7 +486,7 @@ update_dict() {
 update_gram() {
   local mirror="$1"
   # 缓存 API 响应
-  cache_api "$mirror" "gram"
+  cache_api "$mirror" "lts"
 
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
@@ -496,9 +496,9 @@ update_gram() {
   fi
 
   if [[ "$mirror" == "github" ]]; then
-    remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "LTS" "lts" | jq -r '.updated_at')
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "model" "lts" | jq -r '.updated_at')
   fi
 
   remote_date=$(date -d "$remote_date" +%s)
@@ -506,12 +506,12 @@ update_gram() {
   if [[ $remote_date -gt $local_date ]]; then
     local gramurl remote_size
     if [[ "$mirror" == "github" ]]; then
-      gramurl=$(get_info "$mirror" "LTS" "gram" | jq -r '.browser_download_url')
-      remote_size=$(get_info "$mirror" "LTS" "gram" | jq -r '.size')
+      gramurl=$(get_info "$mirror" "LTS" "lts" | jq -r '.browser_download_url')
+      remote_size=$(get_info "$mirror" "LTS" "lts" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      gramurl=$(get_info "$mirror" "model" "gram" | jq -r '.path')
+      gramurl=$(get_info "$mirror" "model" "lts" | jq -r '.path')
       gramurl="https://cnb.cool$gramurl"
-      remote_size=$(get_info "$mirror" "model" "gram" | jq -r '.size_in_byte')
+      remote_size=$(get_info "$mirror" "model" "lts" | jq -r '.size_in_byte')
     fi
 
     download_and_verify "$gramurl" "$TEMP_DIR/$gramname" "$remote_size" "语法模型"
