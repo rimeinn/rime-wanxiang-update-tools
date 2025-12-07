@@ -128,7 +128,8 @@ get_info() {
     info=$(
       jq -r --arg version "$version" --arg name "$name" '.[] |
       select( .tag_name == $version ) | .assets.[] |
-      select( .name | test( $name ) )' "$TEMP_DIR/github_$name.json"
+      select( .name | test( $name ) ) |
+      select( if $name == "gram" then (.name | contains("mini") | not ) else true end)' "$TEMP_DIR/github_$name.json"
     )
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
