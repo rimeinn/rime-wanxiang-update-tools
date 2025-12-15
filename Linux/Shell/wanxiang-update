@@ -133,7 +133,7 @@ check_network_connection() {
 }
 
 deps_check() {
-  for _cmd in curl jq unzip; do
+  for _cmd in curl jq unzip find; do
     command -v "$_cmd" >/dev/null || error_exit "缺少必要依赖：$_cmd"
   done
 }
@@ -156,7 +156,7 @@ Usage: $0 [OPTIONS]
   --mirror [github|cnb]     选择下载源 (默认: github)
   --depdir DIR              设置部署目录 (必需)
   --inputime [fcitx5|ibus]  设置输入法平台
-  --schema [base|pure|pro]  更新方案类型
+  --schema [base|pro]       更新方案类型
   --fuzhu FUZHU             更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm|shouyou)
   --dict                    更新词典
   --gram                    更新语法模型
@@ -174,12 +174,6 @@ EOF
 }
 
 exclude_file_check() {
-  if [[ -f "$DEPLOY_DIR/user_exclude_file.txt" ]]; then
-    mv "$DEPLOY_DIR/user_exclude_file.txt" "$DEPLOY_DIR/custom/user_exclude_file.txt"
-    sed -i 's/user_exclude_file\.txt/custom\/user_exclude_file\.txt/g' \
-      "$DEPLOY_DIR/custom/user_exclude_file.txt"
-  fi # 处理旧版文件
-
   if [[ ! -f "$DEPLOY_DIR/custom/user_exclude_file.txt" ]]; then
     log WARN "$DEPLOY_DIR/custom/user_exclude_file.txt 文件不存在"
     log WARN "该文件用于在更新时保留必要的项目"
@@ -193,21 +187,18 @@ exclude_file_check() {
     if [[ "$_createexcludefile" == "YES" ]]; then
       mkdir -p "$DEPLOY_DIR/custom"
       cat >"$DEPLOY_DIR/custom/user_exclude_file.txt" <<"EOF"
+#### 以下内容请不要改动，除非你知道自己在做什么 ####
 # 排除文件本身
 custom/user_exclude_file.txt
-# 用户数据库
-lua/sequence.userdb
-lua/sequence.txt
-lua/input_stats.lua
-zc.userdb
-# 同步
+# 用户数据库与 custom 文件
+*.userdb
+*.custom.yaml
+# 部署信息
 installation.yaml
 user.yaml
-# custom 文件
-default.custom.yaml
-wanxiang_pro.custom.yaml
-wanxiang_reverse.custom.yaml
-wanxiang_mixedcode.custom.yaml
+#### 以上内容请不要改动，除非你知道自己在做什么 ####
+########### 这行以下写入你的自定义排除项 ###########
+
 EOF
       log INFO "已创建 $DEPLOY_DIR/custom/user_exclude_file.txt 文件"
       log INFO "请查看该文件，确认所有项目正确后重新运行该脚本"
@@ -399,17 +390,23 @@ update_schema() {
       done
 
       # 备份排除文件
-      local exclude_file
       while IFS= read -r _line; do
-        if [[ "$_line" != \#* && -n "$_line" ]]; then
-          exclude_file="$_line"
-          if [[ ! -e "$DEPLOY_DIR/$exclude_file" ]]; then
-            log WARN "项目 $DEPLOY_DIR/$exclude_file 不存在，跳过备份！"
-          else
-            # mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$exclude_file")"
-            cp -rf "$DEPLOY_DIR/$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$exclude_file"
+        # 跳过注释行和空行
+        [[ "$_line" == \#* || -z "$_line" ]] && continue
+
+        # 对于所有模式（包括通配符和非通配符），统一使用find处理
+        local exclude_file rel_path
+        while IFS= read -r -d '' exclude_file; do
+          if [[ -e "$exclude_file" ]]; then
+            # 计算相对路径
+            rel_path="${exclude_file#"$DEPLOY_DIR/"}"
+            # 创建目标目录并复制文件
+            mkdir -p "$(dirname "$TEMP_DIR/${schemaname%.zip}/$rel_path")"
+            cp -rf "$exclude_file" "$TEMP_DIR/${schemaname%.zip}/$rel_path"
+            log INFO "已成功备份文件/目录: $rel_path"
           fi
-        fi
+        done < <(find "$DEPLOY_DIR" -path "$DEPLOY_DIR/$_line" \
+          ! -path "$DEPLOY_DIR/sync/*" ! -path "$DEPLOY_DIR/custom/*.custom.yaml" -print0 2>/dev/null)
       done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
 
       # 单独处理语法模型
@@ -598,7 +595,7 @@ main() {
         shift
       fi
       if [[ "$1" != "base" && "$1" != "pure" && "$1" != "pro" ]]; then
-        error_exit "选项 schema 的参数只能为 base/pure/pro 之一"
+        error_exit "选项 schema 的参数只能为 base/pro 之一"
       else
         schema="$1"
       fi
@@ -679,8 +676,6 @@ main() {
   # 检查当 schema 为 base 或 pure 时，fuzhu 是否也为 base
   if [[ "$schema" == "base" && "$fuzhu" != "base" ]]; then
     error_exit "当选项 schema 为 base 时，选项 fuzhu 必须为 base"
-  elif [[ "$schema" == "pure" && "$fuzhu" != "base" ]]; then
-    error_exit "当选项 schema 为 pure 时，选项 fuzhu 应为 base"
   fi
 
   [[ -n "$mirror" ]] || mirror="github"
