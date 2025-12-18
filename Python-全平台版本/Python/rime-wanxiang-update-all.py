@@ -741,7 +741,15 @@ class UpdateHandler:
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
-        return None
+        if not hasattr(self, 'record_file') or not os.path.exists(self.record_file):
+            return None
+        try:
+            with open(self.record_file, 'r') as f:
+                data = json.load(f)
+                # 读取本地记录的update_time
+                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except:
+            return None
 
     def get_all_dir(self) -> Tuple[str, str, str, str]:
         """获取所有目录"""
@@ -834,6 +842,12 @@ class UpdateHandler:
 
         return whole_old_file_paths, should_delete_paths
 
+
+    def file_compare(self, remote_hash, file_path) -> bool:
+        """比较文件哈希"""
+        if not remote_hash or not os.path.exists(file_path):
+            return False
+        return remote_hash == calculate_sha256(file_path)
 
     def _delete_old_files(self, old_file_list: List, old_dir_list: List) -> None:
         """
@@ -957,11 +971,18 @@ class UpdateHandler:
             headers['Range'] = f'bytes={downloaded}-'
 
             response = requests.get(url, headers=headers, stream=True)
+            
+            # 检查服务器是否支持断点续传
+            mode = 'ab'
+            if is_continue and response.status_code != 206:
+                downloaded = 0
+                mode = 'wb'
+            
             total_size = int(response.headers.get('content-length', 0)) + downloaded
             block_size = 8192
 
             # 使用 tqdm 包装响应内容的迭代器
-            with open(save_path, 'ab') as f:
+            with open(save_path, mode) as f:
                 # tqdm 的 total 参数设置为文件总大小，单位为字节
                 with tqdm(total=total_size, initial=downloaded, unit='B', unit_scale=True, desc="下载中") as pbar:
                     for data in response.iter_content(block_size):
@@ -1355,22 +1376,6 @@ class SchemeUpdater(UpdateHandler):
         print_success("方案更新完成")
         return 1
 
-    def get_local_time(self) -> Optional[datetime]:
-        if not os.path.exists(self.record_file):
-            return None
-        try:
-            with open(self.record_file, 'r') as f:
-                data = json.load(f)
-                # 读取本地记录的update_time
-                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        except:
-            return None
-
-    def file_compare(self, remote_hash, file2) -> bool:
-        hash1 = remote_hash
-        hash2 = calculate_sha256(file2)
-        return hash1 == hash2
-
     def apply_update(self, temp, target, info) -> None:
         """
         应用更新（替换文件）
@@ -1420,22 +1425,6 @@ class DictUpdater(UpdateHandler):
         super().__init__(config_manager)
         self.target_tag = DICT_TAG
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
-
-    def get_local_time(self) -> Optional[datetime]:
-        """获取本地记录的更新时间"""
-        if not os.path.exists(self.record_file):
-            return None
-        try:
-            with open(self.record_file, 'r') as f:
-                data = json.load(f)
-                # 读取本地记录的update_time
-                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        except:
-            return None
-
-    def file_compare(self, remote_hash, file2) -> bool:
-        """sha256对比"""
-        return remote_hash == calculate_sha256(file2)
 
     def apply_update(self, temp, target, info) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
@@ -1576,7 +1565,7 @@ class ModelUpdater(UpdateHandler):
         remote_info = self.update_info
 
         # 无论是否有记录，都检查哈希是否匹配
-        hash_matched = self._check_hash_match(remote_info)
+        hash_matched = self.file_compare(remote_info['sha256'], self.target_path)
 
         # 哈希匹配但记录缺失时的处理
         if hash_matched:
@@ -1614,25 +1603,6 @@ class ModelUpdater(UpdateHandler):
         # 返回更新成功状态
         print_success("模型更新完成")
         return 1
-
-    def get_local_time(self) -> Optional[datetime]:
-        if not os.path.exists(self.record_file):
-            return None
-        try:
-            with open(self.record_file, "r") as f:
-                data = json.load(f)
-                # 读取本地记录的update_time
-                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        except:
-            return None
-
-    def _check_hash_match(self, remote_info) -> bool:
-        """检查临时文件与目标文件哈希是否一致"""
-        temp_hash = remote_info['sha256']
-        if temp_hash:
-            target_hash = calculate_sha256(self.target_path) if os.path.exists(self.target_path) else None
-            return temp_hash == target_hash
-        return False
 
 
 class ScriptUpdater(UpdateHandler):
@@ -1704,7 +1674,7 @@ def calculate_sha256(file_path) -> Optional[str]:
     sha256_hash = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
+            for byte_block in iter(lambda: f.read(65536), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
     except Exception as e:
