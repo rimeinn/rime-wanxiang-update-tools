@@ -684,9 +684,15 @@ main() {
   script_check "$mirror"
 
   # 开始更新
-  [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram"
-  [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu"
-  [[ "$gram" == "false" ]] || update_gram "$mirror"
+  if [[ -n "$schema" && "$gram" == "true" ]]; then
+    [[ "$gram" == "false" ]] || update_gram "$mirror"
+    [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram"
+    [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu"
+  else
+    [[ -z "$schema" ]] || update_schema "$mirror" "$fuzhu" "$gram"
+    [[ "$dict" == "false" ]] || update_dict "$mirror" "$fuzhu"
+    [[ "$gram" == "false" ]] || update_gram "$mirror"
+  fi
 
   # 自动部署
   if [[ "$NEEDED_DEPLOY" == "true" ]]; then
