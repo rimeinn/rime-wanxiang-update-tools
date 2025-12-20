@@ -410,7 +410,7 @@ update_schema() {
       done <"$DEPLOY_DIR/custom/user_exclude_file.txt"
 
       # 单独处理语法模型
-      if [[ "$gram" != "true" && -f "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" ]]; then
+      if [[ -f "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" ]]; then
         cp -rf "$DEPLOY_DIR/wanxiang-lts-zh-hans.gram" \
           "$TEMP_DIR/${schemaname%.zip}/wanxiang-lts-zh-hans.gram"
       fi
