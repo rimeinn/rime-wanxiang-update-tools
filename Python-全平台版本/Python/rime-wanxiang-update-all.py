@@ -734,22 +734,23 @@ class UpdateHandler:
         if self.config_manager.change_config and not isinstance(self, ModelUpdater):
             return True
         remote_time = datetime.strptime(self.update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        local_time = self.get_local_time()
+        local_time, local_id = self.get_local_time()
+        is_diff_id = self.update_info.get("sha256") or self.update_info.get("id") != local_id
 
         # 如果本地没有时间记录或有新更新
-        return not local_time or remote_time > local_time
+        return (not local_time or remote_time > local_time) and is_diff_id
 
     def get_local_time(self) -> Optional[datetime]:
         """获取本地记录的更新时间"""
         if not hasattr(self, 'record_file') or not os.path.exists(self.record_file):
-            return None
+            return None, None
         try:
             with open(self.record_file, 'r') as f:
                 data = json.load(f)
                 # 读取本地记录的update_time
-                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc), data["sha256"] or data["cnb_id"]
         except:
-            return None
+            return None, None
 
     def get_all_dir(self) -> Tuple[str, str, str, str]:
         """获取所有目录"""
@@ -971,13 +972,13 @@ class UpdateHandler:
             headers['Range'] = f'bytes={downloaded}-'
 
             response = requests.get(url, headers=headers, stream=True)
-            
+
             # 检查服务器是否支持断点续传
             mode = 'ab'
             if is_continue and response.status_code != 206:
                 downloaded = 0
                 mode = 'wb'
-            
+
             total_size = int(response.headers.get('content-length', 0)) + downloaded
             block_size = 8192
 
