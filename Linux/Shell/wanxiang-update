@@ -320,7 +320,10 @@ update_schema() {
 
   # 获取本地版本号
   local local_version remote_version
-  if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
+  if [[ -f "$DEPLOY_DIR/lua/wanxiang/wanxiang.lua" ]]; then
+    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang/wanxiang.lua" | awk -F '"' '{print $2}')
+    [[ "$local_version" == v* ]] || local_version="v$local_version"
+  elif [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
     local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
     [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
