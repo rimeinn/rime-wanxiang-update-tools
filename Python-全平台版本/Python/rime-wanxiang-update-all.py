@@ -47,6 +47,18 @@ def get_runtime_base_dir() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def decode_zip_member_name(name: str) -> str:
+    """兼容处理 zip 条目名。
+
+    某些压缩包文件名会以 cp437 读出后再需要按 utf-8 还原；
+    如果当前名字已经是正常 Unicode，则直接返回，避免再次转码时报错。
+    """
+    try:
+        return name.encode('cp437').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return name
 # Zh词库目录
 ZH_DICTS = ZH_DICTS_PRO = "dicts"
 SCHEME_MAP = {
@@ -941,18 +953,12 @@ class UpdateHandler:
         try:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
                 for i in old_zip.namelist():
-                    try:
-                        old_members.append(i.encode('cp437').decode('utf-8'))
-                    except UnicodeDecodeError:
-                        old_members.append(i)
+                    old_members.append(decode_zip_member_name(i))
 
             if new_temp_zip and os.path.isfile(new_temp_zip):
                 with zipfile.ZipFile(new_temp_zip, 'r') as new_zip:
                     for i in new_zip.namelist():
-                        try:
-                            new_members.append(i.encode('cp437').decode('utf-8'))
-                        except UnicodeDecodeError:
-                            new_members.append(i)
+                        new_members.append(decode_zip_member_name(i))
 
             # 处理词库情况下的路径差异
             if is_dict:
@@ -1140,13 +1146,8 @@ class UpdateHandler:
             else:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
 
-            headers = {}
-            # 获取已下载进度
-            if is_continue:
-                downloaded = os.path.getsize(save_path)
-            else:
-                downloaded = 0
-            headers['Range'] = f'bytes={downloaded}-'
+            downloaded = os.path.getsize(save_path) if is_continue else 0
+            headers = {'Range': f'bytes={downloaded}-'} if downloaded else {}
 
             response = requests.get(
                 url,
@@ -1154,12 +1155,29 @@ class UpdateHandler:
                 stream=True,
                 timeout=REQUEST_TIMEOUT,
             )
+
+            # 本地临时文件与远端文件状态不一致时，清掉临时文件并重新全量下载
+            if downloaded and response.status_code == 416:
+                print_warning("检测到断点续传缓存失效，正在清理临时文件并重新下载")
+                if os.path.exists(save_path):
+                    os.remove(save_path)
+                downloaded = 0
+                headers = {}
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    stream=True,
+                    timeout=REQUEST_TIMEOUT,
+                )
+
             response.raise_for_status()
 
             # 检查服务器是否支持断点续传
             mode = 'ab'
-            if is_continue and response.status_code != 206:
+            if downloaded and response.status_code != 206:
                 downloaded = 0
+                mode = 'wb'
+            elif not downloaded:
                 mode = 'wb'
 
             total_size = int(response.headers.get('content-length', 0)) + downloaded
@@ -1206,10 +1224,7 @@ class UpdateHandler:
                 info_map = {}  # 解码后名字 → ZipInfo 映射
 
                 for info in zip_ref.infolist():
-                    try:
-                        decoded_name = info.filename.encode('cp437').decode('utf-8')
-                    except UnicodeDecodeError:
-                        decoded_name = info.filename
+                    decoded_name = decode_zip_member_name(info.filename)
 
                     if info.is_dir():
                         continue
