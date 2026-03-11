@@ -15,6 +15,8 @@ from typing import Tuple, Optional, List, Dict, Union
 from math import ceil
 from tqdm import tqdm
 import argparse
+from dataclasses import dataclass
+from enum import Enum, IntEnum
 
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -29,6 +31,10 @@ DICT_TAG = "dict-nightly"
 MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
+PREDICT_FILE = "wanxiang-lts-zh-hans-predict.db"
+SCRIPT_ASSET_NAME = "rime-wanxiang-update-win-mac-ios-android.py"
+REQUEST_TIMEOUT = 30
+REQUEST_RETRY_COUNT = 2
 
 CNB_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
@@ -111,6 +117,80 @@ def print_error(text):
     print(f"[×] 错误: {text}")
 
 
+class UpdaterError(Exception):
+    """更新工具基础异常"""
+
+
+class ConfigError(UpdaterError):
+    """配置相关异常"""
+
+
+class DetectionError(ConfigError):
+    """路径检测/安装检测异常"""
+
+
+class NetworkError(UpdaterError):
+    """网络请求相关异常"""
+
+
+class SchemeType(str, Enum):
+    BASE = "base"
+    PRO = "pro"
+
+
+class UpdateResult(IntEnum):
+    FAILED = -1
+    SKIPPED = 0
+    UPDATED = 1
+
+
+@dataclass(slots=True)
+class InstallPaths:
+    rime_user_dir: str
+    server_exe: str = ""
+
+    def dict_dir(self, dict_folder: str) -> str:
+        return os.path.join(self.rime_user_dir, dict_folder)
+
+    @property
+    def update_cache_dir(self) -> str:
+        return os.path.join(self.rime_user_dir, "UpdateCache")
+
+
+@dataclass(slots=True)
+class AppConfig:
+    engine: str
+    scheme_type: SchemeType
+    scheme_file: str
+    dict_file: str
+    use_mirror: bool
+    github_token: str
+    exclude_files: List[str]
+    auto_update: bool = False
+    use_predict: bool = False
+
+    @property
+    def zh_dicts_dir(self) -> str:
+        return ZH_DICTS if self.scheme_type is SchemeType.BASE else ZH_DICTS_PRO
+
+
+@dataclass(slots=True)
+class UpdateInfo:
+    name: str
+    url: str
+    update_time: str
+    tag: str = ""
+    description: str = ""
+    sha256: str = ""
+    asset_id: str = ""
+    size: int = 0
+
+    @property
+    def identity(self) -> str:
+        return self.sha256 or self.asset_id
+
+
+
 # ====================== win注册表路径配置 ======================
 if SYSTEM_TYPE == 'windows':
     import winreg
@@ -157,11 +237,16 @@ class ConfigManager:
         self.reload_flag = False
         self.auto_update = False
         self.change_config = False
+        self.app_config: Optional[AppConfig] = None
+        self.install_paths: Optional[InstallPaths] = None
         self._ensure_config_exists()
 
-    def detect_installation_paths(self, show=False):
+    def detect_installation_paths(self, show: bool = False) -> InstallPaths:
         """自动检测安装路径"""
-        detected = {}
+        detected: Dict[str, str] = {
+            'rime_user_dir': '',
+            'server_exe': '',
+        }
         if SYSTEM_TYPE == 'windows':
             for key in REG_PATHS:
                 path, name, hive = REG_PATHS[key]
@@ -171,17 +256,14 @@ class ConfigManager:
             if detected['weasel_root'] and detected['server_exe']:
                 detected['server_exe'] = os.path.join(detected['weasel_root'], detected['server_exe'])
             else:
-                print_error("无法自动检测到 Weasel 根目录或 WeaselServer.exe。")
-                print_error("你的小狼毫可能没有安装或配置正确。")
-                print_error("正在退出程序...")
-                sys.exit(1)
+                raise DetectionError(
+                    "无法自动检测到 Weasel 根目录或 WeaselServer.exe。\n"
+                    "你的小狼毫可能没有安装或配置正确。"
+                )
 
-            defaults = {
-                'rime_user_dir': os.path.join(os.environ['APPDATA'], 'Rime')
-            }
-
+            default_rime_dir = os.path.join(os.environ['APPDATA'], 'Rime')
             if not detected["rime_user_dir"] or not os.path.exists(detected['rime_user_dir']):
-                detected["rime_user_dir"] = defaults["rime_user_dir"]
+                detected["rime_user_dir"] = default_rime_dir
                 if not self.reload_flag and show:
                     print_warning("未检测到小狼毫自定义 RimeUserDir，使用默认路径：" + detected["rime_user_dir"])
             else:
@@ -207,7 +289,11 @@ class ConfigManager:
                 os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
                 detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
 
-        return detected
+        self.install_paths = InstallPaths(
+            rime_user_dir=detected['rime_user_dir'],
+            server_exe=detected.get('server_exe', '')
+        )
+        return self.install_paths
 
 
     def _check_hamster_path(self) -> Optional[str]:
@@ -227,8 +313,7 @@ class ConfigManager:
             self.rime_dir = os.path.join(file_dir, 'Rime')
             return '仓输入法'
         else:
-            print_error('请将脚本放置到正确的位置（Hamster目录下）')
-            return None
+            raise ConfigError('请将脚本放置到正确的位置（Hamster目录下）')
 
     def _select_rime_engine(self) -> None:
         """选择输入法引擎"""
@@ -270,8 +355,6 @@ class ConfigManager:
         """确保配置文件存在，如果不存在则创建一个新的配置文件"""
         if SYSTEM_TYPE == 'ios':
             self.rime_engine = self._check_hamster_path()
-            if not self.rime_engine:
-                return
         if not os.path.exists(self.config_path):
             print_warning("正在创建一个新的配置文件。")
             self._init_empty_config()
@@ -284,13 +367,13 @@ class ConfigManager:
                 self._write_config() # 写入配置文件
                 print_success("配置文件创建成功。")
             else:
-                print_error("配置向导失败，请手动配置。")
-                exit(1)  # 终止程序执行
+                raise ConfigError("配置向导失败，请手动配置。")
             self._show_config_guide()       # 配置引导
         else:
             print_warning(COLOR['YELLOW'] + "配置文件已存在，将加载配置。" + COLOR['ENDC'])
             new_config_items = {
                 'auto_update': 'false',
+                'use_predict': 'false',
             }
             self._add_new_config_items(new_config_items)
             self._try_load_config()
@@ -317,6 +400,7 @@ class ConfigManager:
         print(f"{INDENT}▪ 方案版本：{self.config['Settings']['scheme_type']}")
         print(f"{INDENT}▪ 方案文件：{self.config['Settings']['scheme_file']}")
         print(f"{INDENT}▪ 词库文件：{self.config['Settings']['dict_file']}")
+        print(f"{INDENT}▪ 使用预测库：{self.config.getboolean('Settings', 'use_predict', fallback=False)}")
         if SYSTEM_TYPE == 'macos':
             print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
@@ -362,11 +446,12 @@ class ConfigManager:
         """尝试加载配置文件"""
         # 加载并验证配置
         try:
-            settings = self.load_config(show=True)
-            print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
-        except Exception as e:
-            print(f"\n{COLOR['FAIL']}❌ 配置加载失败：{str(e)}{COLOR['ENDC']}")
-            sys.exit(1)
+            self.load_config(show=True)
+        except UpdaterError:
+            raise
+        except Exception as exc:
+            raise ConfigError(f"配置加载失败：{exc}") from exc
+        print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
 
     def _init_empty_config(self) -> None:
         """创建空配置"""
@@ -379,6 +464,7 @@ class ConfigManager:
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
+            'use_predict': 'false',
 
         }
 
@@ -397,7 +483,7 @@ class ConfigManager:
         while True:
             choice = input(f"{INDENT}请选择方案版本（1-2）: ").strip()
             if choice == '1':
-                self.scheme_type = 'base'
+                self.scheme_type = SchemeType.BASE.value
                 self.zh_dicts_dir = ZH_DICTS
                 scheme_file, dict_file = self.get_actual_filenames('base')
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
@@ -406,7 +492,7 @@ class ConfigManager:
                 print_success(f"已选择方案：万象基础版")
                 return True
             elif choice == '2':
-                self.scheme_type = 'pro'
+                self.scheme_type = SchemeType.PRO.value
                 self.zh_dicts_dir = ZH_DICTS_PRO
                 self.config.set('Settings', 'scheme_type', self.scheme_type)
                 print_success("已选择方案：万象增强版")
@@ -464,14 +550,16 @@ class ConfigManager:
                 owner=OWNER,
                 repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
                 pattern=scheme_pattern,
-                use_mirror=self.config.getboolean('Settings', 'use_mirror')
+                use_mirror=self.config.getboolean('Settings', 'use_mirror'),
+                github_token=self.config.get('Settings', 'github_token', fallback='')
             )
             dict_checker = FileChecker(
                 owner=OWNER,
                 repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
                 pattern=dict_pattern,
                 use_mirror=self.config.getboolean('Settings', 'use_mirror'),
-                tag=DICT_TAG
+                tag=DICT_TAG,
+                github_token=self.config.get('Settings', 'github_token', fallback='')
             )
 
             # 获取文件名
@@ -485,11 +573,13 @@ class ConfigManager:
                 raise ValueError(f"未找到匹配的文件: {dict_pattern}")
 
             return scheme_file, dict_file
-
-        except Exception as e:
-            print_error(f"无法获取最新文件名: {str(e)}")
-            print_error("请检查网络连接，或关闭代理后重试...")
-            sys.exit(-1)
+        except UpdaterError:
+            raise
+        except Exception as exc:
+            raise NetworkError(
+                f"无法获取最新文件名: {str(exc)}\n"
+                "请检查网络连接，或关闭代理后重试..."
+            ) from exc
 
     def _show_config_guide(self) -> None:
         """配置引导界面"""
@@ -501,9 +591,12 @@ class ConfigManager:
         self.config.read(self.config_path, encoding='utf-8')
         detected = self.detect_installation_paths()
         status_emoji = {True: "✅", False: "❌"}
-        for key in detected:
-            exists = os.path.exists(detected[key])
-            print(f"{INDENT}{key.ljust(15)}: {status_emoji[exists]} {detected[key]}")
+        display_items = [("rime_user_dir", detected.rime_user_dir)]
+        if detected.server_exe:
+            display_items.append(("server_exe", detected.server_exe))
+        for key, value in display_items:
+            exists = os.path.exists(value)
+            print(f"{INDENT}{key.ljust(15)}: {status_emoji[exists]} {value}")
 
         print(f"\n{INDENT}生成的配置文件路径: {self.config_path}")
 
@@ -517,6 +610,42 @@ class ConfigManager:
             None
         input("\n请按需修改上述路径，保存后按回车键继续...")
 
+    def _build_path_error_message(
+        self,
+        system: str,
+        required_paths: Dict[str, str],
+        missing_names: List[str]
+    ) -> str:
+        """统一构造关键路径缺失时的错误信息"""
+        reason_map = {
+            'windows': [
+                "1. 小狼毫输入法未正确安装",
+                "2. 注册表信息被修改",
+                "3. 自定义路径配置错误",
+            ],
+            'macos': [
+                "1. 鼠须管或小企鹅输入法未正确安装",
+                "2. 自定义路径配置错误",
+            ],
+            'ios': [
+                "1. 该路径不存在",
+                "2. 没有将该脚本放置在仓输入法或元书输入法正确路径下",
+            ],
+            'default': [
+                "1. 该路径不存在",
+                "2. 没有将该脚本放置在正确路径下",
+            ],
+        }
+
+        lines = [f"{COLOR['FAIL']}关键路径配置错误：{COLOR['ENDC']}"]
+        lines.extend(f"{INDENT}{name}: {required_paths[name]}" for name in missing_names)
+        lines.append(f"\n{INDENT}可能原因：")
+
+        reasons = reason_map.get(system, reason_map['default'])
+        lines.extend(f"{INDENT}{reason}" for reason in reasons)
+        return "\n".join(lines)
+
+
     def display_config_instructions(self) -> None:
         """静默显示配置说明"""
         print_header("请检查配置文件路径,需用户修改")
@@ -528,6 +657,7 @@ class ConfigManager:
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
+            ("[use_predict]", f"是否更新预测库({PREDICT_FILE}，默认false)", 'use_predict'),
             ("[use_mirror]", "是否使用国内仓库CNB(网址:cnb.cool,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
@@ -543,9 +673,9 @@ class ConfigManager:
 
     def load_config(self,
                     system=SYSTEM_TYPE,
-                    show=False,
-                    first_download=False
-                ) -> Tuple[str, str, str, str, bool, str, list]:
+                    show: bool = False,
+                    first_download: bool = False
+                ) -> AppConfig:
         """
         加载配置文件
         Args:
@@ -553,7 +683,7 @@ class ConfigManager:
             show (bool): 是否显示小狼毫路径说明
             first_download (bool): 是否是第一次下载
         Returns:
-            Tuple[str, str, str, str, bool, str, list]: 配置信息
+            AppConfig: 配置信息
         """
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
@@ -566,75 +696,69 @@ class ConfigManager:
             if pattern.strip()
         ]
 
-        self.scheme_type = config.get('scheme_type', 'pro')
-        if self.scheme_type == 'base':
-            self.zh_dicts_dir = ZH_DICTS
-        else:
-            self.zh_dicts_dir = ZH_DICTS_PRO
+        try:
+            scheme_type = SchemeType(config.get('scheme_type', SchemeType.PRO.value))
+        except ValueError as exc:
+            raise ConfigError(f"无效的 scheme_type: {config.get('scheme_type')}") from exc
+
+        app_config = AppConfig(
+            engine=config.get('engine', ''),
+            scheme_type=scheme_type,
+            scheme_file=config.get('scheme_file', ''),
+            dict_file=config.get('dict_file', ''),
+            use_mirror=self.config.getboolean('Settings', 'use_mirror'),
+            github_token=github_token,
+            exclude_files=exclude_files,
+            auto_update=self.config.getboolean('Settings', 'auto_update', fallback=False),
+            use_predict=self.config.getboolean('Settings', 'use_predict', fallback=False),
+        )
+        self.app_config = app_config
+        self.scheme_type = app_config.scheme_type.value
+        self.zh_dicts_dir = app_config.zh_dicts_dir
+        self.auto_update = app_config.auto_update
 
         # 验证关键路径
         if system == 'windows':
             paths = self.detect_installation_paths(show=show)
             required_paths = {
-                '小狼毫服务程序': paths['server_exe'],
-                '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir)
+                '小狼毫服务程序': paths.server_exe,
+                '方案解压目录': paths.rime_user_dir,
+                '词库解压目录': paths.dict_dir(app_config.zh_dicts_dir)
             }
         elif system == 'macos':
             paths = self.detect_installation_paths()
             required_paths = {
-                '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir),
+                '方案解压目录': paths.rime_user_dir,
+                '词库解压目录': paths.dict_dir(app_config.zh_dicts_dir),
             }
         elif system == 'ios':
             required_paths = {
                 '方案解压目录': self.rime_dir,
-                '词库解压目录': os.path.join(self.rime_dir, self.zh_dicts_dir)
+                '词库解压目录': os.path.join(self.rime_dir, app_config.zh_dicts_dir)
             }
         else:
             paths = self.detect_installation_paths()
             required_paths = {
-                '方案解压目录': paths['rime_user_dir'],
-                '词库解压目录': os.path.join(paths['rime_user_dir'], self.zh_dicts_dir)
+                '方案解压目录': paths.rime_user_dir,
+                '词库解压目录': paths.dict_dir(app_config.zh_dicts_dir)
             }
 
         if first_download:
-            missing = [] if os.path.exists(required_paths['方案解压目录']) else [required_paths['方案解压目录']]
+            missing_names = [] if os.path.exists(required_paths['方案解压目录']) else ['方案解压目录']
         else:
-            missing = [path for name, path in required_paths.items() if not os.path.exists(path)]
-            if not os.path.exists(required_paths['方案解压目录']):
-                print(f"\n{COLOR['FAIL']}关键路径配置错误：{COLOR['ENDC']}")
-                for name in missing:
-                    print(f"{INDENT}{name}: {required_paths[name]}")
-                print(f"\n{INDENT}可能原因：")
-                if system == 'windows':
-                    print(f"{INDENT}1. 小狼毫输入法未正确安装")
-                    print(f"{INDENT}2. 注册表信息被修改")
-                    print(f"{INDENT}3. 自定义路径配置错误")
-                elif system == 'macos':
-                    print(f"{INDENT}1. 鼠须管或小企鹅输入法未正确安装")
-                    print(f"{INDENT}2. 自定义路径配置错误")
-                elif system == 'ios':
-                    print(f"{INDENT}1. 该路径不存在")
-                    print(f"{INDENT}2. 没有将该脚本放置在仓输入法或元书输入法正确路径下")
-                else:
-                    print(f"{INDENT}1. 该路径不存在")
-                    print(f"{INDENT}2. 没有将该脚本放置在正确路径下")
-                sys.exit(1)
+            missing_names = [
+                name for name, path in required_paths.items()
+                if not os.path.exists(path)
+            ]
+            if '方案解压目录' in missing_names:
+                raise DetectionError(
+                    self._build_path_error_message(system, required_paths, missing_names)
+                )
 
-        if missing:
-            self.ensure_directories(missing)
+        if missing_names:
+            self.ensure_directories([required_paths[name] for name in missing_names])
 
-
-        return (
-            config['engine'],
-            config['scheme_type'],
-            config['scheme_file'],
-            config['dict_file'],
-            self.config.getboolean('Settings', 'use_mirror'),
-            github_token,
-            exclude_files,
-        )
+        return app_config
 
     def ensure_directories(self, dirs: List) -> None:
         """目录保障系统"""
@@ -643,25 +767,53 @@ class ConfigManager:
 
 
 class FileChecker:
-    def __init__(self, owner, repo, pattern, use_mirror, tag=None):
+    def __init__(self, owner, repo, pattern, use_mirror, tag=None, github_token: str = ""):
         self.owner = owner
         self.repo = repo
-        self.pattern_regex = re.compile(pattern.replace('*', '.*'))
+        self.pattern = pattern
         self.tag = tag
         self.use_mirror = use_mirror
+        self.github_token = github_token
+
+    def _build_headers(self) -> Dict[str, str]:
+        if self.use_mirror:
+            return dict(CNB_HEADERS)
+        headers = {"User-Agent": "RIME-Updater/1.0"}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+        return headers
+
+    def _request(self, url: str, params: Optional[Dict[str, Union[str, int]]] = None) -> requests.Response:
+        last_error: Optional[Exception] = None
+        for attempt in range(REQUEST_RETRY_COUNT + 1):
+            try:
+                response = requests.get(
+                    url,
+                    headers=self._build_headers(),
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < REQUEST_RETRY_COUNT:
+                    time.sleep(2)
+                    continue
+        raise NetworkError(f"请求最新文件信息失败: {last_error}")
 
     def get_latest_file(self) -> Optional[str]:
         """获取匹配模式的最新文件"""
         if self.use_mirror:
             releases = self._get_cnb_releases()
             for asset in releases.get("assets", []):
-                if self.pattern_regex.match(asset['name']):
+                if fnmatch.fnmatch(asset['name'], self.pattern):
                     return asset['name']
         else:
             releases = self._get_releases()
             for release in releases:
                 for asset in release.get("assets", []):
-                    if self.pattern_regex.match(asset['name']):
+                    if fnmatch.fnmatch(asset['name'], self.pattern):
                         return asset['name']
         return None
 
@@ -674,15 +826,13 @@ class FileChecker:
             # 获取所有Release（按时间排序）
             url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases"
 
-        response = requests.get(url)
-        response.raise_for_status()
+        response = self._request(url)
         # 返回结果处理：指定标签时为单个Release，否则为列表
         return [response.json()] if self.tag else response.json()
 
     def _get_cnb_releases(self) -> Dict:
-        headers = CNB_HEADERS
         url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
-        response = requests.get(url=url, headers=headers)
+        response = self._request(url)
         if response.status_code == 200:
             releases_all = response.json()
             releases_list = releases_all['releases']
@@ -707,15 +857,15 @@ class UpdateHandler:
             first_download (bool): 是否是第一次下载，用于传递给load_config方法，默认False，需手动设置为True
         """
         self.config_manager = config_manager
-        (
-            self.engine,
-            self.scheme_type,
-            self.scheme_file,
-            self.dict_file,
-            self.use_mirror,
-            self.github_token,
-            self.exclude_files
-        ) = config_manager.load_config(show=False)
+        self.app_config = config_manager.load_config(show=False)
+        self.engine = self.app_config.engine
+        self.scheme_type = self.app_config.scheme_type.value
+        self.scheme_file = self.app_config.scheme_file
+        self.dict_file = self.app_config.dict_file
+        self.use_mirror = self.app_config.use_mirror
+        self.github_token = self.app_config.github_token
+        self.exclude_files = self.app_config.exclude_files
+        self.use_predict = self.app_config.use_predict
         (
             self.custom_dir,
             self.extract_path,
@@ -723,7 +873,11 @@ class UpdateHandler:
             self.weasel_server
         ) = self.get_all_dir()
         os.makedirs(self.custom_dir, exist_ok=True)
-        self.update_info = None
+        self.update_info: Optional[UpdateInfo] = None
+
+    @staticmethod
+    def parse_remote_time(time_str: str) -> datetime:
+        return datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
     def has_update(self) -> bool:
         """检查是否有更新可用"""
@@ -731,16 +885,17 @@ class UpdateHandler:
         if not self.update_info:
             return False
 
-        if self.config_manager.change_config and not isinstance(self, ModelUpdater):
+        if self.config_manager.change_config and not isinstance(self, BinaryAssetUpdater):
             return True
-        remote_time = datetime.strptime(self.update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        remote_time = self.parse_remote_time(self.update_info.update_time)
         local_time, local_id = self.get_local_time()
-        is_diff_id = self.update_info.get("sha256") or self.update_info.get("id") != local_id
+        remote_id = self.update_info.identity
+        is_diff_id = not local_id or remote_id != local_id
 
         # 如果本地没有时间记录或有新更新
-        return (not local_time or remote_time > local_time) and is_diff_id
+        return is_diff_id and (not local_time or remote_time > local_time or remote_id != local_id)
 
-    def get_local_time(self) -> Optional[datetime]:
+    def get_local_time(self) -> Tuple[Optional[datetime], Optional[str]]:
         """获取本地记录的更新时间"""
         if not hasattr(self, 'record_file') or not os.path.exists(self.record_file):
             return None, None
@@ -748,20 +903,19 @@ class UpdateHandler:
             with open(self.record_file, 'r') as f:
                 data = json.load(f)
                 # 读取本地记录的update_time
-                return datetime.strptime(data["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc), data["sha256"] or data["cnb_id"]
-        except:
+                return self.parse_remote_time(data["update_time"]), data.get("sha256") or data.get("cnb_id")
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
             return None, None
 
     def get_all_dir(self) -> Tuple[str, str, str, str]:
         """获取所有目录"""
-        rime_user_dir = self.config_manager.detect_installation_paths().get('rime_user_dir', '')
-        server = self.config_manager.detect_installation_paths().get('server_exe', '')
+        paths = self.config_manager.detect_installation_paths()
         zh_dicts_dir = self.config_manager.zh_dicts_dir
         return (
-            os.path.join(rime_user_dir, 'UpdateCache'),
-            rime_user_dir,
-            os.path.join(rime_user_dir, zh_dicts_dir),
-            server
+            paths.update_cache_dir,
+            paths.rime_user_dir,
+            paths.dict_dir(zh_dicts_dir),
+            paths.server_exe
         )
 
     def get_old_file_list(self, old_exists_temp_zip: str, new_temp_zip: str, is_dict: bool = False) -> Tuple[List[str], List[str]]:
@@ -784,13 +938,14 @@ class UpdateHandler:
         whole_old_file_paths: List[str] = []
         should_delete_paths: List[str] = []
 
-        old_members = new_members = []
+        old_members: List[str] = []
+        new_members: List[str] = []
         try:
             with zipfile.ZipFile(old_exists_temp_zip, 'r') as old_zip:
                 for i in old_zip.namelist():
                     try:
                         old_members.append(i.encode('cp437').decode('utf-8'))
-                    except:
+                    except UnicodeDecodeError:
                         old_members.append(i)
 
             if new_temp_zip and os.path.isfile(new_temp_zip):
@@ -798,7 +953,7 @@ class UpdateHandler:
                     for i in new_zip.namelist():
                         try:
                             new_members.append(i.encode('cp437').decode('utf-8'))
-                        except:
+                        except UnicodeDecodeError:
                             new_members.append(i)
 
             # 处理词库情况下的路径差异
@@ -838,7 +993,7 @@ class UpdateHandler:
                     print("以下为排除文件不删除：", ", ".join(excluded))
                     whole_old_file_paths = [f for f in whole_old_file_paths if f not in excluded]
 
-        except Exception:
+        except (OSError, zipfile.BadZipFile):
             print_warning(f"无法获取需要清理的旧文件或目录，跳过清理")
 
         return whole_old_file_paths, should_delete_paths
@@ -870,7 +1025,7 @@ class UpdateHandler:
 
 
 
-    def save_record(self, record_file: str, property_type: str, property_name: str, info: dict) -> None:
+    def save_record(self, record_file: str, property_type: str, property_name: str, info: UpdateInfo) -> None:
         """
         保存更新记录
         Args:
@@ -883,13 +1038,60 @@ class UpdateHandler:
         with open(record_file, 'w') as f:
             json.dump({
                 property_type: property_name,
-                "update_time": info["update_time"],
-                "tag": info.get("tag", ""),
+                "update_time": info.update_time,
+                "tag": info.tag,
                 "apply_time": datetime.now(timezone.utc).isoformat(),
-                "sha256": info.get("sha256", ""),
-                "cnb_id": info.get("id", "")
+                "sha256": info.sha256,
+                "cnb_id": info.asset_id
             }, f)
 
+    def _build_headers(self, use_mirror: bool = False) -> Dict[str, str]:
+        if use_mirror:
+            return dict(CNB_HEADERS)
+        headers = {"User-Agent": "RIME-Updater/1.0"}
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+        return headers
+
+    def _request(
+        self,
+        url: str,
+        use_mirror: bool = False,
+        output_json: bool = True,
+        params: Optional[Dict[str, Union[str, int]]] = None,
+        stream: bool = False
+    ) -> Optional[Union[Dict, List, requests.Response]]:
+        last_error: Optional[Exception] = None
+        for attempt in range(REQUEST_RETRY_COUNT + 1):
+            try:
+                response = requests.get(
+                    url,
+                    headers=self._build_headers(use_mirror),
+                    params=params,
+                    stream=stream,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                response.raise_for_status()
+                if output_json:
+                    return response.json()
+                return response
+            except requests.HTTPError as exc:
+                last_error = exc
+                status_code = exc.response.status_code if exc.response else None
+                if status_code == 401:
+                    print_error("GitHub令牌无效或无权限")
+                elif status_code == 403:
+                    print_error("权限不足或触发次级速率限制")
+                else:
+                    print_error(f"HTTP错误: {status_code}")
+                return None
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < REQUEST_RETRY_COUNT:
+                    time.sleep(2)
+                    continue
+        print_error(f"请求异常: {last_error}")
+        return None
 
     def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Union[Dict,requests.Response]]:
         """
@@ -899,52 +1101,27 @@ class UpdateHandler:
         Returns:
             dict: API响应的JSON数据
         """
-        if use_mirror:
-            headers = CNB_HEADERS
-        else:
-            headers = {"User-Agent": "RIME-Updater/1.0"}
-            if self.github_token:
-                headers["Authorization"] = f"Bearer {self.github_token}"
-
-        max_retries = 2
-        for attempt in range(max_retries + 1):
-            try:
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-                if output_json:
-                    if use_mirror:
-                        releases_list = response.json()['releases']
-                        # cnb会分页，请求最后一页以获取模型信息
-                        # 获取响应头
-                        total = response.headers.get("X-Cnb-Total")
-                        page_size = response.headers.get("X-Cnb-Page-Size")
-                        last_page = ceil(int(total) / int(page_size))
-                        last_page_res = requests.get(url, headers=headers, params={"page": last_page})
-                        releases_list.append(last_page_res.json()['releases'][-1])
-                        return releases_list
-                    return response.json()
-                else:
-                    return response
-
-            except requests.HTTPError as e:
-                if e.response.status_code == 401:
-                    print_error("GitHub令牌无效或无权限")
-                elif e.response.status_code == 403:
-                    print_error("权限不足或触发次级速率限制")
-                else:
-                    print_error(f"HTTP错误: {e.response.status_code}")
-                return None
-            except requests.ConnectionError:
-                print_error("网络连接失败")
-                if attempt < max_retries:
-                    time.sleep(5)
-                    continue
-                return None
-            except requests.RequestException as e:
-                print_error(f"请求异常: {str(e)}")
-                return None
-
-        return None
+        response = self._request(url, use_mirror=use_mirror, output_json=False)
+        if response is None:
+            return None
+        if output_json:
+            if use_mirror:
+                releases_list = response.json()['releases']
+                total = response.headers.get("X-Cnb-Total")
+                page_size = response.headers.get("X-Cnb-Page-Size")
+                if total and page_size:
+                    last_page = ceil(int(total) / int(page_size))
+                    if last_page > 1:
+                        last_page_data = self._request(
+                            url,
+                            use_mirror=use_mirror,
+                            params={"page": last_page}
+                        )
+                        if isinstance(last_page_data, dict) and last_page_data.get('releases'):
+                            releases_list.append(last_page_data['releases'][-1])
+                return releases_list
+            return response.json()
+        return response
 
 
     def download_file(self, url, save_path, is_continue) -> bool:
@@ -971,7 +1148,13 @@ class UpdateHandler:
                 downloaded = 0
             headers['Range'] = f'bytes={downloaded}-'
 
-            response = requests.get(url, headers=headers, stream=True)
+            response = requests.get(
+                url,
+                headers=headers,
+                stream=True,
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
 
             # 检查服务器是否支持断点续传
             mode = 'ab'
@@ -987,6 +1170,8 @@ class UpdateHandler:
                 # tqdm 的 total 参数设置为文件总大小，单位为字节
                 with tqdm(total=total_size, initial=downloaded, unit='B', unit_scale=True, desc="下载中") as pbar:
                     for data in response.iter_content(block_size):
+                        if not data:
+                            continue
                         f.write(data)
                         pbar.update(len(data))  # 更新进度条
             return True
@@ -1010,7 +1195,7 @@ class UpdateHandler:
                 if common_prefix:
                     return os.path.dirname(common_prefix) + '/'
                 return ""
-            except:
+            except OSError:
                 return ""
 
         try:
@@ -1023,7 +1208,7 @@ class UpdateHandler:
                 for info in zip_ref.infolist():
                     try:
                         decoded_name = info.filename.encode('cp437').decode('utf-8')
-                    except:
+                    except UnicodeDecodeError:
                         decoded_name = info.filename
 
                     if info.is_dir():
@@ -1050,21 +1235,14 @@ class UpdateHandler:
                         print_warning(f"跳过排除文件: {normalized_path}")
 
                 # 使用有效文件数量作为进度条的总数
+                base_dir = get_common_base_dir(valid_members)
                 with tqdm(total=len(valid_members), desc="解压中") as pbar:
                     for member in valid_members:
                         # 计算相对路径
-                        if is_dict:
-                            base_dir = get_common_base_dir(valid_members)
-                            if base_dir and member.startswith(base_dir):
-                                relative_path = member[len(base_dir):]
-                            else:
-                                relative_path = member
+                        if base_dir and member.startswith(base_dir):
+                            relative_path = member[len(base_dir):]
                         else:
-                            base_dir = get_common_base_dir(valid_members)
-                            if base_dir and member.startswith(base_dir):
-                                relative_path = member[len(base_dir):]
-                            else:
-                                relative_path = member
+                            relative_path = member
 
                         # 标准化路径
                         normalized_path = os.path.normpath(relative_path.replace('/', os.sep))
@@ -1082,6 +1260,76 @@ class UpdateHandler:
         except Exception as e:
             print_error(f"解压失败: {str(e)}")
             return False
+
+    def prepare_temp_download(self, temp_file: str, stale_pattern: str) -> bool:
+        is_continue = os.path.exists(temp_file)
+        if not is_continue:
+            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), stale_pattern):
+                os.remove(os.path.join(self.custom_dir, old_should_drop))
+        return is_continue
+
+    def run_archive_update(
+        self,
+        title: str,
+        target_file: str,
+        temp_prefix: str,
+        info: UpdateInfo,
+        cleanup_existing,
+        cleanup_delta,
+        apply_func,
+        success_message: str
+    ) -> UpdateResult:
+        print_header(title)
+        if info.sha256 and os.path.exists(target_file) and self.file_compare(info.sha256, target_file):
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, self.record_property, self.record_name, info)
+            return UpdateResult.SKIPPED
+
+        temp_file = os.path.join(self.custom_dir, f"{temp_prefix}_{info.identity}.zip")
+        is_continue = self.prepare_temp_download(temp_file, f"{temp_prefix}*.zip")
+        if not self.download_file(info.url, temp_file, is_continue):
+            return UpdateResult.FAILED
+
+        if not cleanup_existing():
+            old_files, old_dirs = cleanup_delta(target_file, temp_file)
+            if old_files or old_dirs:
+                self._delete_old_files(old_files, old_dirs)
+
+        try:
+            apply_func(temp_file, target_file, info)
+            print_success(success_message)
+            return UpdateResult.UPDATED
+        except Exception as exc:
+            print_error(f"更新失败: {str(exc)}")
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            return UpdateResult.FAILED
+
+    def run_binary_update(self, title: str, target_file: str, temp_pattern: str, info: UpdateInfo, success_message: str) -> UpdateResult:
+        print_header(title)
+        if info.sha256 and self.file_compare(info.sha256, target_file):
+            print_success("文件内容未变化，将更新本地保存的记录")
+            self.save_record(self.record_file, self.record_property, self.record_name, info)
+            return UpdateResult.SKIPPED
+
+        temp_file = os.path.join(self.custom_dir, f"{self.record_name}_{info.identity}.tmp")
+        is_continue = self.prepare_temp_download(temp_file, temp_pattern)
+        if not self.download_file(info.url, temp_file, is_continue):
+            return UpdateResult.FAILED
+
+        if hasattr(self, 'terminate_processes'):
+            self.terminate_processes()
+
+        try:
+            if os.path.exists(target_file):
+                os.remove(target_file)
+            os.replace(temp_file, target_file)
+            self.save_record(self.record_file, self.record_property, self.record_name, info)
+            print_success(success_message)
+            return UpdateResult.UPDATED
+        except Exception as exc:
+            print_error(f"{self.component_name}文件替换失败: {str(exc)}")
+            return UpdateResult.FAILED
 
 
     if SYSTEM_TYPE == 'windows':
@@ -1184,10 +1432,10 @@ class UpdateHandler:
                     print_success("已执行自动部署")
                     return True
                 except subprocess.CalledProcessError as e:
-                    print_error("自动部署失败：{e}，请手动部署")
+                    print_error(f"自动部署失败：{e}，请手动部署")
                     return False
             else:
-                print_error("找不到可执行文件：{executable}")
+                print_error(f"找不到可执行文件：{executable}")
                 return False
 
     if SYSTEM_TYPE == 'ios':
@@ -1215,6 +1463,7 @@ class CombinedUpdater:
         self.scheme_updater = SchemeUpdater(config_manager)
         self.dict_updater = DictUpdater(config_manager)
         self.model_updater = ModelUpdater(config_manager)
+        self.predict_updater = PredictUpdater(config_manager)
         self.script_updater = ScriptUpdater(config_manager)
         # 存储共享的releases数据
         self.shared_releases = None
@@ -1236,8 +1485,10 @@ class CombinedUpdater:
         # 如果方案或词库找不到更新，自动更新文件名
         if not self.scheme_updater.update_info or not self.dict_updater.update_info:
             self.refresh_filenames()
-        # 模型更新独立检查
-        self.model_updater.update_info = self.model_updater.check_update()
+        model_release = self.model_updater.fetch_release()
+        self.model_updater.update_info = self.model_updater.extract_update_info(model_release)
+        if self.predict_updater.enabled:
+            self.predict_updater.update_info = self.predict_updater.extract_update_info(model_release)
         # 脚本更新独立检查
         self.script_updater.update_info = self.script_updater.check_update()
 
@@ -1276,7 +1527,7 @@ class CombinedUpdater:
             current_file = self.config_manager.config.get('Settings', 'scheme_file')
         except configparser.NoOptionError:
             current_file = ""
-        if self.config_manager.scheme_type == 'base':
+        if self.config_manager.scheme_type == SchemeType.BASE.value:
             return 'base'
         # 增强版从文件名提取key
         for key in SCHEME_MAP.values():
@@ -1284,7 +1535,20 @@ class CombinedUpdater:
                 return key
         return list(SCHEME_MAP.values())[0]
 
-    def _extract_scheme_update(self) -> Optional[Dict]:
+    @staticmethod
+    def _build_update_info(asset: Dict, release: Dict, description: str = "") -> UpdateInfo:
+        return UpdateInfo(
+            name=asset["name"],
+            url=asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path", ""),
+            update_time=asset.get("updated_at", ""),
+            tag=release.get("tag_name") or release.get("tag_ref", "").split('/')[-1],
+            description=description,
+            sha256=asset.get("digest", "").split(':')[-1] if asset.get("digest", "") else "",
+            asset_id=str(asset.get("id", "")),
+            size=asset.get("size") or asset.get("sizeInByte") or 0,
+        )
+
+    def _extract_scheme_update(self) -> Optional[UpdateInfo]:
         """从仓库数据中提取方案更新"""
         if not self.shared_releases:
             return None
@@ -1292,19 +1556,10 @@ class CombinedUpdater:
         for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.scheme_updater.scheme_file:
-                    update_description = release.get("body", "无更新说明")
-                    return {
-                        "scheme_name" : asset["name"],
-                        "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
-                        "update_time": asset.get("updated_at"),
-                        "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息
-                        "description": update_description,
-                        "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
-                        "id": asset.get("id", "")                                               # 仅cnb
-                    }
+                    return self._build_update_info(asset, release, release.get("body", "无更新说明"))
         return None
 
-    def _extract_dict_update(self) -> Optional[Dict]:
+    def _extract_dict_update(self) -> Optional[UpdateInfo]:
         """从仓库数据中提取词库更新"""
         if not self.shared_releases:
             return None
@@ -1312,14 +1567,7 @@ class CombinedUpdater:
         for release in self.shared_releases:
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
-                    return {
-                        "dict_name" : asset["name"],
-                        "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
-                        "update_time": asset.get("updated_at"),
-                        "tag": release.get("tag_name") or release.get("tag_ref").split('/')[-1], # 前面是GitHub上tag内容，后面是cnb上tag内容，两者都是版本信息,
-                        "sha256": asset.get("digest").split(':')[-1] if asset.get("digest","") else "", # 仅GitHub
-                        "id": asset.get("id", "")                                               # 仅cnb
-                    }
+                    return self._build_update_info(asset, release)
         return None
 
 
@@ -1329,55 +1577,28 @@ class SchemeUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         self.record_file = os.path.join(self.custom_dir, "scheme_record.json")
+        self.record_property = "scheme_file"
+        self.record_name = self.scheme_file
 
-
-    def run(self) -> int:
-        """
-        return:
-            -1: 更新失败
-            0: 已经是最新/无可用更新
-            1: 更新成功
-        """
-        print_header("方案更新流程")
-        # 使用缓存信息而不是重复API调用
-        remote_info = self.update_info
-
+    def run(self) -> UpdateResult:
+        if not self.update_info:
+            print_warning("未找到方案更新信息")
+            return UpdateResult.SKIPPED
         target_file = os.path.join(self.custom_dir, self.scheme_file)
-        # 校验本地文件和远端文件sha256
-        if remote_info['sha256']:
-            if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-                print_success("文件内容未变化，将更新本地保存的记录")
-                self.save_record(self.record_file, "scheme_file", self.scheme_file, remote_info)
-                return 0
-
-        # 下载更新
-        _suffix = remote_info['sha256'] or remote_info['id']
-        temp_file = os.path.join(self.custom_dir, f"temp_scheme_{_suffix}.zip")
-        if os.path.exists(temp_file):
-            is_continue = True
-        else:
-            is_continue = False
-            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_scheme*.zip"):
-                os.remove(os.path.join(self.custom_dir, old_should_drop))
-        if not self.download_file(remote_info["url"], temp_file, is_continue):
-            return -1
-
-        # 方案变更时清除旧文件
-        if not self.clean_old_schema():
-            # 获取上次下载的压缩包的内容
-            old_files, old_dirs = self.get_old_file_list(target_file, temp_file)
-            if old_files or old_dirs:
-                self._delete_old_files(old_files, old_dirs)
-                print_warning("已移除上个版本的方案文件及残余文件夹")
-
-
-        # 应用更新
-        self.apply_update(temp_file, target_file, remote_info)
+        result = self.run_archive_update(
+            title="方案更新流程",
+            target_file=target_file,
+            temp_prefix="temp_scheme",
+            info=self.update_info,
+            cleanup_existing=self.clean_old_schema,
+            cleanup_delta=lambda target, temp: self.get_old_file_list(target, temp),
+            apply_func=self.apply_update,
+            success_message="方案更新完成",
+        )
         self.clean_build()
-        print_success("方案更新完成")
-        return 1
+        return result
 
-    def apply_update(self, temp, target, info) -> None:
+    def apply_update(self, temp, target, info: UpdateInfo) -> None:
         """
         应用更新（替换文件）
         Args:
@@ -1392,9 +1613,7 @@ class SchemeUpdater(UpdateHandler):
         if not self.extract_zip(temp, self.extract_path):
             raise Exception("解压失败")
         # 解压成功重命名文件
-        if os.path.exists(target):
-            os.remove(target)
-        os.rename(temp, target)
+        os.replace(temp, target)
         # 保存记录
         self.save_record(self.record_file, "scheme_file", self.scheme_file, info)
 
@@ -1426,17 +1645,17 @@ class DictUpdater(UpdateHandler):
         super().__init__(config_manager)
         self.target_tag = DICT_TAG
         self.record_file = os.path.join(self.custom_dir, "dict_record.json")
+        self.record_property = "dict_file"
+        self.record_name = self.dict_file
 
-    def apply_update(self, temp, target, info) -> None:
+    def apply_update(self, temp, target, info: UpdateInfo) -> None:
         """应用更新（替换文件）， 参数不再需要传递路径，使用实例变量 """
         try:
             # 终止进程
             if hasattr(self, 'terminate_processes'):
                 self.terminate_processes()
             # 替换文件（使用明确的实例变量）
-            if os.path.exists(target):
-                os.remove(target)
-            os.rename(temp, target)
+            os.replace(temp, target)
             # 解压到配置目录
             if not self.extract_zip(
                 target,
@@ -1447,62 +1666,27 @@ class DictUpdater(UpdateHandler):
 
             # 保存记录
             self.save_record(self.record_file, "dict_file", self.dict_file, info)
-        except Exception as e:
+        except Exception:
             # 清理残留文件
             if os.path.exists(temp):
                 os.remove(temp)
             raise
 
-    def run(self) -> int:
-        """
-        执行更新
-        return:
-            -1: 更新失败
-            0: 已经是最新/无可用更新
-            1: 更新成功
-        """
-        print_header("词库更新流程")
-        # 使用缓存信息而不是重复API调用
-        remote_info = self.update_info
-
+    def run(self) -> UpdateResult:
+        if not self.update_info:
+            print_warning("未找到词库更新信息")
+            return UpdateResult.SKIPPED
         target_file = os.path.join(self.custom_dir, self.dict_file)
-        # 校验本地文件和远端文件sha256
-        if remote_info['sha256']:
-            if os.path.exists(target_file) and self.file_compare(remote_info['sha256'], target_file):
-                print_success("文件内容未变化，将更新本地保存的记录")
-                self.save_record(self.record_file, "dict_file", self.dict_file, remote_info)
-                return 0
-
-        # 下载流程
-        _suffix = remote_info['sha256'] or remote_info['id']
-        temp_file = os.path.join(self.custom_dir, f"temp_dict_{_suffix}.zip")
-        if os.path.exists(temp_file):
-            is_continue = True
-        else:
-            is_continue = False
-            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), "temp_dict*.zip"):
-                os.remove(os.path.join(self.custom_dir, old_should_drop))
-        if not self.download_file(remote_info["url"], temp_file, is_continue):
-            return -1
-
-        # 方案变更时清除旧文件
-        if not self.clean_old_dict():
-            # 获取上次下载的压缩包的内容
-            old_files, _ = self.get_old_file_list(target_file, temp_file, is_dict=True)
-            if old_files:
-                self._delete_old_files(old_files, _)
-                print_warning("已移除上个版本的词库文件")
-
-        try:
-            self.apply_update(temp_file, target_file, remote_info)  # 传递三个参数
-            print_success("词库更新完成")
-            return 1
-        except Exception as e:
-            print_error(f"更新失败: {str(e)}")
-            # 回滚临时文件
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            return -1
+        return self.run_archive_update(
+            title="词库更新流程",
+            target_file=target_file,
+            temp_prefix="temp_dict",
+            info=self.update_info,
+            cleanup_existing=self.clean_old_dict,
+            cleanup_delta=lambda target, temp: self.get_old_file_list(target, temp, is_dict=True),
+            apply_func=self.apply_update,
+            success_message="词库更新完成",
+        )
 
     def clean_old_dict(self) -> None:
         """当变更所使用的方案时，删除旧文件"""
@@ -1517,93 +1701,83 @@ class DictUpdater(UpdateHandler):
                 cleaned = True
         return cleaned
 
-# ====================== 模型更新 ======================
-class ModelUpdater(UpdateHandler):
-    """模型更新处理器"""
+class BinaryAssetUpdater(UpdateHandler):
+    asset_file = ""
+    record_filename = ""
+    record_property = ""
+    component_name = ""
+
     def __init__(self, config_manager):
         super().__init__(config_manager)
-        self.record_file = os.path.join(self.custom_dir, "model_record.json")
-        # 模型固定配置
-        self.model_file = "wanxiang-lts-zh-hans.gram"
-        self.target_path = os.path.join(self.extract_path, self.model_file)
+        self.record_file = os.path.join(self.custom_dir, self.record_filename)
+        self.record_name = self.asset_file
+        self.target_path = os.path.join(self.extract_path, self.asset_file)
 
-    def check_update(self) -> Optional[Dict]:
-        """检查模型更新"""
+    def fetch_release(self) -> Optional[Union[Dict, List]]:
         url = f"https://api.github.com/repos/{OWNER}/{MODEL_REPO}/releases/tags/{MODEL_TAG}"
-        use_mirror = self.config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
-        if use_mirror:
+        if self.use_mirror:
             url = f"https://cnb.cool/{OWNER}/{CNB_REPO}/-/releases"
-        release = self.remote_api_request(
+        return self.remote_api_request(
             url = url,
-            use_mirror = use_mirror
+            use_mirror = self.use_mirror
         )
+
+    def extract_update_info(self, release: Optional[Union[Dict, List]]) -> Optional[UpdateInfo]:
         if not release:
             return None
-
         release = release[-1] if isinstance(release, list) else release
         for asset in release.get("assets", []):
-            if asset["name"] == self.model_file:
-                return {
-                    "url": asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path"),
-                    # 使用asset的更新时间
-                    "update_time": asset.get("updated_at"),
-                    "size": asset.get("size") or asset.get("sizeInByte"),
-                    "sha256": asset.get("digest").split(':')[-1] if asset.get("digest") else "",
-                    "id": asset.get("id")
-                }
+            if asset["name"] == self.asset_file:
+                return UpdateInfo(
+                    name=asset["name"],
+                    url=asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path", ""),
+                    update_time=asset.get("updated_at", ""),
+                    sha256=asset.get("digest", "").split(':')[-1] if asset.get("digest", "") else "",
+                    asset_id=str(asset.get("id", "")),
+                    size=asset.get("size") or asset.get("sizeInByte") or 0,
+                    tag=MODEL_TAG,
+                )
         return None
 
-    def run(self) -> int:
-        """
-        执行模型更新主流程
-        return:
-            -1: 更新失败
-            0: 已经是最新/无可用更新
-            1: 更新成功
-        """
-        print_header("模型更新流程")
-        # 使用缓存信息而不是重复API调用
-        remote_info = self.update_info
+    def run(self) -> UpdateResult:
+        if not self.update_info:
+            print_warning(f"未找到{self.component_name}更新信息")
+            return UpdateResult.SKIPPED
+        return self.run_binary_update(
+            title=f"{self.component_name}更新流程",
+            target_file=self.target_path,
+            temp_pattern=f"{self.asset_file}*.tmp",
+            info=self.update_info,
+            success_message=f"{self.component_name}更新完成",
+        )
 
-        # 无论是否有记录，都检查哈希是否匹配
-        hash_matched = self.file_compare(remote_info['sha256'], self.target_path)
 
-        # 哈希匹配但记录缺失时的处理
-        if hash_matched:
-            print_success("模型内容未变化，将更新本地保存的记录")
-            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
-            return 0
+class ModelUpdater(BinaryAssetUpdater):
+    """模型更新处理器"""
+    asset_file = MODEL_FILE
+    record_filename = "model_record.json"
+    record_property = "model_name"
+    component_name = "模型"
 
-        # 下载到临时文件
-        _suffix = remote_info['sha256'] or remote_info['id']
-        temp_file = os.path.join(self.custom_dir, f"{self.model_file}_{_suffix}.tmp")
-        if os.path.exists(temp_file):
-            is_continue = True
-        else:
-            is_continue = False
-            for old_should_drop in fnmatch.filter(os.listdir(self.custom_dir), f"{self.model_file}*.tmp"):
-                os.remove(os.path.join(self.custom_dir, old_should_drop))
-        if not self.download_file(remote_info["url"], temp_file, is_continue):
-            print_error("模型下载失败")
-            return -1
 
-        # 停止服务再覆盖
-        if hasattr(self, 'terminate_processes'):
-            self.terminate_processes()  # 复用终止进程逻辑
+class PredictUpdater(BinaryAssetUpdater):
+    """预测库更新处理器"""
+    asset_file = PREDICT_FILE
+    record_filename = "predict_record.json"
+    record_property = "predict_name"
+    component_name = "预测库"
 
-        # 覆盖目标文件
-        try:
-            if os.path.exists(self.target_path):
-                os.remove(self.target_path)
-            os.replace(temp_file, self.target_path)  # 原子操作更安全
-            self.save_record(self.record_file, "model_name", self.model_file, remote_info)
-        except Exception as e:
-            print_error(f"模型文件替换失败: {str(e)}")
-            return -1
+    def __init__(self, config_manager):
+        super().__init__(config_manager)
+        self.enabled = self.use_predict
 
-        # 返回更新成功状态
-        print_success("模型更新完成")
-        return 1
+    def has_update(self) -> bool:
+        return self.enabled and super().has_update()
+
+    def run(self) -> UpdateResult:
+        if not self.enabled:
+            return UpdateResult.SKIPPED
+        return super().run()
 
 
 class ScriptUpdater(UpdateHandler):
@@ -1611,7 +1785,7 @@ class ScriptUpdater(UpdateHandler):
         super().__init__(config_manager)
         self.script_path = os.path.abspath(__file__)
 
-    def check_update(self) -> Optional[Dict]:
+    def check_update(self) -> Optional[UpdateInfo]:
         releases = self.remote_api_request("https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases")
         if not releases:
             return None
@@ -1621,18 +1795,22 @@ class ScriptUpdater(UpdateHandler):
             return None
         update_info = releases[0].get("body", "无更新说明")
         for asset in releases[0].get("assets", []):
-            if asset["name"] == 'rime-wanxiang-update-win-mac-ios-android.py':
-                return {
-                    "url": asset["browser_download_url"],
-                    "update_time": datetime.strptime(asset["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
-                    "tag": remote_version,
-                    "description": update_info
-                }
+            if asset["name"] == SCRIPT_ASSET_NAME:
+                return UpdateInfo(
+                    name=asset["name"],
+                    url=asset["browser_download_url"],
+                    update_time=asset["updated_at"],
+                    tag=remote_version,
+                    description=update_info,
+                    sha256=asset.get("digest", "").split(':')[-1] if asset.get("digest", "") else "",
+                    asset_id=str(asset.get("id", "")),
+                )
+        return None
 
     def update_script(self, url: str) -> bool:
         """更新脚本"""
         res = self.remote_api_request(url=url, output_json=False)
-        if res.status_code == 200:
+        if res and res.status_code == 200:
             with open(self.script_path, 'wb') as f:
                 f.write(res.content)
             print_success("脚本更新成功，请重新运行脚本（iOS用户请退出当前软件重新启动）")
@@ -1654,11 +1832,11 @@ class ScriptUpdater(UpdateHandler):
             print_warning("未找到脚本更新信息")
             return False
 
-        remote_version = remote_info.get("tag", "DEFAULT")
+        remote_version = remote_info.tag or "DEFAULT"
         user_choose = input(f"\n{COLOR['WARNING']}[!] 检测到新版本更新（当前版本：{UPDATE_TOOLS_VERSION}，新版本：{remote_version}），是否更新？(y/n): {COLOR['ENDC']}")
         if user_choose.lower() == 'y':
             print_header("正在更新脚本，请勿进行其他操作...")
-            if self.update_script(remote_info["url"]):
+            if self.update_script(remote_info.url):
                 sys.exit(0)
         else:
             return False
@@ -1682,38 +1860,45 @@ def calculate_sha256(file_path) -> Optional[str]:
         print_error(f"计算哈希失败: {str(e)}")
         return None
 
-def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
+def format_update_time(time_str: str) -> str:
+    return UpdateHandler.parse_remote_time(time_str).astimezone(
+        timezone(timedelta(hours=8))
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
     has_script_update = script_updater.update_info
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
+    has_predict_update = predict_updater.update_info and predict_updater.has_update()
 
     # 脚本更新提示
     if has_script_update:
         print(f"\n{COLOR['WARNING']}==== 脚本更新可用 ===={COLOR['ENDC']}")
-        print(f"版本: {has_script_update['tag']}")
-        print(f"发布时间: {has_script_update['update_time']}")
+        print(f"版本: {has_script_update.tag}")
+        print(f"发布时间: {format_update_time(has_script_update.update_time)}")
 
     # 方案更新提示(仅当有更新时显示)
     if has_scheme_update:
         scheme_update_info = scheme_updater.update_info
-        remote_time = datetime.strptime(scheme_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        scheme_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+        remote_time = UpdateHandler.parse_remote_time(scheme_update_info.update_time)
+        scheme_local = format_update_time(scheme_update_info.update_time)
 
         print(f"\n{COLOR['WARNING']}==== 方案更新可用 ===={COLOR['ENDC']}")
-        print(f"{COLOR['WARNING']}版本: {scheme_update_info.get('tag', '未知版本')}{COLOR['ENDC']}")
+        print(f"{COLOR['WARNING']}版本: {scheme_update_info.tag or '未知版本'}{COLOR['ENDC']}")
         print(f"发布时间: {scheme_local}")
 
-        raw_description = scheme_update_info.get('description', '无更新说明')
+        raw_description = scheme_update_info.description or '无更新说明'
 
         try:
             update_cache_dir = scheme_updater.custom_dir
             os.makedirs(update_cache_dir, exist_ok=True)
 
             # 创建文件名（包含版本和时间）
-            version_tag = scheme_update_info.get('tag', 'unknown').replace('/', '_')
+            version_tag = (scheme_update_info.tag or 'unknown').replace('/', '_')
             date_str = remote_time.strftime("%Y%m%d")
             filename = os.path.join(update_cache_dir, f"update_{version_tag}_{date_str}.md")
 
@@ -1737,30 +1922,61 @@ def print_update_status(scheme_updater, dict_updater, model_updater, script_upda
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
         dict_update_info = dict_updater.update_info
-        remote_time = datetime.strptime(dict_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        dict_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{COLOR['WARNING']}==== 词库更新可用 ===={COLOR['ENDC']}")
-        print(f"版本: {dict_update_info.get('tag', '未知版本')}")
-        print(f"发布时间: {dict_local}")
+        print(f"版本: {dict_update_info.tag or '未知版本'}")
+        print(f"发布时间: {format_update_time(dict_update_info.update_time)}")
 
     # 模型更新提示(仅当有更新时显示)
     if has_model_update:
         model_update_info = model_updater.update_info
-        remote_time = datetime.strptime(model_update_info["update_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        model_local = remote_time.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{COLOR['WARNING']}==== 模型更新可用 ===={COLOR['ENDC']}")
-        print(f"发布时间: {model_local}")
+        print(f"发布时间: {format_update_time(model_update_info.update_time)}")
+
+    if has_predict_update:
+        predict_update_info = predict_updater.update_info
+        print(f"\n{COLOR['WARNING']}==== 预测库更新可用 ===={COLOR['ENDC']}")
+        print(f"发布时间: {format_update_time(predict_update_info.update_time)}")
 
     # 如果没有更新显示提示
-    if not (has_scheme_update or has_dict_update or has_model_update):
+    if not (has_scheme_update or has_dict_update or has_model_update or has_predict_update):
         print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
+
+
+def deploy_after_update(deployer, updated: List[UpdateResult], is_config_triggered: bool = False) -> Optional[List[UpdateResult]]:
+    if UpdateResult.FAILED in updated and deployer:
+        print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
+        return updated
+    if all(result == UpdateResult.SKIPPED for result in updated) and deployer:
+        print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
+        return updated
+
+    if SYSTEM_TYPE == 'windows' and deployer:
+        print_header("重新部署输入法")
+        if deployer.deploy_weasel():
+            print_success("部署成功")
+        else:
+            print_warning("部署失败，请检查日志")
+    elif SYSTEM_TYPE == 'macos' and deployer:
+        print_header("重新部署输入法")
+        deployer.deploy_for_mac()
+    elif SYSTEM_TYPE == 'ios' and deployer:
+        print_header("尝试跳转到输入法App重新部署")
+        if is_config_triggered:
+            deployer.deploy_for_ios()
+        else:
+            is_deploy = input("是否跳转到输入法App进行部署(y/n)? ").strip().lower()
+            if is_deploy == 'y':
+                deployer.deploy_for_ios()
+    elif deployer:
+        print_warning("请手动部署输入法")
+    return updated
 
 def perform_auto_update(
     config_manager: ConfigManager,
     combined_updater: Optional[CombinedUpdater] = None,
     is_config_triggered: bool = False,
     include_script:bool = False
-) -> Optional[List[int]]:
+) -> Optional[List[UpdateResult]]:
     """执行自动更新流程"""
     if not is_config_triggered:
         print_header("智能更新检测中...")
@@ -1785,71 +2001,35 @@ def perform_auto_update(
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    predict_updater = combined_updater.predict_updater
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
-        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater)
 
     # 脚本更新检查（仅当有实际更新时才提示）
     if script_updater.update_info and include_script:
         script_updater.run()
 
     # 初始化更新状态
-    scheme_updated = 0
-    dict_updated = 0
-    model_updated = 0
+    scheme_updated = UpdateResult.SKIPPED
+    dict_updated = UpdateResult.SKIPPED
+    model_updated = UpdateResult.SKIPPED
+    predict_updated = UpdateResult.SKIPPED
     if scheme_updater.has_update():
         scheme_updated = scheme_updater.run()
     if dict_updater.has_update():
         dict_updated = dict_updater.run()
     if model_updater.has_update():
         model_updated = model_updater.run()
-    updated = [scheme_updated, dict_updated, model_updated]
-    # 部署逻辑
+    if predict_updater.has_update():
+        predict_updated = predict_updater.run()
+    updated = [scheme_updated, dict_updated, model_updated, predict_updated]
     deployer = scheme_updater
-    if SYSTEM_TYPE == 'windows':
-        if -1 in updated and deployer:
-            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-            return updated # 直接返回updated，不进行后续操作
-        elif updated == [0,0,0]  and deployer:
-            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-        else:
-            print_header("重新部署输入法")
-            if deployer.deploy_weasel():
-                print_success("部署成功")
-            else:
-                print_warning("部署失败，请检查日志")
-    elif SYSTEM_TYPE == 'macos':
-        if -1 in updated and deployer:
-            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-            return updated # 直接返回updated，不进行后续操作
-        elif updated == [0,0,0]  and deployer:
-            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-        else:
-            print_header("重新部署输入法")
-            deployer.deploy_for_mac()
-    elif SYSTEM_TYPE == 'ios':
-        import webbrowser
-        if -1 in updated and deployer:
-            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-            return updated # 直接返回updated，不进行后续操作
-        elif updated == [0,0,0]  and deployer:
-            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-        else:
-            print_header("尝试跳转到输入法App重新部署")
-            if is_config_triggered:
-                deployer.deploy_for_ios()
-            else:
-                is_deploy = input("是否跳转到输入法App进行部署(y/n)? ").strip().lower()
-                if is_deploy == 'y':
-                    deployer.deploy_for_ios()
-    else:
-        if -1 in updated and deployer:
-            print("\n" + COLOR['OKCYAN'] + "[i]" + COLOR['ENDC'] + " 部分内容更新失败，跳过部署步骤，请重新更新")
-            return updated # 直接返回updated，不进行后续操作
-        elif updated == [0,0,0]  and deployer:
-            print("\n" + COLOR['OKGREEN'] + "[√] 无需更新，跳过部署步骤" + COLOR['ENDC'])
-        else:
-            print_warning("请手动部署输入法")
+    if UpdateResult.FAILED in updated:
+        deploy_after_update(deployer, updated, is_config_triggered=is_config_triggered)
+        return updated
+
+    deploy_after_update(deployer, updated, is_config_triggered=is_config_triggered)
 
     print("\n" + COLOR['OKGREEN'] + "[√] 输入法配置全部更新完成" + COLOR['ENDC'])
 
@@ -1881,10 +2061,11 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
+    predict_updater = combined_updater.predict_updater
 
     # 使用函数打印更新状态
     if show:
-        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater)
     return combined_updater
 
 def open_config_file(config_path) -> None:
@@ -1898,7 +2079,7 @@ def open_config_file(config_path) -> None:
                 subprocess.run(['open', config_path])
             else:
                 subprocess.run(['xdg-open', config_path])
-        except:
+        except OSError:
             print_warning("无法打开配置文件，请手动编辑。")
 
 # ====================== 主程序 ======================
@@ -1915,11 +2096,11 @@ def main():
 
     try:
         config_manager = ConfigManager()
+        app_config = config_manager.load_config(show=False)
         combined_updater = None  # 初始化组合更新器
 
         # 检查是否启用了自动更新
-        auto_update = config_manager.config.getboolean('Settings', 'auto_update', fallback=False)
-        if auto_update:
+        if app_config.auto_update:
             print_header("自动更新模式已启用")
             combined_updater = create_and_show_updates(config_manager, show=False)
             # 执行自动更新并退出
@@ -1930,14 +2111,15 @@ def main():
                 include_script=args.script
             )
         # 非自动更新模式下显示更新状态
-        if not auto_update:
+        if not app_config.auto_update:
             # 创建并显示更新信息
             combined_updater = create_and_show_updates(config_manager)
         # 主菜单循环
         while True:
             # 选择更新类型
             print_header("更新类型选择")
-            print("[1] 词库下载\n[2] 方案下载\n[3] 模型下载\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            model_label = "[3] 模型下载" if not app_config.use_predict else "[3] 模型/预测库下载"
+            print(f"[1] 词库下载\n[2] 方案下载\n{model_label}\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
 
             if choice == '6':
@@ -1950,6 +2132,7 @@ def main():
                 if user_choice == '':
                     # 重新加载配置
                     config_manager = ConfigManager()
+                    app_config = config_manager.load_config(show=False)
                     # 重置更新器
                     combined_updater = None
                     # 重新创建并显示更新信息
@@ -1975,7 +2158,7 @@ def main():
                     include_script=True
                 )
                 # 处理更新结果
-                if -1 in updated:
+                if UpdateResult.FAILED in updated:
                     print_warning("部分内容下载更新失败，请重试")
                     continue
                 else:
@@ -1989,36 +2172,25 @@ def main():
                 scheme_updater = combined_updater.scheme_updater
                 dict_updater = combined_updater.dict_updater
                 model_updater = combined_updater.model_updater
+                predict_updater = combined_updater.predict_updater
                 # 初始化更新状态
                 deployer = None
-                updated = -200
+                updated_results: List[UpdateResult] = [UpdateResult.SKIPPED]
                 if choice == '1':
-                    updated = dict_updater.run()
+                    updated_results = [dict_updater.run()]
                     deployer = dict_updater
                 elif choice == '2':
-                    updated = scheme_updater.run()
+                    updated_results = [scheme_updater.run()]
                     deployer = scheme_updater
                 elif choice == '3':
-                    updated = model_updater.run()
+                    model_result = model_updater.run()
+                    predict_result = UpdateResult.SKIPPED
+                    if app_config.use_predict:
+                        predict_result = predict_updater.run()
+                    updated_results = [model_result, predict_result]
                     deployer = model_updater
-                # 部署逻辑
-                if SYSTEM_TYPE == 'windows' and deployer and updated == 1:
-                    print_header("重新部署输入法")
-                    if deployer.deploy_weasel():
-                        print_success("部署成功")
-                    else:
-                        print_warning("部署失败，请检查日志")
-                elif SYSTEM_TYPE == 'macos' and deployer and updated == 1:
-                    print_header("重新部署输入法")
-                    deployer.deploy_for_mac()
-                elif SYSTEM_TYPE == 'ios' and deployer and updated == 1:
-                    print_header("尝试跳转到输入法App重新部署")
-                    is_deploy = input("是否跳转到输入法App进行部署(y/n)? ").strip().lower()
-                    if is_deploy == 'y':
-                        deployer.deploy_for_ios()
-                else:
-                    if deployer and updated == 1:
-                        print_warning("请手动部署输入法")
+
+                deploy_after_update(deployer, updated_results)
 
                 # 返回主菜单或退出
                 user_input = input("\n按回车键返回主菜单，或输入其他键退出: ")
@@ -2034,9 +2206,14 @@ def main():
         print(f"\n{COLOR['FAIL']}🚫 终止操作 {COLOR['ENDC']}")
     except SystemExit:
         print(f"\n{COLOR['OKBLUE']}⏏️ 程序退出 {COLOR['ENDC']}")
-    except Exception as e:
-        print(f"\n{COLOR['FAIL']}💥 程序异常：{str(e)}{COLOR['ENDC']}")
+        raise
+    except UpdaterError as exc:
+        print_error(str(exc))
         sys.exit(1)
+    except Exception as exc:
+        print(f"\n{COLOR['FAIL']}💥 程序异常：{str(exc)}{COLOR['ENDC']}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
