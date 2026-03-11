@@ -17,6 +17,7 @@ from tqdm import tqdm
 import argparse
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+from pathlib import Path
 
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -41,6 +42,11 @@ CNB_HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept": "application/vnd.cnb.web+json" # 确保返回JSON
 }
+
+def get_runtime_base_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
 # Zh词库目录
 ZH_DICTS = ZH_DICTS_PRO = "dicts"
 SCHEME_MAP = {
@@ -280,14 +286,14 @@ class ConfigManager:
         elif SYSTEM_TYPE == 'ios':
             detected['rime_user_dir'] = self.rime_dir
         else:
-            current_file_dir = os.path.dirname(os.path.abspath(__file__))
-            if os.path.exists(os.path.join(current_file_dir, 'Rime')):
-                detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
-            elif os.path.exists(os.path.join(current_file_dir, 'rime')):
-                detected['rime_user_dir'] = os.path.join(current_file_dir, 'rime')
+            current_file_dir = get_runtime_base_dir()
+            if (current_file_dir / 'Rime').exists():
+                detected['rime_user_dir'] = str(current_file_dir / 'Rime')
+            elif (current_file_dir / 'rime').exists():
+                detected['rime_user_dir'] = str(current_file_dir / 'rime')
             else:
-                os.makedirs(os.path.join(current_file_dir, 'Rime'), exist_ok=True)
-                detected['rime_user_dir'] = os.path.join(current_file_dir, 'Rime')
+                (current_file_dir / 'Rime').mkdir(exist_ok=True)
+                detected['rime_user_dir'] = str(current_file_dir / 'Rime')
 
         self.install_paths = InstallPaths(
             rime_user_dir=detected['rime_user_dir'],
@@ -298,19 +304,19 @@ class ConfigManager:
 
     def _check_hamster_path(self) -> Optional[str]:
         """检查脚本是否放置在正确的Hamster目录下"""
-        file_dir = os.path.dirname(os.path.abspath(__file__))
-        hamster_path_names = os.listdir(file_dir)
+        file_dir = get_runtime_base_dir()
+        hamster_path_names = [item.name for item in file_dir.iterdir()]
         if 'RimeUserData' in hamster_path_names:
-            self.rime_dir = os.path.join(file_dir, 'RimeUserData', 'wanxiang')
+            self.rime_dir = str(file_dir / 'RimeUserData' / 'wanxiang')
             print_warning("当前使用元书输入法，配置文件夹为 RimeUserData/wanxiang ，不存在将自动创建")
             os.makedirs(self.rime_dir, exist_ok=True)
             return '元书输入法'
 
         if "RIME" in hamster_path_names:
-            self.rime_dir = os.path.join(file_dir, 'RIME', 'Rime')
+            self.rime_dir = str(file_dir / 'RIME' / 'Rime')
             return '仓输入法'
         elif "Rime" in hamster_path_names:
-            self.rime_dir = os.path.join(file_dir, 'Rime')
+            self.rime_dir = str(file_dir / 'Rime')
             return '仓输入法'
         else:
             raise ConfigError('请将脚本放置到正确的位置（Hamster目录下）')
@@ -339,23 +345,15 @@ class ConfigManager:
             else:
                 print(f"{INDENT}无效的选择，请重新选择。")
 
-    def _get_config_path(self) -> str:
+    def _get_config_path(self) -> Path:
         """获取配置文件路径"""
-        # 检查程序是否是打包后的可执行文件。如果是，sys.frozen 属性会被设置为 True
-        if getattr(sys, 'frozen', False):
-            # 如果是打包后的可执行文件，获取可执行文件所在的目录
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            # 如果是普通的 Python 脚本，获取当前脚本文件的绝对路径所在的目录
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        # 将基础目录和配置文件名 'settings.ini' 拼接成完整的配置文件路径并返回
-        return os.path.join(base_dir, 'settings.ini')
+        return get_runtime_base_dir() / 'settings.ini'
 
     def _ensure_config_exists(self) -> None:
         """确保配置文件存在，如果不存在则创建一个新的配置文件"""
         if SYSTEM_TYPE == 'ios':
             self.rime_engine = self._check_hamster_path()
-        if not os.path.exists(self.config_path):
+        if not self.config_path.exists():
             print_warning("正在创建一个新的配置文件。")
             self._init_empty_config()
             self.config.set('Settings', 'engine', self.rime_engine)
@@ -420,7 +418,7 @@ class ConfigManager:
                 break
             elif choice == 'n':
                 print_warning("请重新配置生成新的配置文件。")
-                os.remove(self.config_path)  # 删除配置文件
+                self.config_path.unlink()  # 删除配置文件
                 self.reload_flag = True
                 self._ensure_config_exists()  # 重新创建配置文件
                 self.change_config = True
@@ -430,9 +428,9 @@ class ConfigManager:
                     print_warning("iOS平台不支持修改配置文件，请手动编辑 settings.ini 文件。")
                 else:
                     if os.name == 'nt':
-                        subprocess.run(['notepad.exe', self.config_path], shell=True)
+                        subprocess.run(['notepad.exe', str(self.config_path)], shell=True)
                     else:
-                        subprocess.run(['open', self.config_path])
+                        subprocess.run(['open', str(self.config_path)])
                     print_warning("请在打开的配置文件中手动修改，保存后继续执行。")
                 input("按任意键继续...")
                 self._try_load_config()  # 再次尝试加载配置
@@ -449,7 +447,7 @@ class ConfigManager:
             self.load_config(show=True)
         except UpdaterError:
             raise
-        except Exception as exc:
+        except (OSError, configparser.Error, ValueError) as exc:
             raise ConfigError(f"配置加载失败：{exc}") from exc
         print(f"\n{COLOR['GREEN']}[√] 配置加载成功{COLOR['ENDC']}")
 
@@ -470,7 +468,7 @@ class ConfigManager:
 
     def _write_config(self) -> None:
         """写入配置文件"""
-        with open(self.config_path, 'w', encoding='utf-8') as f:
+        with self.config_path.open('w', encoding='utf-8') as f:
             self.config.write(f)
 
     def _guide_scheme_type_selection(self) -> bool:
@@ -575,7 +573,7 @@ class ConfigManager:
             return scheme_file, dict_file
         except UpdaterError:
             raise
-        except Exception as exc:
+        except (NetworkError, OSError, ValueError, requests.RequestException) as exc:
             raise NetworkError(
                 f"无法获取最新文件名: {str(exc)}\n"
                 "请检查网络连接，或关闭代理后重试..."
@@ -603,9 +601,9 @@ class ConfigManager:
         self.display_config_instructions()
 
         if os.name == 'nt':
-            os.startfile(self.config_path)
+            os.startfile(str(self.config_path))
         elif os.name == 'posix' and SYSTEM_TYPE == 'macos':
-            subprocess.Popen(['open', self.config_path])
+            subprocess.Popen(['open', str(self.config_path)])
         else:
             None
         input("\n请按需修改上述路径，保存后按回车键继续...")
@@ -900,7 +898,7 @@ class UpdateHandler:
         if not hasattr(self, 'record_file') or not os.path.exists(self.record_file):
             return None, None
         try:
-            with open(self.record_file, 'r') as f:
+            with open(self.record_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 # 读取本地记录的update_time
                 return self.parse_remote_time(data["update_time"]), data.get("sha256") or data.get("cnb_id")
@@ -1035,15 +1033,17 @@ class UpdateHandler:
             info: 保存的信息
         """
         # 保存记录
-        with open(record_file, 'w') as f:
+        with open(record_file, 'w', encoding='utf-8') as f:
             json.dump({
+                "record_version": 1,
+                "asset_name": info.name,
                 property_type: property_name,
                 "update_time": info.update_time,
                 "tag": info.tag,
                 "apply_time": datetime.now(timezone.utc).isoformat(),
                 "sha256": info.sha256,
                 "cnb_id": info.asset_id
-            }, f)
+            }, f, ensure_ascii=False, indent=2)
 
     def _build_headers(self, use_mirror: bool = False) -> Dict[str, str]:
         if use_mirror:
@@ -1175,8 +1175,8 @@ class UpdateHandler:
                         f.write(data)
                         pbar.update(len(data))  # 更新进度条
             return True
-        except Exception as e:
-            print_error(f"下载失败: {str(e)}")
+        except (requests.RequestException, OSError) as exc:
+            print_error(f"下载失败: {str(exc)}")
             return False
 
     def extract_zip(self, zip_path, target_dir, is_dict=False) -> bool:
@@ -1257,8 +1257,8 @@ class UpdateHandler:
         except zipfile.BadZipFile:
             print_error("ZIP文件损坏")
             return False
-        except Exception as e:
-            print_error(f"解压失败: {str(e)}")
+        except (OSError, RuntimeError, ValueError) as exc:
+            print_error(f"解压失败: {str(exc)}")
             return False
 
     def prepare_temp_download(self, temp_file: str, stale_pattern: str) -> bool:
@@ -1299,7 +1299,7 @@ class UpdateHandler:
             apply_func(temp_file, target_file, info)
             print_success(success_message)
             return UpdateResult.UPDATED
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print_error(f"更新失败: {str(exc)}")
             if os.path.exists(temp_file):
                 os.remove(temp_file)
@@ -1327,7 +1327,7 @@ class UpdateHandler:
             self.save_record(self.record_file, self.record_property, self.record_name, info)
             print_success(success_message)
             return UpdateResult.UPDATED
-        except Exception as exc:
+        except OSError as exc:
             print_error(f"{self.component_name}文件替换失败: {str(exc)}")
             return UpdateResult.FAILED
 
@@ -1354,8 +1354,8 @@ class UpdateHandler:
             except subprocess.CalledProcessError as e:
                 print_warning(f"优雅退出失败: {e}")
                 return False
-            except Exception as e:
-                print_error(f"未知错误: {str(e)}")
+            except OSError as exc:
+                print_error(f"未知错误: {str(exc)}")
                 return False
 
         def hard_stop(self):
@@ -1386,7 +1386,7 @@ class UpdateHandler:
                         )
                         time.sleep(2)
                         break
-                    except Exception as e:
+                    except OSError:
                         if retry == 2:
                             raise
                         print_warning(f"服务启动失败，重试({retry+1}/3)...")
@@ -1410,8 +1410,8 @@ class UpdateHandler:
 
                 # print_success("部署成功完成")
                 return True
-            except Exception as e:
-                print_error(f"部署失败: {str(e)}")
+            except (OSError, subprocess.SubprocessError) as exc:
+                print_error(f"部署失败: {str(exc)}")
                 return False
 
     if SYSTEM_TYPE == 'macos':
@@ -1518,8 +1518,8 @@ class CombinedUpdater:
             # 重新获取更新信息
             self.scheme_updater.update_info = self._extract_scheme_update()
             self.dict_updater.update_info = self._extract_dict_update()
-        except Exception as e:
-            print_error(f"文件名自动更新失败: {str(e)}")
+        except (UpdaterError, configparser.Error, OSError) as exc:
+            print_error(f"文件名自动更新失败: {str(exc)}")
 
     def extract_scheme_key(self) -> str:
         """从当前方案文件名中提取方案key"""
@@ -1662,11 +1662,11 @@ class DictUpdater(UpdateHandler):
                 self.dict_extract_path,
                 is_dict=True
             ):
-                raise Exception("解压失败")
+                raise RuntimeError("解压失败")
 
             # 保存记录
             self.save_record(self.record_file, "dict_file", self.dict_file, info)
-        except Exception:
+        except (OSError, RuntimeError):
             # 清理残留文件
             if os.path.exists(temp):
                 os.remove(temp)
@@ -1783,7 +1783,7 @@ class PredictUpdater(BinaryAssetUpdater):
 class ScriptUpdater(UpdateHandler):
     def __init__(self, config_manager):
         super().__init__(config_manager)
-        self.script_path = os.path.abspath(__file__)
+        self.script_path = Path(__file__).resolve()
 
     def check_update(self) -> Optional[UpdateInfo]:
         releases = self.remote_api_request("https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases")
@@ -1811,7 +1811,7 @@ class ScriptUpdater(UpdateHandler):
         """更新脚本"""
         res = self.remote_api_request(url=url, output_json=False)
         if res and res.status_code == 200:
-            with open(self.script_path, 'wb') as f:
+            with self.script_path.open('wb') as f:
                 f.write(res.content)
             print_success("脚本更新成功，请重新运行脚本（iOS用户请退出当前软件重新启动）")
             return True
@@ -1856,8 +1856,8 @@ def calculate_sha256(file_path) -> Optional[str]:
             for byte_block in iter(lambda: f.read(65536), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
-    except Exception as e:
-        print_error(f"计算哈希失败: {str(e)}")
+    except OSError as exc:
+        print_error(f"计算哈希失败: {str(exc)}")
         return None
 
 def format_update_time(time_str: str) -> str:
@@ -1916,8 +1916,8 @@ def print_update_status(scheme_updater, dict_updater, model_updater, predict_upd
                     md_file.write(raw_description)
 
                 print_success(f"更新说明已保存到: {filename}")
-        except Exception as e:
-            print_error(f"保存更新说明失败: {str(e)}")
+        except OSError as exc:
+            print_error(f"保存更新说明失败: {str(exc)}")
 
     # 词库更新提示(仅当有更新时显示)
     if has_dict_update:
@@ -2068,8 +2068,9 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
         print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater)
     return combined_updater
 
-def open_config_file(config_path) -> None:
+def open_config_file(config_path: Union[str, Path]) -> None:
     """用默认编辑器打开配置文件"""
+    config_path = str(config_path)
     if os.name == 'nt':  # Windows
         subprocess.run(['notepad.exe', config_path], shell=True)
     else:  # macOS/Linux
@@ -2079,7 +2080,7 @@ def open_config_file(config_path) -> None:
                 subprocess.run(['open', config_path])
             else:
                 subprocess.run(['xdg-open', config_path])
-        except OSError:
+        except (OSError, subprocess.SubprocessError):
             print_warning("无法打开配置文件，请手动编辑。")
 
 # ====================== 主程序 ======================
