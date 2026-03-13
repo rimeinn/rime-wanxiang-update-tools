@@ -848,7 +848,7 @@ class FileChecker:
             releases_list = releases_all['releases']
             for release in releases_list:
                 if self.tag:
-                    if "词库" in release.get("title"):
+                    if "词库" in release.get("title") or "实时全量预览" in release.get("title"):
                         return release # 词库
                 else:
                     if "万象拼音输入方案" in release.get("title"):
