@@ -224,8 +224,8 @@ update_schema() {
   fi
   # 获取本地版本号
   local local_version remote_version
-  if [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
-    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+  if [[ -f "$DEPLOY_DIR/version.txt" ]]; then
+    local_version=$(cat "$DEPLOY_DIR/version.txt")
     [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
     local_version="v0"
@@ -329,8 +329,8 @@ update_dict() {
     fi
   fi
   local local_date remote_date
-  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
-    local_date=$(stat -f %m "$DEPLOY_DIR/dicts/chengyu.txt")
+  if [[ -f "$DEPLOY_DIR/dicts/cn&en.dict.yaml" ]]; then
+    local_date=$(stat -f %m "$DEPLOY_DIR/dicts/cn&en.dict.yaml")
   else
     local_date=0
   fi

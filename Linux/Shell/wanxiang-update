@@ -262,14 +262,16 @@ get_info() {
     info=$(
       jq -r --arg version "$version" --arg name "$name" '.[] |
       select( .tag_name == $version ) | .assets[] |
-      select( .name | test( $name ) )' "$TEMP_DIR/github_$name.json"
+      select( .name | test( $name ) ) |
+      select( if $name == "lts" then (.name | contains("predict") | not) else true end )' "$TEMP_DIR/github_$name.json"
     )
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
       jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases[] |
       select( .tag_ref == $version ) | .assets[] |
-      select( .name | test( $name ) )' "$TEMP_DIR/cnb.json"
+      select( .name | test( $name ) ) |
+      select( if $name == "lts" then (.name | contains("predict") | not) else true end )' "$TEMP_DIR/cnb.json"
     )
     echo "$info"
   fi
@@ -320,11 +322,8 @@ update_schema() {
 
   # 获取本地版本号
   local local_version remote_version
-  if [[ -f "$DEPLOY_DIR/lua/wanxiang/wanxiang.lua" ]]; then
-    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang/wanxiang.lua" | awk -F '"' '{print $2}')
-    [[ "$local_version" == v* ]] || local_version="v$local_version"
-  elif [[ -f "$DEPLOY_DIR/lua/wanxiang.lua" ]]; then
-    local_version=$(grep "wanxiang.version" "$DEPLOY_DIR/lua/wanxiang.lua" | awk -F '"' '{print $2}')
+  if [[ -f "$DEPLOY_DIR/version.txt" ]]; then
+    local_version=$(cat "$DEPLOY_DIR/version.txt")
     [[ "$local_version" == v* ]] || local_version="v$local_version"
   else
     local_version="v0"
@@ -439,8 +438,8 @@ update_dict() {
   cache_api "$mirror" "$fuzhu"
 
   local local_date remote_date
-  if [[ -f "$DEPLOY_DIR/dicts/chengyu.txt" ]]; then
-    local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/chengyu.txt")
+  if [[ -f "$DEPLOY_DIR/dicts/cn&en.dict.yaml" ]]; then
+    local_date=$(stat -c %Z "$DEPLOY_DIR/dicts/cn&en.dict.yaml")
   else
     local_date=0
   fi

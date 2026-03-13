@@ -1019,9 +1019,13 @@ class UpdateHandler:
             # 终止进程
             self.terminate_processes()
         # 移除不再使用的文件夹
-        for file_dir in old_dir_list:
-            if os.path.exists(file_dir):
-                shutil.rmtree(file_dir)
+        for path in old_dir_list:
+            if not os.path.exists(path):
+                continue
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
         # 移除旧版本文件
         for file in old_file_list:
             if os.path.exists(file):
