@@ -1566,6 +1566,25 @@ class CombinedUpdater:
             asset_id=str(asset.get("id", "")),
             size=asset.get("size") or asset.get("sizeInByte") or 0,
         )
+    def _release_tag(self, release: Dict) -> str:
+        return release.get("tag_name") or release.get("tag_ref", "").split("/")[-1]
+
+    def _is_scheme_release(self, release: Dict) -> bool:
+        title = release.get("title", "") or release.get("name", "")
+        tag = self._release_tag(release)
+        return (
+            "万象拼音输入方案" in title
+            and re.fullmatch(r"v\d+\.\d+\.\d+", tag) is not None
+        )
+
+    def _is_dict_release(self, release: Dict) -> bool:
+        title = release.get("title", "") or release.get("name", "")
+        tag = self._release_tag(release)
+        return (
+            ("词库" in title
+            or "实时全量预览" in title)
+            and (tag == "v1.0.0" or tag == "dict-nightly")
+        )
 
     def _extract_scheme_update(self) -> Optional[UpdateInfo]:
         """从仓库数据中提取方案更新"""
@@ -1573,6 +1592,8 @@ class CombinedUpdater:
             return None
 
         for release in self.shared_releases:
+            if not self._is_scheme_release(release):
+                continue
             for asset in release.get("assets", []):
                 if asset["name"] == self.scheme_updater.scheme_file:
                     return self._build_update_info(asset, release, release.get("body", "无更新说明"))
@@ -1584,6 +1605,8 @@ class CombinedUpdater:
             return None
 
         for release in self.shared_releases:
+            if not self._is_dict_release(release):
+                continue
             for asset in release.get("assets", []):
                 if asset["name"] == self.dict_updater.dict_file:
                     return self._build_update_info(asset, release)
