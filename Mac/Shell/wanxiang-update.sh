@@ -123,20 +123,33 @@ script_check() {
 }
 
 get_info() {
-  local mirror="$1" version="$2" name="$3" info
+  local mirror="$1" version="$2" name="$3" type="${4:-}" info
   if [[ "$mirror" == "github" ]]; then
     info=$(
-      jq -r --arg version "$version" --arg name "$name" '.[] |
-      select( .tag_name == $version ) | .assets.[] |
-      select( .name | test( $name ) ) |
-      select( if $name == "gram" then (.name | contains("mini") | not ) else true end)' "$TEMP_DIR/github_$name.json"
+      jq -r --arg version "$version" --arg name "$name" --arg type "$type" '
+        .[] |
+        select(.tag_name == $version) |
+        .assets[] |
+        select(.name | test($name)) |
+        select(
+          (($name != "gram") or (.name | contains("mini") | not))
+          and
+          (($type != "dicts") or (.name | contains("dicts")))
+        )
+      ' "$TEMP_DIR/github_$name.json"
     )
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
-      jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases.[] |
-      select( .tag_ref == $version ) | .assets[] |
-      select( .name | test( $name ) )' "$TEMP_DIR/cnb_$name.json"
+      jq -r --arg version "refs/tags/$version" --arg name "$name" --arg type "$type" '
+        .releases[] |
+        select(.tag_ref == $version) |
+        .assets[] |
+        select(.name | test($name)) |
+        select(
+          (($type != "dicts") or (.name | contains("dicts")))
+        )
+      ' "$TEMP_DIR/cnb_$name.json"
     )
     echo "$info"
   fi
@@ -311,7 +324,7 @@ update_schema() {
   fi
 }
 update_dict() {
-  local mirror="$1" fuzhu="$2"
+    local mirror="$1" fuzhu="${2}-fuzhu-dicts"
   # 缓存 API 响应
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
@@ -335,29 +348,29 @@ update_dict() {
     local_date=0
   fi
   if [[ "$mirror" == "github" ]]; then
-    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.updated_at')
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.updated_at')
   fi
   remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新词典文件"
     local dicturl dictname local_size remote_size
     if [[ "$mirror" == "github" ]]; then
-      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.browser_download_url')
-      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.name')
+      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.browser_download_url')
+      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.name')
     elif [[ "$mirror" == "cnb" ]]; then
-      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.path')
+      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.path')
       dicturl="https://cnb.cool$dicturl"
-      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.name')
+      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.name')
     fi
     curl -L --connect-timeout 10 -o "$TEMP_DIR/$dictname" "$dicturl"
     log INFO "正在验证文件完整性"
     local_size=$(stat -f %z "$TEMP_DIR/$dictname")
     if [[ "$mirror" == "github" ]]; then
-      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.size')
+      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.size_in_byte')
+      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.size_in_byte')
     fi
     if [[ "$local_size" != "$remote_size" ]]; then
       log ERROR "期望文件大小: $remote_size, 实际文件大小: $local_size"
@@ -366,7 +379,6 @@ update_dict() {
     log INFO "验证成功，开始更新词典文件"
     unzip -q "$TEMP_DIR/$dictname" -d "$TEMP_DIR/${dictname%.zip}"
     mkdir -p "$DEPLOY_DIR/dicts"
-    # cnb解压后多一层文件夹，因此做如下处理
     if [[ -e "$TEMP_DIR/${dictname%.zip}/${dictname%.zip}" ]]; then
       cp -rf "$TEMP_DIR/${dictname%.zip}/${dictname%.zip}/"* "$DEPLOY_DIR/dicts/"
     else
