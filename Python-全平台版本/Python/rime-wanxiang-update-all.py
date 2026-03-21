@@ -32,7 +32,6 @@ DICT_TAG = "dict-nightly"
 MODEL_REPO = "RIME-LMDG"
 MODEL_TAG = "LTS"
 MODEL_FILE = "wanxiang-lts-zh-hans.gram"
-PREDICT_FILE = "wanxiang-lts-zh-hans-predict.db"
 SCRIPT_ASSET_NAME = "rime-wanxiang-update-win-mac-ios-android.py"
 REQUEST_TIMEOUT = 30
 REQUEST_RETRY_COUNT = 2
@@ -185,7 +184,6 @@ class AppConfig:
     github_token: str
     exclude_files: List[str]
     auto_update: bool = False
-    use_predict: bool = False
 
     @property
     def zh_dicts_dir(self) -> str:
@@ -383,7 +381,6 @@ class ConfigManager:
             print_warning(COLOR['YELLOW'] + "配置文件已存在，将加载配置。" + COLOR['ENDC'])
             new_config_items = {
                 'auto_update': 'false',
-                'use_predict': 'false',
             }
             self._add_new_config_items(new_config_items)
             self._try_load_config()
@@ -410,7 +407,6 @@ class ConfigManager:
         print(f"{INDENT}▪ 方案版本：{self.config['Settings']['scheme_type']}")
         print(f"{INDENT}▪ 方案文件：{self.config['Settings']['scheme_file']}")
         print(f"{INDENT}▪ 词库文件：{self.config['Settings']['dict_file']}")
-        print(f"{INDENT}▪ 使用预测库：{self.config.getboolean('Settings', 'use_predict', fallback=False)}")
         if SYSTEM_TYPE == 'macos':
             print(f"{INDENT}▪ 输入法引擎：{self.config['Settings']['engine']}")
         print(f"{INDENT}▪ 跳过文件目录：{self.config['Settings']['exclude_files']}")
@@ -474,8 +470,6 @@ class ConfigManager:
             'github_token': '',
             'exclude_files': '',
             'auto_update': 'false',
-            'use_predict': 'false',
-
         }
 
     def _write_config(self) -> None:
@@ -667,7 +661,6 @@ class ConfigManager:
             ("[scheme_type]", "选择的方案版本", 'scheme_type'),
             ("[scheme_file]", "选择的方案文件名称", 'scheme_file'),
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
-            ("[use_predict]", f"是否更新预测库({PREDICT_FILE}，默认false)", 'use_predict'),
             ("[use_mirror]", "是否使用国内仓库CNB(网址:cnb.cool,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
@@ -720,7 +713,6 @@ class ConfigManager:
             github_token=github_token,
             exclude_files=exclude_files,
             auto_update=self.config.getboolean('Settings', 'auto_update', fallback=False),
-            use_predict=self.config.getboolean('Settings', 'use_predict', fallback=False),
         )
         self.app_config = app_config
         self.scheme_type = app_config.scheme_type.value
@@ -875,7 +867,6 @@ class UpdateHandler:
         self.use_mirror = self.app_config.use_mirror
         self.github_token = self.app_config.github_token
         self.exclude_files = self.app_config.exclude_files
-        self.use_predict = self.app_config.use_predict
         (
             self.custom_dir,
             self.extract_path,
@@ -1482,7 +1473,6 @@ class CombinedUpdater:
         self.scheme_updater = SchemeUpdater(config_manager)
         self.dict_updater = DictUpdater(config_manager)
         self.model_updater = ModelUpdater(config_manager)
-        self.predict_updater = PredictUpdater(config_manager)
         self.script_updater = ScriptUpdater(config_manager)
         # 存储共享的releases数据
         self.shared_releases = None
@@ -1506,8 +1496,6 @@ class CombinedUpdater:
             self.refresh_filenames()
         model_release = self.model_updater.fetch_release()
         self.model_updater.update_info = self.model_updater.extract_update_info(model_release)
-        if self.predict_updater.enabled:
-            self.predict_updater.update_info = self.predict_updater.extract_update_info(model_release)
         # 脚本更新独立检查
         self.script_updater.update_info = self.script_updater.check_update()
 
@@ -1802,25 +1790,6 @@ class ModelUpdater(BinaryAssetUpdater):
     component_name = "模型"
 
 
-class PredictUpdater(BinaryAssetUpdater):
-    """预测库更新处理器"""
-    asset_file = PREDICT_FILE
-    record_filename = "predict_record.json"
-    record_property = "predict_name"
-    component_name = "预测库"
-
-    def __init__(self, config_manager):
-        super().__init__(config_manager)
-        self.enabled = self.use_predict
-
-    def has_update(self) -> bool:
-        return self.enabled and super().has_update()
-
-    def run(self) -> UpdateResult:
-        if not self.enabled:
-            return UpdateResult.SKIPPED
-        return super().run()
-
 
 class ScriptUpdater(UpdateHandler):
     def __init__(self, config_manager):
@@ -1908,14 +1877,13 @@ def format_update_time(time_str: str) -> str:
     ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater) -> None:
+def print_update_status(scheme_updater, dict_updater, model_updater, script_updater) -> None:
     """打印更新状态信息"""
     # 检查哪些组件有更新
     has_script_update = script_updater.update_info
     has_scheme_update = scheme_updater.update_info and scheme_updater.has_update()
     has_dict_update = dict_updater.update_info and dict_updater.has_update()
     has_model_update = model_updater.update_info and model_updater.has_update()
-    has_predict_update = predict_updater.update_info and predict_updater.has_update()
 
     # 脚本更新提示
     if has_script_update:
@@ -1974,13 +1942,9 @@ def print_update_status(scheme_updater, dict_updater, model_updater, predict_upd
         print(f"\n{COLOR['WARNING']}==== 模型更新可用 ===={COLOR['ENDC']}")
         print(f"发布时间: {format_update_time(model_update_info.update_time)}")
 
-    if has_predict_update:
-        predict_update_info = predict_updater.update_info
-        print(f"\n{COLOR['WARNING']}==== 预测库更新可用 ===={COLOR['ENDC']}")
-        print(f"发布时间: {format_update_time(predict_update_info.update_time)}")
 
     # 如果没有更新显示提示
-    if not (has_scheme_update or has_dict_update or has_model_update or has_predict_update):
+    if not (has_scheme_update or has_dict_update or has_model_update):
         print(f"\n{COLOR['OKGREEN']}[√] 所有组件均为最新版本{COLOR['ENDC']}")
 
 
@@ -2043,10 +2007,9 @@ def perform_auto_update(
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
-    predict_updater = combined_updater.predict_updater
     # 在配置触发模式下显示更新状态
     if is_config_triggered:
-        print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
 
     # 脚本更新检查（仅当有实际更新时才提示）
     if script_updater.update_info and include_script:
@@ -2056,16 +2019,14 @@ def perform_auto_update(
     scheme_updated = UpdateResult.SKIPPED
     dict_updated = UpdateResult.SKIPPED
     model_updated = UpdateResult.SKIPPED
-    predict_updated = UpdateResult.SKIPPED
     if scheme_updater.has_update():
         scheme_updated = scheme_updater.run()
     if dict_updater.has_update():
         dict_updated = dict_updater.run()
     if model_updater.has_update():
         model_updated = model_updater.run()
-    if predict_updater.has_update():
-        predict_updated = predict_updater.run()
-    updated = [scheme_updated, dict_updated, model_updated, predict_updated]
+
+    updated = [scheme_updated, dict_updated, model_updated]
     deployer = scheme_updater
     if UpdateResult.FAILED in updated:
         deploy_after_update(deployer, updated, is_config_triggered=is_config_triggered)
@@ -2103,11 +2064,10 @@ def create_and_show_updates(config_manager, show=True) -> CombinedUpdater:
     scheme_updater = combined_updater.scheme_updater
     dict_updater = combined_updater.dict_updater
     model_updater = combined_updater.model_updater
-    predict_updater = combined_updater.predict_updater
 
     # 使用函数打印更新状态
     if show:
-        print_update_status(scheme_updater, dict_updater, model_updater, predict_updater, script_updater)
+        print_update_status(scheme_updater, dict_updater, model_updater, script_updater)
     return combined_updater
 
 def open_config_file(config_path: Union[str, Path]) -> None:
@@ -2161,8 +2121,7 @@ def main():
         while True:
             # 选择更新类型
             print_header("更新类型选择")
-            model_label = "[3] 模型下载" if not app_config.use_predict else "[3] 模型/预测库下载"
-            print(f"[1] 词库下载\n[2] 方案下载\n{model_label}\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
+            print(f"[1] 词库下载\n[2] 方案下载\n[3] 模型下载\n[4] 自动更新\n[5] 脚本更新\n[6] 修改配置\n[7] 退出程序")
             choice = input("请输入选择（1-7，单独按回车键默认选择自动更新）: ").strip() or '4'
 
             if choice == '6':
@@ -2215,7 +2174,6 @@ def main():
                 scheme_updater = combined_updater.scheme_updater
                 dict_updater = combined_updater.dict_updater
                 model_updater = combined_updater.model_updater
-                predict_updater = combined_updater.predict_updater
                 # 初始化更新状态
                 deployer = None
                 updated_results: List[UpdateResult] = [UpdateResult.SKIPPED]
@@ -2226,11 +2184,7 @@ def main():
                     updated_results = [scheme_updater.run()]
                     deployer = scheme_updater
                 elif choice == '3':
-                    model_result = model_updater.run()
-                    predict_result = UpdateResult.SKIPPED
-                    if app_config.use_predict:
-                        predict_result = predict_updater.run()
-                    updated_results = [model_result, predict_result]
+                    updated_results = [model_updater.run()]
                     deployer = model_updater
 
                 deploy_after_update(deployer, updated_results)
