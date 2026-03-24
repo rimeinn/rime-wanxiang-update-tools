@@ -324,7 +324,13 @@ update_schema() {
   fi
 }
 update_dict() {
-    local mirror="$1" fuzhu="${2}-fuzhu-dicts"
+    local mirror="$1" fuzhu_input="$2"
+    local fuzhu
+    if [[ "$fuzhu_input" == "base" ]]; then
+        fuzhu="base-dicts"
+    else
+        fuzhu="${fuzhu_input}-fuzhu-dicts"
+    fi
   # 缓存 API 响应
   if [[ "$mirror" == "github" ]]; then
     if [[ ! -f "$TEMP_DIR/github_$fuzhu.json" ]]; then
