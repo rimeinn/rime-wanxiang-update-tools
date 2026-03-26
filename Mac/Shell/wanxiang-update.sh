@@ -355,12 +355,10 @@ update_dict() {
   fi
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.updated_at')
-    remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   elif [[ "$mirror" == "cnb" ]]; then
     remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.updated_at')
-    remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   fi
-
+  remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新词典文件"
     local dicturl dictname local_size remote_size
@@ -441,11 +439,10 @@ update_gram() {
   fi
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
-    remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   elif [[ "$mirror" == "cnb" ]]; then
     remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updated_at')
-    remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   fi
+  remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新语法模型"
     local gramurl local_size remote_size
