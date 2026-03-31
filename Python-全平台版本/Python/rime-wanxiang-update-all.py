@@ -544,7 +544,7 @@ class ConfigManager:
         try:
             if self.scheme_type == 'base':
                 scheme_pattern = f"*base.zip"
-                dict_pattern = f"*base*.zip"
+                dict_pattern = f"*base-dicts.zip"
             else:
                 scheme_pattern = f"*{scheme_key}*fuzhu.zip"
                 dict_pattern = f"*{scheme_key}*dicts.zip"
