@@ -355,11 +355,10 @@ update_dict() {
   fi
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.updated_at')
-    remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   elif [[ "$mirror" == "cnb" ]]; then
     remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.updated_at')
-    remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   fi
+  remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新词典文件"
     local dicturl dictname local_size remote_size
@@ -413,25 +412,47 @@ update_gram() {
     fi
   elif [[ "$mirror" == "cnb" ]]; then
     if [[ ! -f "$TEMP_DIR/cnb_gram.json" ]]; then
-        headers=$(curl -sL -D - -o /dev/null -H "accept: application/vnd.cnb.web+json" "$CNB_API")
-        X_CNB_TOTAL=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Tt]otal:/ {gsub(/ /,"",$2); print $2}')
-        X_CNB_PAGE_SIZE=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Pp]age-[Ss]ize:/ {gsub(/ /,"",$2); print $2}')
-        # 防止为空
-        X_CNB_TOTAL=${X_CNB_TOTAL:-0}
-        X_CNB_PAGE_SIZE=${X_CNB_PAGE_SIZE:-1}
-        # 确保是数字
-        X_CNB_TOTAL=$(echo "$X_CNB_TOTAL" | tr -d -c 0-9)
-        X_CNB_PAGE_SIZE=$(echo "$X_CNB_PAGE_SIZE" | tr -d -c 0-9)
-        # 获取最后一页
-        last_page=$(( (X_CNB_TOTAL + X_CNB_PAGE_SIZE - 1) / X_CNB_PAGE_SIZE ))
+      local headers X_CNB_TOTAL X_CNB_PAGE_SIZE last_page page found=false page_file
+
+      headers=$(curl -sL -D - -o /dev/null -H "accept: application/vnd.cnb.web+json" "$CNB_API")
+      X_CNB_TOTAL=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Tt]otal:/ {gsub(/ /,"",$2); print $2}')
+      X_CNB_PAGE_SIZE=$(echo "$headers" | awk -F': ' '/[Xx]-[Cc]nb-[Pp]age-[Ss]ize:/ {gsub(/ /,"",$2); print $2}')
+
+      X_CNB_TOTAL=${X_CNB_TOTAL:-0}
+      X_CNB_PAGE_SIZE=${X_CNB_PAGE_SIZE:-1}
+      X_CNB_TOTAL=$(echo "$X_CNB_TOTAL" | tr -d -c 0-9)
+      X_CNB_PAGE_SIZE=$(echo "$X_CNB_PAGE_SIZE" | tr -d -c 0-9)
+
+      last_page=$(( (X_CNB_TOTAL + X_CNB_PAGE_SIZE - 1) / X_CNB_PAGE_SIZE ))
+
+      for ((page=1; page<=last_page; page++)); do
+        page_file="$TEMP_DIR/cnb_gram_page_${page}.json"
 
         if ! curl -G -sL -H "accept: application/vnd.cnb.web+json" \
-            --data-urlencode "page=${last_page}" \
-            --connect-timeout 10 "$CNB_API" >"$TEMP_DIR/cnb_gram.json"; then
-            error_exit "连接到 CNB 失败，您可能需要检查网络"
+          --data-urlencode "page=${page}" \
+          --connect-timeout 10 "$CNB_API" >"$page_file"; then
+          error_exit "连接到 CNB 失败，您可能需要检查网络"
         fi
+
+        if jq -e '
+          .releases[] |
+          select(.tag_ref == "refs/tags/model") |
+          .assets[] |
+          select(.name | test("gram")) |
+          select(.name | contains("mini") | not)
+        ' "$page_file" >/dev/null; then
+          cp "$page_file" "$TEMP_DIR/cnb_gram.json"
+          found=true
+          break
+        fi
+      done
+
+      if [[ "$found" != "true" ]]; then
+        error_exit "未能在 CNB 的 release 分页中找到语法模型信息"
+      fi
     fi
   fi
+
   local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
     local_date=$(stat -f %m "$DEPLOY_DIR/$gramname")
@@ -440,11 +461,10 @@ update_gram() {
   fi
   if [[ "$mirror" == "github" ]]; then
     remote_date=$(get_info "$mirror" "LTS" "gram" | jq -r '.updated_at')
-    remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   elif [[ "$mirror" == "cnb" ]]; then
     remote_date=$(get_info "$mirror" "model" "gram" | jq -r '.updated_at')
-    remote_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   fi
+  remote_date=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$remote_date" +%s)
   if [[ $remote_date -gt $local_date ]]; then
     log INFO "正在下载最新语法模型"
     local gramurl local_size remote_size

@@ -1108,19 +1108,25 @@ class UpdateHandler:
         if output_json:
             if use_mirror:
                 releases_list = response.json()['releases']
-                total = response.headers.get("X-Cnb-Total")
-                page_size = response.headers.get("X-Cnb-Page-Size")
-                if total and page_size:
-                    last_page = ceil(int(total) / int(page_size))
-                    if last_page > 1:
-                        last_page_data = self._request(
-                            url,
-                            use_mirror=use_mirror,
-                            params={"page": last_page}
-                        )
-                        if isinstance(last_page_data, dict) and last_page_data.get('releases'):
-                            releases_list.append(last_page_data['releases'][-1])
-                return releases_list
+                tags = []
+                current_page = 2
+                while True:
+                    for release in releases_list:
+                        tags.append(release.get('tag_ref'))
+                    if 'refs/tags/model' in tags:
+                        return releases_list
+                    total = response.headers.get("X-Cnb-Total")
+                    page_size = response.headers.get("X-Cnb-Page-Size")
+                    if total and page_size:
+                        if current_page < int(page_size):
+                            last_page_data = self._request(
+                                url,
+                                use_mirror=use_mirror,
+                                params={"page": current_page}
+                            )
+                            if isinstance(last_page_data, dict) and last_page_data.get('releases'):
+                                releases_list.append(last_page_data['releases'])
+                    current_page += 1
             return response.json()
         return response
 
@@ -1755,8 +1761,13 @@ class BinaryAssetUpdater(UpdateHandler):
     def extract_update_info(self, release: Optional[Union[Dict, List]]) -> Optional[UpdateInfo]:
         if not release:
             return None
-        release = release[-1] if isinstance(release, list) else release
-        for asset in release.get("assets", []):
+        if isinstance(release, list):
+            for i in release:
+                if i.get('tag_ref','') == 'refs/tags/model':
+                    release_data = i
+        else:
+            release_data =  release
+        for asset in release_data.get("assets", []):
             if asset["name"] == self.asset_file:
                 return UpdateInfo(
                     name=asset["name"],
