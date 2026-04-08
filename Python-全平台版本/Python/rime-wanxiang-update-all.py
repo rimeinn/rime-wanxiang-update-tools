@@ -1112,6 +1112,10 @@ class UpdateHandler:
                 current_page = 2
                 while True:
                     for release in releases_list:
+                        if isinstance(release, List):
+                            for i in release:
+                                tags.append(i.get('tag_ref'))
+                            continue
                         tags.append(release.get('tag_ref'))
                     if 'refs/tags/model' in tags:
                         return releases_list
@@ -1126,6 +1130,8 @@ class UpdateHandler:
                             )
                             if isinstance(last_page_data, dict) and last_page_data.get('releases'):
                                 releases_list.append(last_page_data['releases'])
+                        else:
+                            break
                     current_page += 1
             return response.json()
         return response
@@ -1763,6 +1769,12 @@ class BinaryAssetUpdater(UpdateHandler):
             return None
         if isinstance(release, list):
             for i in release:
+                if isinstance(i, List):
+                    for j in i:
+                        if j.get('tag_ref','') == 'refs/tags/model':
+                            release_data = j
+                            break
+                    continue
                 if i.get('tag_ref','') == 'refs/tags/model':
                     release_data = i
         else:
