@@ -3,9 +3,10 @@
 set -euo pipefail
 
 #### 配置 Rime 输入法引擎 ####
-# 支持鼠须管或小企鹅
+# 支持鼠须管、小企鹅及元书Mac版
 # 例如 "fcitx5"
 # 例如 "squirrel"
+# 例如 "cobra"
 ENGINE=""
 
 ######### 配置结束 #########
@@ -36,6 +37,9 @@ log() {
 script_name=$(basename $0)
 script_dir=$(pwd)
 
+DESC="请复制以下语句并将“原输入法”和“目标输入法”更改为相应输入法名称后按回车执行，结束后请重新运行脚本："
+CMD="sed -i '' 's/ENGINE=\"原输入法\"/ENGINE=\"目标输入法\"/g' ${script_dir}/${script_name}"
+
 engine_check() {
 # 输入法引擎检测
 if [ -z "$ENGINE" ]; then
@@ -44,21 +48,31 @@ if [ -z "$ENGINE" ]; then
   echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"fcitx5\"/g' ${script_dir}/${script_name}"
   log WARN  "如果使用Squirrel（鼠须管）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
   echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"squirrel\"/g' ${script_dir}/${script_name}"
+  log WARN  "如果使用Cobra（元书）输入法，请复制以下语句并按回车执行，结束后请重新运行脚本："
+  echo "sed -i '' 's/ENGINE=\"\"/ENGINE=\"cobra\"/g' ${script_dir}/${script_name}"
   exit
 elif [ "$ENGINE" == "fcitx5" ]; then
   log INFO "当前使用Fcitx5（小企鹅）输入法"
   read -rp "按回车继续，M 键更改: " if_modify
   if [ "$if_modify" == "M" ]; then
-  log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"fcitx5\"/ENGINE=\"squirrel\"/g' ${script_dir}/${script_name}"
+  log WARN $DESC
+  echo $CMD
   exit
   fi
 elif [ "$ENGINE" == "squirrel" ]; then
   log INFO "当前使用squirrel（鼠须管）输入法"
   read -rp "按回车继续，M 键更改: " if_modify
   if [ "$if_modify" == "M" ]; then
-  log WARN "请复制以下语句并按回车执行，结束后请重新运行脚本："
-  echo "sed -i '' 's/ENGINE=\"squirrel\"/ENGINE=\"fcitx5\"/g' ${script_dir}/${script_name}"
+  log WARN $DESC
+  echo $CMD
+  exit
+  fi
+elif [ "$ENGINE" == "cobra" ]; then
+  log INFO "当前使用Cobra（元书）输入法"
+  read -rp "按回车键继续，M 键更改: " if_modify
+  if [ "$if_modify" == "M" ]; then
+  log WARN $DESC
+  echo $CMD
   exit
   fi
 fi
@@ -521,13 +535,13 @@ show_help() {
 Usage: $0 [OPTIONS]
 
 选项:
-  --mirror [github|cnb]        选择下载源 (默认: github)
-  --engine [fcitx5|squirrel]   设置输入法引擎 (必需，也可在脚本中设置对应变量)
-  --schema [base|pro]          更新方案类型
-  --fuzhu SCHEMA               更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm|shouyou)
-  --dict                       更新词典
-  --gram                       更新语法模型
-  --help                       显示此帮助信息
+  --mirror [github|cnb]              选择下载源 (默认: github)
+  --engine [fcitx5|squirrel|cobra]   设置输入法引擎 (必需，也可在脚本中设置对应变量)
+  --schema [base|pro]                更新方案类型
+  --fuzhu SCHEMA                     更新辅助码表 (base|flypy|hanxin|moqi|tiger|wubi|zrm|shouyou)
+  --dict                             更新词典
+  --gram                             更新语法模型
+  --help                             显示此帮助信息
 
 示例:
   $0 --engine squirrel --schema base --fuzhu base --dict
@@ -574,8 +588,8 @@ main() {
       if [[ -z "$1" || "$1" == --* ]]; then
         error_exit "选项 engine 需要参数！"
       fi
-      if [[ "$1" != "fcitx5" && "$1" != "squirrel" ]]; then
-        error_exit "选项 engine 的参数只能为 fcitx5 或 squirrel"
+      if [[ "$1" != "fcitx5" && "$1" != "squirrel" && "$1" != "cobra" ]]; then
+        error_exit "选项 engine 的参数只能为 fcitx5 或 squirrel 或 cobra"
       fi
       ENGINE="$1"
       ;;
@@ -626,6 +640,8 @@ main() {
   # 获取输入法配置路径
   if [ "$ENGINE" = "fcitx5" ]; then
     DEPLOY_DIR="$HOME/.local/share/fcitx5/rime"
+  elif [ "$ENGINE" = "cobra" ]; then
+    DEPLOY_DIR="$HOME/Library/Application Support/com.ihsiao.inputmethod.Cobra/RimeUserData"
   else
     DEPLOY_DIR="$HOME/Library/Rime"
   fi
@@ -699,6 +715,9 @@ main() {
     if [ "$ENGINE" = "squirrel" ]; then
       DEPLOY_EXECUTABLE="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
       deploy "$DEPLOY_EXECUTABLE" --reload
+    elif [ "$ENGINE" = "cobra" ]; then
+        DEPLOY_EXECUTABLE="/Library/Input Methods/Cobra.app/Contents/MacOS/Cobra"
+        deploy "$DEPLOY_EXECUTABLE" deploy
     else
       DEPLOY_EXECUTABLE="/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
       deploy "$DEPLOY_EXECUTABLE" /config/addon/rime/deploy -X POST -d '{}'

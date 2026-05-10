@@ -67,7 +67,8 @@ SCHEME_MAP = {
     '4': 'tiger',
     '5': 'wubi',
     '6': 'hanxin',
-    '7': 'shouyou'
+    '7': 'shouyou',
+    '8': 'shyplus'
 }
 
 # ====================== 系统检测函数 ===========================
@@ -291,6 +292,8 @@ class ConfigManager:
                 detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
             elif self.config.get('Settings', 'engine') == '小企鹅':
                 detected['rime_user_dir'] = os.path.expanduser('~/.local/share/fcitx5/rime')
+            elif self.config.get('Settings', 'engine') == '元书':
+                detected['rime_user_dir'] = os.path.expanduser('~/Library/Application Support/com.ihsiao.inputmethod.Cobra/RimeUserData')
             else:
                 detected['rime_user_dir'] = os.path.expanduser('~/Library/Rime')
         elif SYSTEM_TYPE == 'ios':
@@ -336,7 +339,7 @@ class ConfigManager:
         print(f"\n{BORDER}")
         print(f"{INDENT}首次运行引擎选择向导")
         print(f"{BORDER}")
-        print("[1]-鼠须管Squirrel [2]-小企鹅Fcitx5")
+        print("[1]-鼠须管Squirrel [2]-小企鹅Fcitx5 [3]-元书Cobra")
 
         while True:
             choice = input(f"{INDENT}请选择输入法引擎：").strip()
@@ -349,6 +352,12 @@ class ConfigManager:
             elif choice == '2':
                 self.rime_dir = os.path.expanduser('~/.local/share/fcitx5/rime')
                 self.rime_engine = '小企鹅'
+                # 更新配置文件
+                self.config.set('Settings', 'engine', self.rime_engine)
+                return
+            elif choice == '3':
+                self.rime_dir = os.path.expanduser('~/Library/Application Support/com.ihsiao.inputmethod.Cobra/RimeUserData')
+                self.rime_engine = '元书'
                 # 更新配置文件
                 self.config.set('Settings', 'engine', self.rime_engine)
                 return
@@ -509,11 +518,11 @@ class ConfigManager:
         if self.scheme_type == 'pro':
             print(f"\n{BORDER}")
             print(f"{INDENT}万象Pro首次运行辅助码选择配置向导")
-            print("[1]-墨奇 [2]-小鹤 [3]-自然码")
-            print("[4]-虎码 [5]-五笔 [6]-汉心 [7]-首右")
+            print("[1]-墨奇 [2]-小鹤 [3]-自然码 [4]-虎码")
+            print("[5]-五笔 [6]-汉心 [7]-首右 [8]-首右Plus")
 
             while True:
-                choice = input("请选择你的辅助码方案（1-7）: ").strip()
+                choice = input("请选择你的辅助码方案（1-8）: ").strip()
                 if choice in SCHEME_MAP:
                     scheme_key = SCHEME_MAP[choice]
 
@@ -625,11 +634,11 @@ class ConfigManager:
             'windows': [
                 "1. 小狼毫输入法未正确安装",
                 "2. 注册表信息被修改",
-                "3. 自定义路径配置错误",
+                "3. 方案路径配置错误",
             ],
             'macos': [
-                "1. 鼠须管或小企鹅输入法未正确安装",
-                "2. 自定义路径配置错误",
+                "1. 鼠须管或小企鹅或元书输入法未正确安装",
+                "2. 方案路径配置错误",
             ],
             'ios': [
                 "1. 该路径不存在",
@@ -1442,6 +1451,9 @@ class UpdateHandler:
             if self.engine == '鼠须管':
                 executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
                 cmd = ["--reload"]
+            elif self.engine == '元书':
+                executable = r"/Library/Input\ Methods/Cobra.app/Contents/MacOS/Cobra"
+                cmd = ["deploy"]
             else:
                 executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
                 cmd = ["/config/addon/rime/deploy", "-X", "POST", "-d", "{}"]
