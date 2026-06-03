@@ -263,7 +263,7 @@ get_info() {
       jq -r --arg version "$version" --arg name "$name" '.[] |
       select( .tag_name == $version ) | .assets[] |
       select( .name | test( $name ) ) |
-      select( if $name == "lts" then (.name | contains("predict") | not) else true end )' "$TEMP_DIR/github_$name.json"
+      select( if $name == "lts" then ((.name | contains("predict") | not) and (.name | contains("zh-hans"))) else true end )' "$TEMP_DIR/github_$name.json"
     )
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
@@ -271,7 +271,7 @@ get_info() {
       jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases[] |
       select( .tag_ref == $version ) | .assets[] |
       select( .name | test( $name ) ) |
-      select( if $name == "lts" then (.name | contains("predict") | not) else true end )' "$TEMP_DIR/cnb.json"
+      select( if $name == "lts" then ((.name | contains("predict") | not) and (.name | contains("zh-hans"))) else true end )' "$TEMP_DIR/cnb.json"
     )
     echo "$info"
   fi
@@ -445,9 +445,9 @@ update_dict() {
   fi
 
   if [[ "$mirror" == "github" ]]; then
-    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at' | head -n 1)
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updated_at')
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updated_at' | head -n 1)
   fi
 
   remote_date=$(date -d "$remote_date" +%s)
