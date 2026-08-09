@@ -18,6 +18,7 @@ import argparse
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from pathlib import Path
+from urllib.parse import quote
 
 
 UPDATE_TOOLS_VERSION = "DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -27,6 +28,11 @@ OWNER = "amzxyz"
 REPO = "rime_wanxiang"
 # cnb信息
 CNB_REPO = "rime-wanxiang"
+CNB_API_BASE = "https://api.cnb.cool"
+CNB_WEB_BASE = "https://cnb.cool"
+CNB_DICT_TAG = "v1.0.0"
+CNB_MODEL_TAG = "model"
+CNB_API_PAGE_SIZE = 100
 DICT_TAG = "dict-nightly"
 # 模型相关配置
 MODEL_REPO = "RIME-LMDG"
@@ -41,6 +47,47 @@ CNB_HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept": "application/vnd.cnb.web+json" # 确保返回JSON
 }
+
+
+def cnb_total_pages(headers: Dict[str, str]) -> int:
+    """根据 CNB 分页响应头计算总页数。"""
+    try:
+        total = int(headers.get("X-Cnb-Total", 0))
+        page_size = int(headers.get("X-Cnb-Page-Size", 0))
+    except (TypeError, ValueError):
+        return 1
+    return max(1, ceil(total / page_size)) if page_size > 0 else 1
+
+
+def cnb_request_headers(token: str = "") -> Dict[str, str]:
+    """根据是否提供 Token 构造 CNB OpenAPI 或网页接口请求头。"""
+    if not token:
+        return dict(CNB_HEADERS)
+    return {
+        "User-Agent": "RIME-Updater/1.0",
+        "Accept": "application/vnd.cnb.api+json",
+        "Authorization": f"Bearer {token}",
+    }
+
+
+def asset_sha256(asset: Dict) -> str:
+    """兼容 GitHub digest 与 CNB OpenAPI 哈希字段。"""
+    algorithm = str(asset.get("hash_algo") or "").replace("-", "").lower()
+    if algorithm == "sha256":
+        hash_value = str(asset.get("hash_value") or "")
+        return hash_value.split(":", 1)[-1].lower() if hash_value else ""
+    digest = str(asset.get("digest") or "")
+    return digest.split(":", 1)[-1].lower() if digest else ""
+
+
+def asset_download_url(asset: Dict, prefer_cnb_api: bool = False, tag: str = "") -> str:
+    """使用 CNB Token 时优先返回需要鉴权的 OpenAPI 下载地址。"""
+    if prefer_cnb_api and tag and asset.get("name"):
+        return (
+            f"{CNB_API_BASE}/{OWNER}/{CNB_REPO}/-/releases/download/"
+            f"{quote(tag, safe='')}/{quote(asset['name'], safe='')}"
+        )
+    return asset.get("browser_download_url") or CNB_WEB_BASE + asset.get("path", "")
 
 def get_runtime_base_dir() -> Path:
     if getattr(sys, 'frozen', False):
@@ -183,6 +230,7 @@ class AppConfig:
     dict_file: str
     use_mirror: bool
     github_token: str
+    cnb_token: str
     exclude_files: List[str]
     auto_update: bool = False
 
@@ -390,6 +438,7 @@ class ConfigManager:
             print_warning(COLOR['YELLOW'] + "配置文件已存在，将加载配置。" + COLOR['ENDC'])
             new_config_items = {
                 'auto_update': 'false',
+                'cnb_token': '',
             }
             self._add_new_config_items(new_config_items)
             self._try_load_config()
@@ -477,6 +526,7 @@ class ConfigManager:
             'dict_file': '',
             'use_mirror': 'true',
             'github_token': '',
+            'cnb_token': '',
             'exclude_files': '',
             'auto_update': 'false',
         }
@@ -551,6 +601,8 @@ class ConfigManager:
             Tuple[str, str]: 方案文件名，词库文件名
         """
         try:
+            use_mirror = self.config.getboolean('Settings', 'use_mirror')
+            cnb_token = self.config.get('Settings', 'cnb_token', fallback='')
             if self.scheme_type == 'base':
                 scheme_pattern = f"*base.zip"
                 dict_pattern = f"*base-dicts.zip"
@@ -563,16 +615,18 @@ class ConfigManager:
                 owner=OWNER,
                 repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
                 pattern=scheme_pattern,
-                use_mirror=self.config.getboolean('Settings', 'use_mirror'),
-                github_token=self.config.get('Settings', 'github_token', fallback='')
+                use_mirror=use_mirror,
+                github_token=self.config.get('Settings', 'github_token', fallback=''),
+                cnb_token=cnb_token,
             )
             dict_checker = FileChecker(
                 owner=OWNER,
                 repo=CNB_REPO if self.config.getboolean('Settings', 'use_mirror') else REPO,
                 pattern=dict_pattern,
-                use_mirror=self.config.getboolean('Settings', 'use_mirror'),
-                tag=DICT_TAG,
-                github_token=self.config.get('Settings', 'github_token', fallback='')
+                use_mirror=use_mirror,
+                tag=CNB_DICT_TAG if use_mirror else DICT_TAG,
+                github_token=self.config.get('Settings', 'github_token', fallback=''),
+                cnb_token=cnb_token,
             )
 
             # 获取文件名
@@ -672,6 +726,7 @@ class ConfigManager:
             ("[dict_file]", "关联的词库文件名称", 'dict_file'),
             ("[use_mirror]", "是否使用国内仓库CNB(网址:cnb.cool,默认true)", 'use_mirror'),
             ("[github_token]", "GitHub令牌(可选)", 'github_token'),
+            ("[cnb_token]", "CNB令牌(可选,需要repo-release:r权限)", 'cnb_token'),
             ("[exclude_files]", "更新时需保留的免覆盖文件(默认为空,逗号分隔...格式如下tips_show.txt", 'exclude_files'),
             ("[auto_update]", "是否跳过确认并自动更新(默认false)", 'auto_update'),
         ]
@@ -700,6 +755,7 @@ class ConfigManager:
         self.config.read(self.config_path, encoding='utf-8')
         config = {k: v.strip('"') for k, v in self.config['Settings'].items()}
         github_token = config.get('github_token', '')
+        cnb_token = config.get('cnb_token', '')
 
         # 读取排除文件配置
         exclude_files = [
@@ -720,6 +776,7 @@ class ConfigManager:
             dict_file=config.get('dict_file', ''),
             use_mirror=self.config.getboolean('Settings', 'use_mirror'),
             github_token=github_token,
+            cnb_token=cnb_token,
             exclude_files=exclude_files,
             auto_update=self.config.getboolean('Settings', 'auto_update', fallback=False),
         )
@@ -778,17 +835,31 @@ class ConfigManager:
 
 
 class FileChecker:
-    def __init__(self, owner, repo, pattern, use_mirror, tag=None, github_token: str = ""):
+    def __init__(
+        self,
+        owner,
+        repo,
+        pattern,
+        use_mirror,
+        tag=None,
+        github_token: str = "",
+        cnb_token: str = "",
+    ):
         self.owner = owner
         self.repo = repo
         self.pattern = pattern
         self.tag = tag
         self.use_mirror = use_mirror
         self.github_token = github_token
+        self.cnb_token = cnb_token
+
+    @property
+    def use_cnb_api(self) -> bool:
+        return self.use_mirror and bool(self.cnb_token)
 
     def _build_headers(self) -> Dict[str, str]:
         if self.use_mirror:
-            return dict(CNB_HEADERS)
+            return cnb_request_headers(self.cnb_token)
         headers = {"User-Agent": "RIME-Updater/1.0"}
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
@@ -842,18 +913,38 @@ class FileChecker:
         return [response.json()] if self.tag else response.json()
 
     def _get_cnb_releases(self) -> Dict:
-        url = f'https://cnb.cool/{self.owner}/{self.repo}/-/releases'
-        response = self._request(url)
-        if response.status_code == 200:
-            releases_all = response.json()
-            releases_list = releases_all['releases']
-            for release in releases_list:
-                if self.tag:
-                    if "词库" in release.get("title") or "实时全量预览" in release.get("title"):
-                        return release # 词库
-                else:
-                    if "万象拼音输入方案" in release.get("title"):
-                        return release # 方案
+        if self.use_cnb_api and self.tag:
+            url = f'{CNB_API_BASE}/{self.owner}/{self.repo}/-/releases/tags/{self.tag}'
+            return self._request(url).json()
+
+        base_url = CNB_API_BASE if self.use_cnb_api else CNB_WEB_BASE
+        url = f'{base_url}/{self.owner}/{self.repo}/-/releases'
+        params = {"page": 1, "page_size": CNB_API_PAGE_SIZE} if self.use_cnb_api else None
+        response = self._request(url, params=params)
+        payload = response.json()
+        releases_list = payload if self.use_cnb_api else payload.get('releases', [])
+
+        if self.use_cnb_api:
+            page = 2
+            while len(payload) == CNB_API_PAGE_SIZE:
+                payload = self._request(
+                    url,
+                    params={"page": page, "page_size": CNB_API_PAGE_SIZE},
+                ).json()
+                releases_list.extend(payload)
+                page += 1
+        else:
+            for page in range(2, cnb_total_pages(response.headers) + 1):
+                page_payload = self._request(url, params={"page": page}).json()
+                releases_list.extend(page_payload.get('releases', []))
+
+        for release in releases_list:
+            title = release.get("title", "") or release.get("name", "")
+            if self.tag:
+                if "词库" in title or "实时全量预览" in title:
+                    return release
+            elif "万象拼音输入方案" in title:
+                return release
         return {}
 
 
@@ -875,6 +966,7 @@ class UpdateHandler:
         self.dict_file = self.app_config.dict_file
         self.use_mirror = self.app_config.use_mirror
         self.github_token = self.app_config.github_token
+        self.cnb_token = self.app_config.cnb_token
         self.exclude_files = self.app_config.exclude_files
         (
             self.custom_dir,
@@ -884,6 +976,10 @@ class UpdateHandler:
         ) = self.get_all_dir()
         os.makedirs(self.custom_dir, exist_ok=True)
         self.update_info: Optional[UpdateInfo] = None
+
+    @property
+    def use_cnb_api(self) -> bool:
+        return self.use_mirror and bool(self.cnb_token)
 
     @staticmethod
     def parse_remote_time(time_str: str) -> datetime:
@@ -1057,7 +1153,7 @@ class UpdateHandler:
 
     def _build_headers(self, use_mirror: bool = False) -> Dict[str, str]:
         if use_mirror:
-            return dict(CNB_HEADERS)
+            return cnb_request_headers(self.cnb_token)
         headers = {"User-Agent": "RIME-Updater/1.0"}
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
@@ -1087,9 +1183,10 @@ class UpdateHandler:
                 return response
             except requests.HTTPError as exc:
                 last_error = exc
-                status_code = exc.response.status_code if exc.response else None
+                status_code = exc.response.status_code if exc.response is not None else None
                 if status_code == 401:
-                    print_error("GitHub令牌无效或无权限")
+                    token_name = "CNB令牌" if use_mirror and self.cnb_token else "GitHub令牌"
+                    print_error(f"{token_name}无效或无权限")
                 elif status_code == 403:
                     print_error("权限不足或触发次级速率限制")
                 else:
@@ -1103,7 +1200,14 @@ class UpdateHandler:
         print_error(f"请求异常: {last_error}")
         return None
 
-    def remote_api_request(self, url, use_mirror=False, output_json=True) -> Optional[Union[Dict,requests.Response]]:
+    def remote_api_request(
+        self,
+        url,
+        use_mirror=False,
+        output_json=True,
+        params: Optional[Dict[str, Union[str, int]]] = None,
+        paginate: bool = False,
+    ) -> Optional[Union[Dict, List, requests.Response]]:
         """
         带令牌认证的API请求
         Args:
@@ -1111,38 +1215,45 @@ class UpdateHandler:
         Returns:
             dict: API响应的JSON数据
         """
-        response = self._request(url, use_mirror=use_mirror, output_json=False)
+        response = self._request(
+            url,
+            use_mirror=use_mirror,
+            output_json=False,
+            params=params,
+        )
         if response is None:
             return None
         if output_json:
-            if use_mirror:
-                releases_list = response.json()['releases']
-                tags = []
-                current_page = 2
-                while True:
-                    for release in releases_list:
-                        if isinstance(release, List):
-                            for i in release:
-                                tags.append(i.get('tag_ref'))
-                            continue
-                        tags.append(release.get('tag_ref'))
-                    if 'refs/tags/model' in tags:
-                        return releases_list
-                    total = response.headers.get("X-Cnb-Total")
-                    page_size = response.headers.get("X-Cnb-Page-Size")
-                    if total and page_size:
-                        if current_page < int(page_size):
-                            last_page_data = self._request(
-                                url,
-                                use_mirror=use_mirror,
-                                params={"page": current_page}
-                            )
-                            if isinstance(last_page_data, dict) and last_page_data.get('releases'):
-                                releases_list.append(last_page_data['releases'])
-                        else:
-                            break
-                    current_page += 1
-            return response.json()
+            payload = response.json()
+            if use_mirror and not self.cnb_token:
+                releases_list = list(payload.get('releases', []))
+                for page in range(2, cnb_total_pages(response.headers) + 1):
+                    page_data = self._request(
+                        url,
+                        use_mirror=True,
+                        params={"page": page},
+                    )
+                    if not isinstance(page_data, dict):
+                        return None
+                    releases_list.extend(page_data.get('releases', []))
+                return releases_list
+
+            if use_mirror and self.cnb_token and paginate:
+                releases_list = list(payload)
+                page_size = int((params or {}).get("page_size", CNB_API_PAGE_SIZE))
+                page = int((params or {}).get("page", 1)) + 1
+                while len(payload) == page_size:
+                    payload = self._request(
+                        url,
+                        use_mirror=True,
+                        params={"page": page, "page_size": page_size},
+                    )
+                    if not isinstance(payload, list):
+                        return None
+                    releases_list.extend(payload)
+                    page += 1
+                return releases_list
+            return payload
         return response
 
 
@@ -1163,7 +1274,14 @@ class UpdateHandler:
                 print(f"{COLOR['OKCYAN']}[i] 正在使用 https://github.com 下载{COLOR['ENDC']}")
 
             downloaded = os.path.getsize(save_path) if is_continue else 0
-            headers = {'Range': f'bytes={downloaded}-'} if downloaded else {}
+            headers = {}
+            if self.use_cnb_api and url.startswith(f"{CNB_API_BASE}/"):
+                headers.update({
+                    "Accept": "application/octet-stream",
+                    "Authorization": f"Bearer {self.cnb_token}",
+                })
+            if downloaded:
+                headers['Range'] = f'bytes={downloaded}-'
 
             response = requests.get(
                 url,
@@ -1178,7 +1296,7 @@ class UpdateHandler:
                 if os.path.exists(save_path):
                     os.remove(save_path)
                 downloaded = 0
-                headers = {}
+                headers.pop('Range', None)
                 response = requests.get(
                     url,
                     headers=headers,
@@ -1506,11 +1624,20 @@ class CombinedUpdater:
         """获取所有更新信息"""
         url = f"https://api.github.com/repos/{OWNER}/{REPO}/releases"
         use_mirror = self.config_manager.config.getboolean('Settings', 'use_mirror', fallback=False)
+        request_params = None
+        paginate = False
         if use_mirror:
-            url = f"https://cnb.cool/{OWNER}/{CNB_REPO}/-/releases"
+            if self.scheme_updater.cnb_token:
+                url = f"{CNB_API_BASE}/{OWNER}/{CNB_REPO}/-/releases"
+                request_params = {"page": 1, "page_size": CNB_API_PAGE_SIZE}
+                paginate = True
+            else:
+                url = f"{CNB_WEB_BASE}/{OWNER}/{CNB_REPO}/-/releases"
         self.shared_releases = self.scheme_updater.remote_api_request(
             url = url,
-            use_mirror = use_mirror
+            use_mirror = use_mirror,
+            params=request_params,
+            paginate=paginate,
         )
         # 使用共享的releases数据检查方案和词库更新
         self.scheme_updater.update_info = self._extract_scheme_update()
@@ -1566,15 +1693,15 @@ class CombinedUpdater:
                 return key
         return list(SCHEME_MAP.values())[0]
 
-    @staticmethod
-    def _build_update_info(asset: Dict, release: Dict, description: str = "") -> UpdateInfo:
+    def _build_update_info(self, asset: Dict, release: Dict, description: str = "") -> UpdateInfo:
+        tag = self._release_tag(release)
         return UpdateInfo(
             name=asset["name"],
-            url=asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path", ""),
+            url=asset_download_url(asset, self.scheme_updater.use_cnb_api, tag),
             update_time=asset.get("updated_at", ""),
-            tag=release.get("tag_name") or release.get("tag_ref", "").split('/')[-1],
+            tag=tag,
             description=description,
-            sha256=asset.get("digest", "").split(':')[-1] if asset.get("digest", "") else "",
+            sha256=asset_sha256(asset),
             asset_id=str(asset.get("id", "")),
             size=asset.get("size") or asset.get("sizeInByte") or 0,
         )
@@ -1770,7 +1897,10 @@ class BinaryAssetUpdater(UpdateHandler):
     def fetch_release(self) -> Optional[Union[Dict, List]]:
         url = f"https://api.github.com/repos/{OWNER}/{MODEL_REPO}/releases/tags/{MODEL_TAG}"
         if self.use_mirror:
-            url = f"https://cnb.cool/{OWNER}/{CNB_REPO}/-/releases"
+            if self.cnb_token:
+                url = f"{CNB_API_BASE}/{OWNER}/{CNB_REPO}/-/releases/tags/{CNB_MODEL_TAG}"
+            else:
+                url = f"{CNB_WEB_BASE}/{OWNER}/{CNB_REPO}/-/releases"
         return self.remote_api_request(
             url = url,
             use_mirror = self.use_mirror
@@ -1779,6 +1909,7 @@ class BinaryAssetUpdater(UpdateHandler):
     def extract_update_info(self, release: Optional[Union[Dict, List]]) -> Optional[UpdateInfo]:
         if not release:
             return None
+        release_data = None
         if isinstance(release, list):
             for i in release:
                 if isinstance(i, List):
@@ -1791,16 +1922,19 @@ class BinaryAssetUpdater(UpdateHandler):
                     release_data = i
         else:
             release_data =  release
+        if not release_data:
+            return None
         for asset in release_data.get("assets", []):
             if asset["name"] == self.asset_file:
+                tag = release_data.get("tag_name") or MODEL_TAG
                 return UpdateInfo(
                     name=asset["name"],
-                    url=asset.get("browser_download_url") or "https://cnb.cool" + asset.get("path", ""),
+                    url=asset_download_url(asset, self.use_cnb_api, tag),
                     update_time=asset.get("updated_at", ""),
-                    sha256=asset.get("digest", "").split(':')[-1] if asset.get("digest", "") else "",
+                    sha256=asset_sha256(asset),
                     asset_id=str(asset.get("id", "")),
                     size=asset.get("size") or asset.get("sizeInByte") or 0,
-                    tag=MODEL_TAG,
+                    tag=tag,
                 )
         return None
 

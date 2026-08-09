@@ -16,6 +16,7 @@ CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
+GRAM_NAME="wanxiang-lts-zh-hans.gram"
 FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm" "shouyou")
 TEMP_DIR=$(mktemp -d /tmp/wanxiang-update-XXXXXX)
 UPDATE_TOOLS_VERSION="DEFAULT_UPDATE_TOOLS_VERSION_TAG"
@@ -140,13 +141,13 @@ get_info() {
   local mirror="$1" version="$2" name="$3" type="${4:-}" info
   if [[ "$mirror" == "github" ]]; then
     info=$(
-      jq -r --arg version "$version" --arg name "$name" --arg type "$type" '
+      jq -r --arg version "$version" --arg name "$name" --arg type "$type" --arg gram_name "$GRAM_NAME" '
         .[] |
         select(.tag_name == $version) |
         .assets[] |
         select(.name | test($name)) |
         select(
-          (($name != "gram") or (.name | contains("mini") | not))
+          (($name != "gram") or (.name == $gram_name))
           and
           (($type != "dicts") or (.name | contains("dicts")))
         )
@@ -155,12 +156,14 @@ get_info() {
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
-      jq -r --arg version "refs/tags/$version" --arg name "$name" --arg type "$type" '
+      jq -r --arg version "refs/tags/$version" --arg name "$name" --arg type "$type" --arg gram_name "$GRAM_NAME" '
         .releases[] |
         select(.tag_ref == $version) |
         .assets[] |
         select(.name | test($name)) |
         select(
+          (($name != "gram") or (.name == $gram_name))
+          and
           (($type != "dicts") or (.name | contains("dicts")))
         )
       ' "$TEMP_DIR/cnb_$name.json"
@@ -448,12 +451,11 @@ update_gram() {
           error_exit "连接到 CNB 失败，您可能需要检查网络"
         fi
 
-        if jq -e '
+        if jq -e --arg gram_name "$GRAM_NAME" '
           .releases[] |
           select(.tag_ref == "refs/tags/model") |
           .assets[] |
-          select(.name | test("gram")) |
-          select(.name | contains("mini") | not)
+          select(.name == $gram_name)
         ' "$page_file" >/dev/null; then
           cp "$page_file" "$TEMP_DIR/cnb_gram.json"
           found=true
@@ -467,7 +469,7 @@ update_gram() {
     fi
   fi
 
-  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
+  local local_date remote_date gramname="$GRAM_NAME"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
     local_date=$(stat -f %m "$DEPLOY_DIR/$gramname")
   else

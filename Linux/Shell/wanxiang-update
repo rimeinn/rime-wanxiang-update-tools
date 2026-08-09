@@ -17,6 +17,7 @@ readonly CNB_API="https://cnb.cool/amzxyz/rime-wanxiang/-/releases"
 readonly SCHEMA_API="https://api.github.com/repos/amzxyz/rime_wanxiang/releases"
 readonly GRAM_API="https://api.github.com/repos/amzxyz/RIME-LMDG/releases"
 readonly TOOLS_API="https://api.github.com/repos/rimeinn/rime-wanxiang-update-tools/releases"
+readonly GRAM_NAME="wanxiang-lts-zh-hans.gram"
 readonly FUZHU_LIST=("base" "flypy" "hanxin" "moqi" "tiger" "wubi" "zrm" "shouyou")
 readonly DELETE_FILES=("简纯+.trime.yaml" "squirrel.yaml" "weasel.yaml"
   "README.md" "CHANGELOG.md" "version.txt" "custom_phrase.txt")
@@ -62,7 +63,13 @@ cleanup() {
 
 # 带重试的curl请求 - 专门处理 set -e 环境
 curl_with_retry() {
-  local url="$1" output_file="$2" retries="0" success="false" curl_exit_code="0"
+  local url="$1" output_file="$2" accept_header="${3:-}"
+  local retries="0" success="false" curl_exit_code="0"
+  local -a curl_args=(-f -sL --connect-timeout "$CONNECTION_TIMEOUT" -o "$output_file")
+
+  if [[ -n "$accept_header" ]]; then
+    curl_args+=(-H "Accept: $accept_header")
+  fi
 
   # 确保输出目录存在
   mkdir -p "$(dirname "$output_file")"
@@ -75,7 +82,7 @@ curl_with_retry() {
 
     # 使用特殊语法防止 curl 失败导致脚本退出
     set +e # 临时禁用 set -e
-    curl -f -sL --connect-timeout "$CONNECTION_TIMEOUT" -o "$output_file" "$url"
+    curl "${curl_args[@]}" "$url"
     curl_exit_code=$?
     set -e # 重新启用 set -e
 
@@ -257,24 +264,71 @@ script_check() {
 }
 
 get_info() {
-  local mirror="$1" version="$2" name="$3" info
+  local mirror="$1" version="$2" name="$3" type="${4:-}" info
   if [[ "$mirror" == "github" ]]; then
     info=$(
-      jq -r --arg version "$version" --arg name "$name" '.[] |
+      jq -r --arg version "$version" --arg name "$name" --arg type "$type" --arg gram_name "$GRAM_NAME" '.[] |
       select( .tag_name == $version ) | .assets[] |
       select( .name | test( $name ) ) |
-      select( if $name == "lts" then ((.name | contains("predict") | not) and (.name | contains("zh-hans"))) else true end )' "$TEMP_DIR/github_$name.json"
+      select(
+        (($name != "lts") or (.name == $gram_name))
+        and
+        (($type != "dicts") or (.name | endswith("-dicts.zip")))
+      )' "$TEMP_DIR/github_$name.json"
     )
     echo "$info"
   elif [[ "$mirror" == "cnb" ]]; then
     info=$(
-      jq -r --arg version "refs/tags/$version" --arg name "$name" '.releases[] |
+      jq -r --arg version "refs/tags/$version" --arg name "$name" --arg type "$type" --arg gram_name "$GRAM_NAME" '.releases[] |
       select( .tag_ref == $version ) | .assets[] |
       select( .name | test( $name ) ) |
-      select( if $name == "lts" then ((.name | contains("predict") | not) and (.name | contains("zh-hans"))) else true end )' "$TEMP_DIR/cnb.json"
+      select(
+        (($name != "lts") or (.name == $gram_name))
+        and
+        (($type != "dicts") or (.name | endswith("-dicts.zip")))
+      )' "$TEMP_DIR/cnb.json"
     )
     echo "$info"
   fi
+}
+
+cache_cnb_releases() {
+  local output_file="$TEMP_DIR/cnb.json"
+  [[ -f "$output_file" ]] && return 0
+
+  local merged_file="$TEMP_DIR/cnb_merged.json"
+  local next_file="$TEMP_DIR/cnb_merged_next.json"
+  local page_file page release_count completed="false"
+  printf '{"releases":[]}\n' >"$merged_file"
+
+  for ((page = 1; page <= 100; page++)); do
+    page_file="$TEMP_DIR/cnb_page_${page}.json"
+    curl_with_retry \
+      "$CNB_API?page=$page" \
+      "$page_file" \
+      "application/vnd.cnb.web+json"
+
+    if ! jq -e '.releases | type == "array"' "$page_file" >/dev/null; then
+      error_exit "CNB 返回的 Release 数据不是有效 JSON"
+    fi
+
+    release_count=$(jq '.releases | length' "$page_file")
+    if [[ "$release_count" -eq 0 ]]; then
+      completed="true"
+      break
+    fi
+
+    if ! jq -s '{releases: (.[0].releases + .[1].releases)}' \
+      "$merged_file" "$page_file" >"$next_file"; then
+      error_exit "合并 CNB Release 分页数据失败"
+    fi
+    mv "$next_file" "$merged_file"
+  done
+
+  if [[ "$completed" != "true" ]]; then
+    error_exit "CNB Release 分页超过安全上限"
+  fi
+  mv "$merged_file" "$output_file"
 }
 
 cache_api() {
@@ -291,9 +345,7 @@ cache_api() {
       curl_with_retry "$api_url" "$TEMP_DIR/github_$fuzhu.json"
     fi
   elif [[ "$mirror" == "cnb" ]]; then
-    if [[ ! -f "$TEMP_DIR/cnb.json" ]]; then
-      curl_with_retry "$CNB_API" "$TEMP_DIR/cnb.json"
-    fi
+    cache_cnb_releases
   fi
 }
 
@@ -445,9 +497,9 @@ update_dict() {
   fi
 
   if [[ "$mirror" == "github" ]]; then
-    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.updated_at' | head -n 1)
+    remote_date=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.updated_at' | head -n 1)
   elif [[ "$mirror" == "cnb" ]]; then
-    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.updated_at' | head -n 1)
+    remote_date=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.updated_at' | head -n 1)
   fi
 
   remote_date=$(date -d "$remote_date" +%s)
@@ -459,14 +511,14 @@ update_dict() {
     log INFO "远程词典文件最后更新于 $remote_date"
     local dicturl dictname remote_size
     if [[ "$mirror" == "github" ]]; then
-      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.browser_download_url')
-      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.name')
-      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" | jq -r '.size')
+      dicturl=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.browser_download_url')
+      dictname=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.name')
+      remote_size=$(get_info "$mirror" "dict-nightly" "$fuzhu" "dicts" | jq -r '.size')
     elif [[ "$mirror" == "cnb" ]]; then
-      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.path')
+      dicturl=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.path')
       dicturl="https://cnb.cool$dicturl"
-      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.name')
-      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" | jq -r '.size_in_byte')
+      dictname=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.name')
+      remote_size=$(get_info "$mirror" "v1.0.0" "$fuzhu" "dicts" | jq -r '.size_in_byte')
     fi
 
     download_and_verify "$dicturl" "$TEMP_DIR/$dictname" "$remote_size" "词典文件"
@@ -492,7 +544,7 @@ update_gram() {
   # 缓存 API 响应
   cache_api "$mirror" "lts"
 
-  local local_date remote_date gramname="wanxiang-lts-zh-hans.gram"
+  local local_date remote_date gramname="$GRAM_NAME"
   if [[ -f "$DEPLOY_DIR/$gramname" ]]; then
     local_date=$(stat -c %Z "$DEPLOY_DIR/$gramname")
   else
