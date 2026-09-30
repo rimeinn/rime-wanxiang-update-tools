@@ -1570,7 +1570,7 @@ class UpdateHandler:
                 executable = r"/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
                 cmd = ["--reload"]
             elif self.engine == '元书':
-                executable = r"/Library/Input\ Methods/Cobra.app/Contents/MacOS/Cobra"
+                executable = r"/Library/Input Methods/Cobra.app/Contents/MacOS/Cobra"
                 cmd = ["deploy"]
             else:
                 executable = r"/Library/Input Methods/Fcitx5.app/Contents/bin/fcitx5-curl"
