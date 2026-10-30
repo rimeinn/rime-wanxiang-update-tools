@@ -15,6 +15,7 @@ from typing import Tuple, Optional, List, Dict, Union
 from math import ceil
 from tqdm import tqdm
 import argparse
+import csv
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from pathlib import Path
@@ -259,6 +260,7 @@ class UpdateInfo:
 # ====================== win注册表路径配置 ======================
 if SYSTEM_TYPE == 'windows':
     import winreg
+    import ctypes
 
     REG_PATHS = {
         'rime_user_dir': (
@@ -1439,12 +1441,15 @@ class UpdateHandler:
         if not self.download_file(info.url, temp_file, is_continue):
             return UpdateResult.FAILED
 
-        if not cleanup_existing():
-            old_files, old_dirs = cleanup_delta(target_file, temp_file)
-            if old_files or old_dirs:
-                self._delete_old_files(old_files, old_dirs)
-
         try:
+            # 必须在任何旧方案/词库清理前确认进程已退出。
+            if hasattr(self, 'terminate_processes'):
+                self.terminate_processes()
+            if not cleanup_existing():
+                old_files, old_dirs = cleanup_delta(target_file, temp_file)
+                if old_files or old_dirs:
+                    self._delete_old_files(old_files, old_dirs)
+
             apply_func(temp_file, target_file, info)
             print_success(success_message)
             return UpdateResult.UPDATED
@@ -1466,57 +1471,138 @@ class UpdateHandler:
         if not self.download_file(info.url, temp_file, is_continue):
             return UpdateResult.FAILED
 
-        if hasattr(self, 'terminate_processes'):
-            self.terminate_processes()
-
         try:
+            if hasattr(self, 'terminate_processes'):
+                self.terminate_processes()
             if os.path.exists(target_file):
                 os.remove(target_file)
             os.replace(temp_file, target_file)
             self.save_record(self.record_file, self.record_property, self.record_name, info)
             print_success(success_message)
             return UpdateResult.UPDATED
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             print_error(f"{self.component_name}文件替换失败: {str(exc)}")
             return UpdateResult.FAILED
 
 
     if SYSTEM_TYPE == 'windows':
-        def terminate_processes(self):
-            """组合式进程终止策略"""
-            if not self.graceful_stop():  # 先尝试优雅停止
-                self.hard_stop()          # 失败则强制终止
+        def _weasel_session_id(self) -> int:
+            """获取更新器所在的 Windows 会话，查询和终止均限定此会话。"""
+            session_id = ctypes.c_ulong()
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            query_session = kernel32.ProcessIdToSessionId
+            query_session.argtypes = [ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
+            query_session.restype = ctypes.c_int
+            if not query_session(os.getpid(), ctypes.byref(session_id)):
+                raise RuntimeError(f"无法查询当前 Windows 会话: {ctypes.WinError(ctypes.get_last_error())}")
+            return session_id.value
 
-        def graceful_stop(self):
-            """优雅停止服务"""
+        def _weasel_processes(self) -> Dict[int, str]:
+            """查询当前登录会话中的服务/部署进程；查询失败时禁止继续更新。"""
+            session_id = self._weasel_session_id()
             try:
-                subprocess.run(
-                    [self.weasel_server, "/q"],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                result = subprocess.run(
+                    ["tasklist", "/FI", f"SESSION eq {session_id}", "/FO", "CSV", "/NH"],
+                    capture_output=True, text=True, encoding='mbcs', errors='replace',
+                    creationflags=subprocess.CREATE_NO_WINDOW, timeout=5
                 )
-                time.sleep(0.5)
-                print_success("服务已优雅退出")
-                return True
-            except subprocess.CalledProcessError as e:
-                print_warning(f"优雅退出失败: {e}")
-                return False
-            except OSError as exc:
-                print_error(f"未知错误: {str(exc)}")
-                return False
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise RuntimeError(f"无法查询小狼毫进程，已中止更新: {exc}") from exc
+            if result.returncode != 0:
+                raise RuntimeError(f"tasklist 失败({result.returncode}): {result.stderr.strip() or result.stdout.strip()}")
 
-        def hard_stop(self):
-            """强制终止保障"""
+            names = {'weaselserver.exe', 'weaseldeployer.exe', os.path.basename(self.weasel_server).lower()}
+            try:
+                rows = list(csv.reader(result.stdout.splitlines(), strict=True))
+            except csv.Error as exc:
+                raise RuntimeError("无法解析 tasklist 输出，已中止更新") from exc
+            valid_rows = []
+            for row in rows:
+                if not row or not any(field.strip() for field in row):
+                    continue
+                if (len(row) != 5 or not row[0] or not row[1].isdigit()
+                        or not row[3].isdigit() or int(row[3]) != session_id):
+                    raise RuntimeError("tasklist 输出不完整或会话不匹配，已中止更新")
+                valid_rows.append(row)
+            # 当前会话至少应包含正在运行的 Python/打包后的更新器，空结果不可信。
+            if not valid_rows:
+                raise RuntimeError("tasklist 未返回有效进程列表，不能确认文件已解除占用")
+            return {int(row[1]): row[0] for row in valid_rows if row[0].lower() in names}
+
+        def _wait_for_weasel_exit(self, timeout: float = 8.0) -> bool:
+            """轮询实际进程，连续 0.5 秒未发现残留才认为停止成功。"""
+            deadline = time.monotonic() + timeout
+            empty_since = None
+            while True:
+                remaining = self._weasel_processes()
+                now = time.monotonic()
+                if remaining:
+                    empty_since = None
+                elif empty_since is None:
+                    empty_since = now
+                elif now - empty_since >= 0.5:
+                    return True
+                if now >= deadline:
+                    return False
+                time.sleep(0.2)
+
+        def terminate_processes(self) -> None:
+            """退出命令不代表进程已退出；核验失败则抛出异常，禁止写入。
+            无残留进程时直接返回，避免一次更新里反复打印确认信息。"""
+            if not self.graceful_stop():
+                self.hard_stop()
+
+        def graceful_stop(self) -> bool:
+            """先发送 /q，再核验服务及部署进程，而非仅检查命令退出码。
+            无残留进程时静默返回：同一轮更新会多次调用本方法，不应重复提示。"""
+            if not self._weasel_processes():
+                return True
+            if getattr(self, '_weasel_stopped', False):
+                print_warning("检测到小狼毫被重新启动，正在再次停止")
+            try:
+                result = subprocess.run(
+                    [self.weasel_server, "/q"],
+                    capture_output=True, text=True, encoding='mbcs', errors='replace',
+                    creationflags=subprocess.CREATE_NO_WINDOW, timeout=5
+                )
+                if result.returncode != 0:
+                    print_warning(f"退出命令失败({result.returncode}): {result.stderr.strip() or result.stdout.strip()}")
+            except (OSError, subprocess.SubprocessError) as exc:
+                print_warning(f"退出命令执行失败或超时: {exc}")
+            if self._wait_for_weasel_exit():
+                print_success("已确认小狼毫服务及部署进程退出")
+                self._weasel_stopped = True
+                return True
+            print_warning("等待退出超时，仍有残留进程或服务被重新拉起，将尝试强制终止")
+            return False
+
+        def hard_stop(self) -> None:
+            """只终止当前会话中已发现的 PID，并核验结果；不影响其他登录会话。"""
             print_subheader("强制终止残留进程")
+            session_id = self._weasel_session_id()
             for _ in range(3):
-                subprocess.run(["taskkill", "/IM", "WeaselServer.exe", "/F"],
-                            shell=True, stderr=subprocess.DEVNULL)
-                subprocess.run(["taskkill", "/IM", "WeaselDeployer.exe", "/F"],
-                            shell=True, stderr=subprocess.DEVNULL)
-                time.sleep(0.5)
-            print_success("进程清理完成")
+                for pid, name in self._weasel_processes().items():
+                    try:
+                        result = subprocess.run(
+                            ["taskkill", "/PID", str(pid), "/FI", f"IMAGENAME eq {name}",
+                             "/FI", f"SESSION eq {session_id}", "/F"],
+                            capture_output=True, text=True, encoding='mbcs', errors='replace',
+                            creationflags=subprocess.CREATE_NO_WINDOW, timeout=5
+                        )
+                        if result.returncode != 0:
+                            print_warning(f"终止 {name} (PID {pid}) 返回 {result.returncode}: {result.stderr.strip() or result.stdout.strip()}")
+                    except (OSError, subprocess.SubprocessError) as exc:
+                        print_warning(f"终止 {name} (PID {pid}) 失败: {exc}")
+                if self._wait_for_weasel_exit(timeout=3.0):
+                    print_success("已确认残留进程清理完成")
+                    self._weasel_stopped = True
+                    return
+            remaining = self._weasel_processes()
+            details = ', '.join(f"{name} (PID {pid})" for pid, name in remaining.items()) or '服务反复重启或未稳定退出'
+            raise RuntimeError(
+                f"无法停止小狼毫，已中止本次文件操作: {details}。"
+                "请检查进程权限、其他更新器或自动拉起程序；如提示拒绝访问，请确认权限后重试。"
+            )
 
         def deploy_weasel(self):
             """智能部署引擎"""
@@ -1555,11 +1641,11 @@ class UpdateHandler:
                 )
 
                 if result.returncode != 0:
-                    raise Exception(f"部署失败: {result.stderr.strip()}")
+                    raise RuntimeError(f"部署失败: {result.stderr.strip()}")
 
                 # print_success("部署成功完成")
                 return True
-            except (OSError, subprocess.SubprocessError) as exc:
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
                 print_error(f"部署失败: {str(exc)}")
                 return False
 
@@ -1776,7 +1862,6 @@ class SchemeUpdater(UpdateHandler):
             apply_func=self.apply_update,
             success_message="方案更新完成",
         )
-        self.clean_build()
         return result
 
     def apply_update(self, temp, target, info: UpdateInfo) -> None:
@@ -1792,7 +1877,9 @@ class SchemeUpdater(UpdateHandler):
             self.terminate_processes()
         # 解压文件
         if not self.extract_zip(temp, self.extract_path):
-            raise Exception("解压失败")
+            raise RuntimeError("解压失败")
+        # 仅在方案解压成功后清理；清理失败不能记录为更新成功。
+        self.clean_build()
         # 解压成功重命名文件
         os.replace(temp, target)
         # 保存记录
@@ -1802,6 +1889,8 @@ class SchemeUpdater(UpdateHandler):
         """清理build目录"""
         build_dir = os.path.join(self.extract_path, "build")
         if os.path.exists(build_dir):
+            if hasattr(self, 'terminate_processes'):
+                self.terminate_processes()
             shutil.rmtree(build_dir)
             print_success("已清理build目录")
 
